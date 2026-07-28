@@ -1,0 +1,49 @@
+VHS-13 — Test output (captured 2026-06-14)
+Implementation repo: vigil-harbor-wiki (internal); shipped direct-to-master, no PR (spec D3).
+Test command (spec § Test command): `node wiki-lint.mjs .` from the wiki root.
+
+=== 1. Automated gate — lint exit 0 + non-regression (Test plan 1) ===
+
+PATCHED:  Summary: 0 errors, 48 flags, 0 warnings, 0 info, 163 skipped   EXIT=0
+ORIGINAL: Summary: 0 errors, 48 flags, 0 warnings, 0 info, 163 skipped   EXIT=0
+  (original obtained via `git show master:wiki-lint.mjs`)
+
+Byte-identical summaries; zero INDEX/DEAD_LINK lines in either run. The patch adds
+exactly zero findings to the live wiki. Exit 0 preserved (Part E signal is `info`,
+which never sets exit 1 — wiki-lint.mjs:783). Matches the spec's documented baseline.
+
+Cross-lineage walk (dynasty / prime-radiant — D7 no-regression, Negative A):
+  2026-05-06-dyn-34a-score-calibration-skeleton.md -> prime-radiant:1 dynasty:0
+  2026-05-06-dyn-90-pair-text-firewall.md          -> prime-radiant:1 dynasty:0
+  owningDir(dyn)=dynasty but the entry is filed in the sibling prime-radiant hub →
+  inAnyProjectHub=true → silent. Confirmed by 0 info in the full live run.
+
+=== 2. Lint — wrong-depth hint (Part D, Test plan 2) ===
+
+Fixture projects/petasos/_fixture_vhs13.md with single-dot links:
+  DEAD_LINK error: projects/petasos/_fixture_vhs13.md -> ../decisions/nope.md
+    (wrong relative depth from projects/petasos/; use ../../decisions/nope.md — entries live at wiki root)
+  DEAD_LINK error: projects/petasos/_fixture_vhs13.md -> ../comprehension/nope.md
+    (wrong relative depth from projects/petasos/; use ../../comprehension/nope.md — entries live at wiki root)
+Fixture deleted; re-run clean.
+
+=== 3. Lint — per-project-hub info (Part E, Test plan 3) ===
+
+Fixture comprehension/2026-06-14-pet-999-fixture.md (attributable to petasos, in NO hub):
+  INDEX info: ... not listed in any project hub (expected projects/petasos/petasos-hub.md)   [NEW targeted message]
+Negative B (unknown / topical prefix → existing behavior, unchanged):
+  comprehension/2026-06-14-zzz-1-fixture.md  -> INDEX info: not listed in vigil-harbor-hub.md or any project hub comprehension table
+  comprehension/2026-06-14-pet-topical.md    -> INDEX info: not listed in vigil-harbor-hub.md or any project hub comprehension table
+All fixtures deleted; re-run → Summary: 0 errors, 48 flags, 0 warnings, 0 info, 163 skipped, EXIT=0 (no residue).
+
+=== 4/5. Skill + SCHEMA (prose — review checklist, no runner) ===
+
+SKILL.md: Step 6 comprehension hub-row insert (sub-steps 1–9, anchor on `## Comprehension`
+  header, `../../` mandatory, date-descending string compare, max() Last-updated bump,
+  completeness advisory, single status line, insert-failed hard-stops Step 8);
+  Step 7d decision hub-row insert (promotion-path-only, same mechanics);
+  Step 8 staging list names the hub file; idempotency contract bullet (incl. partial-run
+  self-heal); "does NOT" row-add-only; "Related" hub commit target.
+SCHEMA.md: After-every-merge step 3 (comprehension) + step 4 (decision promotion) name
+  the hub-index surface; Maintenance Contract chain extended (+ project-hub index rows).
+  Lint-contract rows (:360–361) left unchanged (D10).
