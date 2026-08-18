@@ -61,13 +61,19 @@ Proceed regardless — the skill still works for thread cleanup without auto-app
 ## Step 2: Fetch CodeRabbit review comments
 
 ```bash
-# Get all reviews — find the latest coderabbitai[bot] review (body needed for infra-error check below)
+# Get all reviews — find the latest coderabbitai[bot] VERDICT review.
+# `select(.state != "COMMENTED")` is load-bearing: CodeRabbit posts an
+# empty-bodied COMMENTED review for every reply it makes on a thread, so an
+# unfiltered `last` returns an acknowledgement rather than the verdict.
 gh api repos/{owner}/{repo}/pulls/<N>/reviews \
-  --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | sort_by(.submitted_at) | last | {id, state, submitted_at, body}'
+  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.state != "COMMENTED")] | sort_by(.submitted_at) | last | {id, state, submitted_at, body}'
 
-# Get inline comments from CodeRabbit
+# Get inline comments from CodeRabbit — findings only.
+# `in_reply_to_id == null` excludes CodeRabbit's own "✅ Review thread resolved"
+# replies, which are authored by the same bot and would otherwise be triaged as
+# if they were findings.
 gh api repos/{owner}/{repo}/pulls/<N>/comments \
-  --jq '[.[] | select(.user.login == "coderabbitai[bot]")]'
+  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.in_reply_to_id == null)]'
 ```
 
 If the latest review body contains infrastructure errors — look for `"Failed to clone"`, `"🔥 Problems"`, or `"Please run the @coderabbitai full review"` — then post `@coderabbitai full review` as a PR comment to re-trigger the review, report "CodeRabbit hit an infrastructure error — re-triggered full review", and stop.
@@ -166,63 +172,60 @@ HEAD_SHA=$(git rev-parse HEAD)
 PUSH_TIME=$(gh api repos/<OWNER>/<REPO>/commits/$HEAD_SHA --jq '.commit.committer.date')
 
 gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
-  --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | sort_by(.submitted_at) | last | {state, submitted_at}'
+  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.state != "COMMENTED")] | sort_by(.submitted_at) | last | {id, state, submitted_at}'
 ```
 
-`PUSH_TIME` is conversational state — the LLM captures its value from the Bash output and substitutes it literally into subsequent Bash commands. Individual Bash tool calls do not share shell variables.
+Capture that review's `id` as `PREV_REVIEW_ID` — the new-findings predicate below is relative to it.
+
+`PUSH_TIME` and `PREV_REVIEW_ID` are conversational state — the LLM captures their values from the Bash output and substitutes them literally into subsequent Bash commands. Individual Bash tool calls do not share shell variables.
 
 If the latest verdict's `state` is `APPROVED` **and its `submitted_at` is after `PUSH_TIME`**, skip 6a/6b and go straight to 6e. Set `REVIEW_SIGNAL=pre-existing-approval`. (This skips 6d — the existing behavior, preserved from the current SKILL.md; `APPROVED` implies threads are resolved or will be imminently.) A pre-push `APPROVED` verdict must not short-circuit: the incoming incremental review may flip it back to `CHANGES_REQUESTED`.
 
-**Otherwise, gate on CodeRabbit's CI check completing:**
+**Otherwise, poll for new findings directly. This is the primary signal.**
+
+> **Why not gate on the CI check.** The `CodeRabbit` check is an unreliable completion signal and must never be the thing that blocks progress. Observed on Vigil-Harbor/petland PR #51 across two consecutive rounds: the check reported `pass / Review completed` before the first push, then went `PENDING` after each push and **stayed `PENDING` indefinitely** — through a full review being posted, five threads being replied to and resolved, and a second review carrying a genuine new finding. Gating on `SUCCESS` there burns the entire 10-minute PENDING budget and then reports a timeout, on a PR where the findings had been available for minutes. Poll the findings themselves; treat the check as advisory colour only.
+
+```bash
+# New FINDINGS since the last round. Two filters, both load-bearing:
+#   pull_request_review_id > PREV_REVIEW_ID  — belongs to a newer review
+#   in_reply_to_id == null                   — is a finding, not CodeRabbit's
+#                                              own "✅ Review thread resolved"
+#                                              acknowledgement of your reply
+gh api repos/<OWNER>/<REPO>/pulls/<N>/comments \
+  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.pull_request_review_id > <PREV_REVIEW_ID>) | select(.in_reply_to_id == null)] | length'
+```
+
+**Do not use `select(.submitted_at > PUSH_TIME)` on the reviews endpoint as the detection query.** CodeRabbit posts an empty-bodied `COMMENTED` review for each thread reply it makes, so within ~40 seconds of posting replies that query returns a non-zero count of reviews that contain no findings at all. Taking `last | .id` off it hands Step 6b an acknowledgement review, whose comment list is empty, and the round concludes "no new findings" while a real finding is still inbound. That is a false negative on the one thing this step exists to catch.
+
+Poll by making **individual Bash tool calls**. Make up to 10 attempts (intervals are aspirational — the agent harness fires Bash tool calls back-to-back, so the attempt count is what bounds polling, not wall-clock). Outcomes:
+
+- **Count > 0:** new findings exist. Capture their review id and proceed to 6b. Set `REVIEW_SIGNAL=new-findings`.
+- **Count stays 0 for all attempts:** proceed to 6d, but set `REVIEW_SIGNAL=inconclusive` — see the honesty rule in 6e. CodeRabbit may have had nothing to add, or may simply not have finished.
+- **A verdict review lands (`state != "COMMENTED"`, `submitted_at > PUSH_TIME`) with count 0:** CodeRabbit finished and found nothing. Set `REVIEW_SIGNAL=verdict-landed` and proceed to 6d. This is the only *positive* "nothing new" signal available; check for it alongside the count.
+
+**Advisory only — CodeRabbit's CI check:**
 
 ```bash
 gh pr checks <N> --json name,state \
   --jq '[.[] | select(.name | test("coderabbit"; "i")) | .state] | if length == 0 then "NONE" elif any(. == "PENDING") then "PENDING" elif all(. == "SUCCESS") then "SUCCESS" else "FAILURE" end'
 ```
 
-The jq aggregation handles four cases: if no CodeRabbit-named checks exist, return `NONE` (triggers the "no check found" fallback); if any is `PENDING`, treat the overall state as `PENDING`; if all are `SUCCESS`, treat as `SUCCESS`; otherwise `FAILURE` (catches `FAILURE`, `CANCELLED`, `ERROR`, `STALE`, and any other non-standard GitHub check state — conservative and safe).
+Fold this into the same Bash calls as the findings poll, for observability only. `FAILURE` is the one state worth acting on: CodeRabbit errored, so no incremental findings are coming and polling further is pointless — proceed to 6d immediately with `REVIEW_SIGNAL=ci-check (FAILURE)`. `SUCCESS` corroborates a count of 0. `PENDING` and `NONE` mean nothing either way and must not extend polling.
 
-Poll by making **individual Bash tool calls** every 15 seconds (intervals are aspirational because the agent harness fires Bash tool calls back-to-back; `FIRST_POLL_TIME` is what bounds total polling, not the per-poll wait). Note the wall-clock time at first poll as `FIRST_POLL_TIME` — this is conversational state tracked by the LLM across tool calls, not a persistent shell variable (individual Bash calls do not share state). Reset `FIRST_POLL_TIME` at the start of each re-entry to 6a from 6b (timeouts are per-round, not cumulative). Outcomes:
-
-- **CodeRabbit check returns `SUCCESS`:** set `REVIEW_SIGNAL=ci-check`. Fetch the latest CodeRabbit review to capture its `id` for Step 6b:
-  ```bash
-  gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
-    --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | sort_by(.submitted_at) | last | .id'
-  ```
-  Proceed to 6b.
-
-- **CodeRabbit check returns `FAILURE`:** set `REVIEW_SIGNAL=ci-check (FAILURE)`. CodeRabbit errored — no incremental findings expected. Proceed to 6d (skip 6b).
-
-- **CodeRabbit check returns `NONE` (no check found):** Track how long since `FIRST_POLL_TIME`. Early `NONE` results are expected (push-to-check registration race). After 1 minute of continuous `NONE`, fall back to reviews-API poll for the remaining time (up to 5 minutes total from first poll). Set `REVIEW_SIGNAL=reviews-api-fallback`.
-
-  Substitute the actual ISO8601 timestamp captured from `PUSH_TIME` (conversational state) in place of `<PUSH_TIME_ISO8601_LITERAL>` before invoking each Bash tool call — shell variables are not shared between individual calls.
-  ```bash
-  # Detection query (returns count):
-  gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
-    --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.submitted_at > "<PUSH_TIME_ISO8601_LITERAL>")] | length'
-
-  # Once count > 0, capture the review ID:
-  gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
-    --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.submitted_at > "<PUSH_TIME_ISO8601_LITERAL>")] | last | .id'
-  ```
-  When a new review is detected, capture its `id` for Step 6b. If timeout with no new review, proceed to 6d — CodeRabbit may have decided the diff didn't warrant a re-review.
-
-- **CodeRabbit check found but still `PENDING` after 5 minutes:** extend to 10 minutes total (preserved from current 6a behavior). During the extension, also check the reviews-API as a parallel signal — if a new review is detected via reviews-API while the check is still `PENDING`, use the review and proceed to 6b (set `REVIEW_SIGNAL=reviews-api-fallback`). If still pending after 10 minutes, set `REVIEW_SIGNAL=ci-check (timeout)`, warn-and-proceed to 6d.
-
-**Re-entry from 6b (round 2+ guard):** When 6b loops back to 6a after a subsequent push, the CodeRabbit CI check from the prior round still shows `SUCCESS`. Before gating on `SUCCESS`, the skill must first observe the check transition to `PENDING` (indicating the new review run started). If the check does not transition away from `SUCCESS` within 1 minute, fall back to reviews-API poll (whose `submitted_at > PUSH_TIME` filter naturally handles staleness).
-
-When a new review is detected (via either signal), capture its `id` for use in Step 6b.
+**Re-entry from 6b (round 2+ guard):** the findings predicate handles this for free — advance `PREV_REVIEW_ID` to the review just triaged before looping back, and `pull_request_review_id > PREV_REVIEW_ID` cannot re-match the prior round. No check-transition dance is needed.
 
 ### 6b. Triage new findings from incremental review
 
 (Skipped entirely when FAST_PATH is true — proceed to 6d.)
 
-Once the incremental review lands, fetch its inline comments **filtered to the new review's ID** (captured in 6a) to avoid re-triaging old comments from prior rounds:
+Fetch the new findings in full, using the same two filters that detected them in 6a — newer than `PREV_REVIEW_ID`, and not a reply. Filtering on a single `pull_request_review_id` is too narrow: CodeRabbit sometimes splits one round's findings across more than one review id, and the `>` comparison catches them all.
 
 ```bash
 gh api repos/<OWNER>/<REPO>/pulls/<N>/comments \
-  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.pull_request_review_id == <REVIEW_ID>)]'
+  --jq '.[] | select(.user.login == "coderabbitai[bot]") | select(.pull_request_review_id > <PREV_REVIEW_ID>) | select(.in_reply_to_id == null) | "=== ID:\(.id) \(.path):\(.line // .original_line)\n\(.body)"'
 ```
+
+Without `in_reply_to_id == null` this returns CodeRabbit's own `✅ Review thread resolved` acknowledgements — same bot login, higher review id — and they get triaged as if they were findings.
 
 If the new review has NEW findings not present in the original review:
 
@@ -333,15 +336,17 @@ Do not auto-fire the command.
 Once entered, poll for the review verdict:
 
 ```bash
+# select(.state != "COMMENTED") again — an unfiltered `last` returns one of
+# CodeRabbit's empty reply-acknowledgement reviews and reads as a verdict.
 gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
-  --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | sort_by(.submitted_at) | last | .state'
+  --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.state != "COMMENTED")] | sort_by(.submitted_at) | last | .state'
 ```
 
 Poll by making **individual Bash tool calls**; make up to 9 polling attempts. The attempt count governs total polling, not wall-clock duration — intervals are aspirational because the agent harness fires Bash tool calls back-to-back. CodeRabbit's `request_changes_workflow` auto-approval fires after threads are resolved AND pre-merge checks pass.
 
 Outcomes:
 - `APPROVED`: success — CodeRabbit has lifted the reviewer block.
-- `CHANGES_REQUESTED` after timeout: "All threads resolved but CodeRabbit has not approved. Pre-merge checks may be failing — check the CodeRabbit walkthrough comment for details."
+- `CHANGES_REQUESTED` after timeout: **the common case, and usually benign.** The verdict lags thread resolution by minutes; observed on PR #51 staying `CHANGES_REQUESTED` through nine polls in each of two rounds with every thread resolved and every other check green, then lifting on its own afterwards. Report it as a stale verdict expected to clear, not as a problem: "All threads resolved; the verdict lags and should flip on its own. If it hasn't after a few minutes, check the CodeRabbit walkthrough comment for a failing pre-merge check." Do not fire `@coderabbitai resolve` for this — the threads are already resolved and it fixes nothing.
 
 ### 6e. Report
 
@@ -357,10 +362,19 @@ Review round complete for PR #<N>:
 - Reply skipped: G (body-level findings with no inline comment ID, if any)
 - Thread status: X resolved / Y unresolved
   [If threads unresolved: "N threads still unresolved — to force-resolve: gh pr comment <N> --body '@coderabbitai resolve'"]
-- CodeRabbit verdict: APPROVED / CHANGES_REQUESTED (expected — N threads open) / not polled (request_changes_workflow disabled)
+- CodeRabbit verdict: APPROVED / CHANGES_REQUESTED (expected — N threads open) / CHANGES_REQUESTED (stale — all threads resolved, verdict lags) / not polled (request_changes_workflow disabled)
 - Fast path: yes — re-run /review-pr if CodeRabbit posts new findings / no
-- Review completion signal: ci-check / ci-check (FAILURE) / ci-check (timeout) / reviews-api-fallback / pre-existing-approval / fast-path
+- Review completion signal: new-findings / verdict-landed / inconclusive / ci-check (FAILURE) / pre-existing-approval / fast-path
 ```
+
+**Honesty rule on `inconclusive`.** Say "no new findings" only on `verdict-landed` — a post-push review whose `state != "COMMENTED"` actually arrived and carried none. On `inconclusive` (polling exhausted with a count of 0 and no verdict review), the accurate line is:
+
+```text
+- Incremental review: inconclusive — polling ended before CodeRabbit posted a
+  verdict for <sha>. Re-run /review-pr to pick up anything that lands after this.
+```
+
+This distinction is not pedantry. On PR #51 round 1, polling ended reporting "no new findings"; a `CHANGES_REQUESTED` review carrying a real Major-adjacent finding landed about three minutes later and was caught only because the user pasted it in. A round that ends `inconclusive` is a round that is not finished.
 
 ## Edge cases
 
@@ -371,7 +385,8 @@ Review round complete for PR #<N>:
 - **Branch protection blocks push**: report the error, don't retry
 - **Incremental review loop**: cap at 3 fix-push-review cycles to prevent infinite loops
 - **CodeRabbit timeout/down**: if polls consistently timeout with no CodeRabbit activity, report and stop
-- **Stale CHANGES_REQUESTED with no new findings**: no new findings → no triage → report "no findings but N prior-round threads still unresolved" with manual resolve command (`gh pr comment <N> --body "@coderabbitai resolve"`)
+- **Stale CHANGES_REQUESTED with all threads resolved**: the normal end state of a successful round. The verdict trails thread resolution by minutes. Report it as stale-and-expected; do not fire `@coderabbitai resolve` (there is nothing left to resolve) and do not diagnose it as a failing pre-merge check unless the checks actually show one
+- **Stale CHANGES_REQUESTED with threads still open**: no new findings → no triage → report "no findings but N prior-round threads still unresolved" with manual resolve command (`gh pr comment <N> --body "@coderabbitai resolve"`)
 - **Fix-threads don't auto-resolve on hash reply**: report unresolved threads + manual resolve command. No automated fallback
 - **Reply API call fails (404/403/422)**: log failure, continue loop, report count in 6e
 - **Reply API rate-limited (429)**: wait `Retry-After` duration, retry once. If still 429, log and continue
@@ -384,9 +399,8 @@ Review round complete for PR #<N>:
 - **Rate limit on reply API (pathological 30+ findings)**: 429 retry handles transient limits; if persistent, cap at available budget and report
 - **Fast path triggered, no incremental review observed**: expected behavior — the fast path intentionally skips 6a/6b. If CodeRabbit posts new findings after the run, re-run `/review-pr` to pick them up.
 - **Fast path triggered but CodeRabbit posts new findings before 6d completes**: 6d's thread-resolution polling may observe unresolved threads from the new findings. The report will show them as unresolved with the manual resolve command. Re-run `/review-pr` to triage.
-- **CodeRabbit check missing or stuck — fallback to reviews-API**: if `gh pr checks <N>` returns no CodeRabbit-named check within 1 minute of first poll, fall back to reviews-API poll. Report shows `Review completion signal: reviews-api-fallback`. Common causes: draft PR, paused review, CodeRabbit Checks integration disabled.
-- **CodeRabbit check `FAILURE`**: CodeRabbit encountered an error and did not post findings. Proceed to 6d (skip 6b). Report shows `Review completion signal: ci-check (FAILURE)`.
-- **CodeRabbit check stuck `PENDING` for 10 minutes**: the PENDING extension window expires. Set `REVIEW_SIGNAL=ci-check (timeout)`, warn, proceed to 6d. Report shows the timeout signal for observability.
-- **Race between push and check registration**: the CodeRabbit check may not appear on the first 1–2 polls after push. The 1-minute compatibility window is measured from first poll, not first miss — early misses do not trigger fallback.
-- **Reviews-API fallback hides CI-check regression**: if `reviews-api-fallback` appears consistently when `ci-check` is expected, the CI-check filter may be broken. Report makes this observable.
-- **Stale CI check on round 2+ re-entry**: after 6b pushes and loops back to 6a, the round-1 CodeRabbit check still shows `SUCCESS`. The re-entry guard waits for `PENDING` before gating on the next `SUCCESS`. If the check never transitions (CodeRabbit skipped re-review), the 1-minute window expires and the skill falls back to reviews-API.
+- **CodeRabbit check stuck `PENDING` indefinitely**: common, and harmless now that the check is advisory. Observed on Vigil-Harbor/petland PR #51 for the full duration of two rounds while reviews, replies, and thread resolutions all landed normally. Never extend polling on it.
+- **CodeRabbit check `FAILURE`**: CodeRabbit errored and posted no findings. The one check state worth acting on — proceed to 6d (skip 6b), `REVIEW_SIGNAL=ci-check (FAILURE)`.
+- **Empty `COMMENTED` reviews flood the reviews endpoint**: CodeRabbit posts one per thread reply, so a run that answers five threads adds five bodiless reviews within a minute. Any query that takes `last` off an unfiltered review list — verdict checks especially — returns one of these instead of the real verdict. Always `select(.state != "COMMENTED")`.
+- **CodeRabbit replies look like findings**: its `✅ Review thread resolved` acknowledgements are inline comments from `coderabbitai[bot]` carrying a *newer* `pull_request_review_id` than the findings they answer. Only `in_reply_to_id == null` separates them.
+- **Polling ends before the incremental review lands**: report `inconclusive`, never "no new findings" — see the honesty rule in 6e. Re-running `/review-pr` is the remedy and costs one round.
