@@ -1,5 +1,5 @@
 {
-  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-06-01.",
+  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-07-27. Each project's `state_groups` mirrors `states` key-for-key, carrying Plane's `group` field verbatim (backlog | unstarted | started | completed | cancelled) — this is the gate signal /spec-close reads; `states` stays name->UUID because ship-spec and spec-cycle depend on that shape. Review states ('In Review' / 'PR Review') were moved from group `completed` to `started` in Plane on 2026-07-27 across all 11 affected projects and re-swept here — see vigil-harbor-wiki decisions/2026-07-27-cross-review-states-belong-in-started.md. Talaria (TAL) has NO Plane project: TAL-* spec IDs are repo-local only, so /spec-close can never full-close them and they are always partial. Deliberately absent: DEM (Demerzel) and MED (Media) run the default 5-state workflow and do no spec-cycle work.",
   "MCP": {
     "project_id": "98788c4e-f30f-466d-9562-19e28aa4e53e",
     "namespace": "mcp",
@@ -14,6 +14,17 @@
       "In Review": "f724dfef-38e4-4a3e-8b60-9bad988a6829",
       "Done": "2de7ddd1-932b-4bb5-b4b6-3af340134bf6",
       "Cancelled": "c38e4b91-2e58-44d8-a1ed-0ab645c7b6e3"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "In Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "DYN": {
@@ -30,6 +41,17 @@
       "PR Review": "2f177294-83d8-4c9a-b74d-03bbc6826593",
       "Done": "2f72aa3c-f999-4bf0-84aa-9b4f322a7e74",
       "Cancelled": "1323fe07-3abf-405a-a969-20a4561e4244"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "ADA": {
@@ -46,6 +68,17 @@
       "PR Review": "9a44c946-c19f-4d15-8d5d-9cde9ea67f10",
       "Done": "92e350b6-12f1-4391-8e2d-3e4406a507a1",
       "Cancelled": "54f281ca-1da3-40f8-aec6-d48919a2ba09"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "VHS": {
@@ -62,6 +95,17 @@
       "PR Review": "c0e933ae-0094-443a-8cdb-9eb4190441e3",
       "Done": "ba79301e-288a-48fa-8e66-4f8d8c66d618",
       "Cancelled": "b54dfa77-bee0-49c0-b413-c862ed63cddc"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "CLT": {
@@ -78,6 +122,17 @@
       "In Review": "df29d743-ab03-4467-8563-6a3845f9ad57",
       "Done": "d9e28e6b-b673-4f99-b98d-83c33eae84eb",
       "Cancelled": "18ea9a49-436a-4047-9810-3b0c77999b61"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "In Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "PET": {
@@ -94,12 +149,24 @@
       "PR Review": "13defdfc-d04d-4c57-8535-db3bf72daf8b",
       "Done": "1a095d23-7ecd-4b59-923a-41eb3ba42996",
       "Cancelled": "7f64eb28-5f79-40f5-a340-5ace763a571f"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   },
   "SER": {
     "project_id": "8bdfa36f-5f16-4eaa-85d9-31c2c12cbf8e",
     "namespace": "serenade",
     "review_state_id": "371068bc-a594-4045-ad4d-cf86b150b5d0",
+    "_note": "Reference configuration — SER's review state was created in group `started` (2026-06-16) and never needed the 2026-07-27 correction.",
     "states": {
       "Backlog": "90e738b4-e70e-4f1d-9d07-b9c2ec6c337b",
       "Todo": "ba0c9374-f316-47d8-ade4-3c0151afb6b1",
@@ -109,6 +176,175 @@
       "In Review": "371068bc-a594-4045-ad4d-cf86b150b5d0",
       "Done": "61cc0872-caed-4d75-b6af-250a016ba2a1",
       "Cancelled": "7e5693f9-26af-4a93-aafd-a30f096cdd44"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "In Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "GAV": {
+    "project_id": "2874c1fe-a0fe-4708-a3f1-c5efecaac13b",
+    "namespace": "gavin",
+    "review_state_id": "3384cf0e-ffa0-49e2-944d-a24793a79851",
+    "_note": "Hermes Agent designation (like Gibson — GIB isn't a thing). Gavin is Jordan's Hermes deployment in the Texas office, but GAV scope is broader: any Hermes harness work, whatever the deploy. Default 5-state workflow; no Spec/PR Review states, review_state_id maps to In Progress. Namespace corrected 2026-07-27 from `plane` (not a real namespace) to `gavin`, verified by memory_search returning GAV-5/GAV-6 there.",
+    "states": {
+      "Backlog": "6508c48c-d917-463f-8eff-b0ebedadbad7",
+      "Todo": "d3a3081b-1400-4443-80b2-1a10c35d0630",
+      "In Progress": "3384cf0e-ffa0-49e2-944d-a24793a79851",
+      "Done": "d7ff12a3-7123-41ce-b1fb-0066ed53ac71",
+      "Cancelled": "800c0e5a-7bb7-41ae-88a9-70856fd1a61b"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "In Progress": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "RAD": {
+    "project_id": "e3440d24-ecbc-4289-a632-f0ad7e639357",
+    "namespace": "radiant",
+    "review_state_id": "16c2d53c-9c7b-423c-b7d3-4486752a6241",
+    "states": {
+      "Backlog": "aa2a3beb-88c2-4458-a2f1-fe5158ba6997",
+      "Todo": "cbc6c665-bc23-452c-a2eb-463406db9a61",
+      "Ready to Ship": "a5e644f0-567d-4bdc-8532-206227163629",
+      "In Progress": "338af579-9e35-415a-93cb-633db19811d1",
+      "Spec Authoring": "814e634b-5df8-4011-b0bc-f1767ed628c5",
+      "Spec Review": "baf2cf17-cd3e-4bf0-8d7c-d68fb55e41e0",
+      "PR Review": "16c2d53c-9c7b-423c-b7d3-4486752a6241",
+      "Done": "bfc2314f-e4ce-475c-9563-be0e1ce5d99f",
+      "Cancelled": "aa7180e7-c573-4ce7-9f31-71059bddbbbb"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "CAL": {
+    "project_id": "cfe8997b-4c00-40cb-9733-da646dd230d2",
+    "namespace": "calvin",
+    "review_state_id": "1d52708e-513b-4bd5-88f8-89313b681365",
+    "_note": "Added 2026-07-27. Calvin runtime parked 2026-06-12; full spec-cycle state set present, ticket flow sparse.",
+    "states": {
+      "Backlog": "ade460a5-ffc3-41ae-a5ef-9b9cb09c228d",
+      "Todo": "cb43a5af-0673-4338-9b90-97c8990efd84",
+      "Ready to Ship": "5ec3d557-cb13-40a8-9028-48bf765e00e0",
+      "In Progress": "1a5d8a14-f1e6-4797-802e-6fc48f5b1553",
+      "Spec Authoring": "669d056d-a551-4c51-ab29-8b1b476d8ade",
+      "Spec Review": "b1093d35-6e55-480c-b1f8-ff3c0259de68",
+      "In Review": "1d52708e-513b-4bd5-88f8-89313b681365",
+      "Done": "7372ab71-377d-4767-89d5-77017e36c58c",
+      "Cancelled": "215f6636-e30c-412b-8a41-ece0100693b1"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "In Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "INFRA": {
+    "project_id": "7aa0cafe-ed5c-4b02-bebd-4a88a51a5bbc",
+    "namespace": "infra",
+    "review_state_id": "acdf0b8c-7074-42c5-b116-f93e4bf6e55e",
+    "_note": "Added 2026-07-27.",
+    "states": {
+      "Backlog": "7f122b0b-fd09-4b0a-8ac8-993afbf795e7",
+      "Todo": "4f248f52-3e6c-4967-ab44-15a8db735063",
+      "Ready to Ship": "6ba724f4-3de6-440d-b042-90755f260f4e",
+      "In Progress": "4984c220-f264-411d-bf79-cc50f3cc7130",
+      "Spec Authoring": "60534900-a10c-46cf-b1a9-7688f7c0572c",
+      "Spec Review": "350b962d-6594-445a-8957-ab697d8b09b1",
+      "PR Review": "acdf0b8c-7074-42c5-b116-f93e4bf6e55e",
+      "Done": "255bb3eb-f608-4fa3-a549-1bccbb99159f",
+      "Cancelled": "46ea3946-b832-4d80-929f-89b13685b651"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "DBR": {
+    "project_id": "f4446ff1-6afd-4e5f-b711-8b433dc5a3ee",
+    "namespace": "drawbridge",
+    "review_state_id": "0e422175-2990-4c42-8600-16f474aca661",
+    "_note": "Added 2026-07-27. Plane spells this project's spec-review state 'Spec review' (lowercase r); the key here is normalized to 'Spec Review' so lookups match every other project — the UUID is what the API consumes.",
+    "states": {
+      "Backlog": "f596d92f-26ff-4435-8383-b22b4debe9ad",
+      "Todo": "36d15ede-808f-42ef-912b-c2e6797191af",
+      "Ready to Ship": "a241d50a-5785-48a7-b08f-e3b7b8f9f8e7",
+      "In Progress": "07f4a12e-dd79-4634-b8af-b52e4d9c08f3",
+      "Spec Authoring": "0c078a0f-dc8d-4e04-8816-ab8352f32bf5",
+      "Spec Review": "e322b4f5-75a8-4a6a-8e7a-137bd44c6a56",
+      "PR Review": "0e422175-2990-4c42-8600-16f474aca661",
+      "Done": "d824a78b-4f14-4035-a562-5b575f2a3794",
+      "Cancelled": "640752bc-acea-47c1-986e-beb8ca845ea4"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "ACM": {
+    "project_id": "b92ea9b5-db00-46b1-97da-17e64555183e",
+    "namespace": "acm",
+    "review_state_id": "1627a5c9-44a3-4486-9528-c3a2b3b3c081",
+    "_note": "Added 2026-07-27. AgentCraft Mods. Full spec-cycle state set present; the `acm` MCP namespace was previously logged as an unmapped prefix in the wiki namespace registry — this entry maps it.",
+    "states": {
+      "Backlog": "6f97645f-e2b2-48c4-a0a4-01a528da9562",
+      "Todo": "81283b86-09f2-4df1-acf5-b75ae6709664",
+      "Ready to Ship": "c73fc5eb-9012-4cf8-b2f9-b12e5cdcd9fb",
+      "In Progress": "7ad6a994-c144-4464-886e-2e3ea446ba67",
+      "Spec Authoring": "d4bbfbc2-ce7f-429f-bdf3-972a29b44e4f",
+      "Spec Review": "6439ff1a-f5e4-4c1d-aaf2-bcfa76a7c834",
+      "PR Review": "1627a5c9-44a3-4486-9528-c3a2b3b3c081",
+      "Done": "774e0562-e4e0-430d-b4d3-90f656b05e5b",
+      "Cancelled": "1588c1fc-e7d9-4051-bd04-a863b25e3cfb"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
     }
   }
 }
