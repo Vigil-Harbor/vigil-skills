@@ -6,3 +6,5 @@ __pycache__/
 .vscode/
 CLAUDE.md
 .claude/
+.hermes/
+.talaria-review-hermes/
