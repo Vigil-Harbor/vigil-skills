@@ -34,7 +34,9 @@ silently left newest-first contract, with nothing to prompt a re-sort:
 
     an entry heading whose date is not a real day
     an anchor whose date is not a real day (ordering is then undecidable)
-    an entry strictly older than the entry already at the anchor
+    an entry strictly older than the newest dated entry anywhere in the
+        file -- not merely the one at the anchor, because in a file that is
+        already inverted the anchor is not the newest
 
 Outcomes (stdout carries `prepend_log_entry_outcome=<outcome>`):
 
@@ -143,8 +145,8 @@ class NotNewestFirst(Exception):
     - the anchor's own date is not a real calendar day, so there is no ordering
       to check the entry against, and guessing would file it above a heading
       nobody can order.
-    - the entry's date is strictly older than the anchor's, so prepending would
-      put an older entry above a newer one.
+    - the entry's date is strictly older than the newest dated entry in the
+      file, so prepending would put an older entry above a newer one.
 
     Same failure as AnchorMissing's -- exit 0 over a file out of newest-first
     contract -- so the same answer: refuse, carrying the line number and heading
@@ -191,6 +193,19 @@ def _check_order(text: str, match, entry: str) -> None:
     dates pass: several closes land on one day, and newest-first puts the most
     recent of them on top.
 
+    The entry is compared against the newest dated entry *anywhere* in the file,
+    not just the one at the anchor. In a file that is already inverted the two
+    differ, and the anchor alone would clear an entry that still lands above
+    something newer -- the very placement this refusal exists to prevent.
+
+    What it deliberately does NOT do is audit the file's own ordering. An
+    inversion among the entries already there, and an unparseable date away from
+    the anchor, are pre-existing damage this write neither causes nor worsens:
+    the entry still lands on top, still newest. Refusing there would strand
+    every future close behind one historical typo in the wiki, after Phase 5
+    step 3 has already moved the spec artifacts, with no in-script recovery.
+    Only placements this write would get wrong are refused.
+
     A malformed `entry` yields no opinion rather than an exception -- _run()
     validates the heading before it ever calls splice(), and splice() is also
     driven directly by unit cases exercising other rules.
@@ -210,12 +225,28 @@ def _check_order(text: str, match, entry: str) -> None:
     if entry_match is None:
         return
     entry_date = _match_date(entry_match)
-    if entry_date is None or entry_date >= anchor_date:
+    if entry_date is None:
+        return
+
+    # The anchor is only the newest entry in a file that is in contract. Scan
+    # for the real maximum so an already-inverted file cannot clear an entry
+    # that would still land above something newer. Entries whose date does not
+    # parse are skipped, not refused: away from the anchor they are damage this
+    # write does not touch.
+    newest_date = anchor_date
+    for other in ENTRY_RE.finditer(text):
+        other_date = _match_date(other)
+        if other_date is not None and other_date > newest_date:
+            newest_date = other_date
+            line_number = _line_number(text, other.start())
+            line_text = _line_at(text, other.start())
+
+    if entry_date >= newest_date:
         return
     raise NotNewestFirst(
         "entry dated {} is older than the newest entry already in the file, "
         "dated {} — line {}: {} — refusing to write above it".format(
-            entry_date.isoformat(), anchor_date.isoformat(),
+            entry_date.isoformat(), newest_date.isoformat(),
             line_number, line_text
         )
     )

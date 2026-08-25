@@ -426,6 +426,70 @@ class TestDateOrdering(PrependCase):
         self.assertEqual(read(target), original)
         self.assertEqual(out, "")
 
+    def inverted_tail(self, *dates: str) -> Path:
+        """A log whose dated entries appear in the given order, header intact."""
+        entries = "".join(
+            "## [{}] merge | VHS — VHS-4{}: entry {}\n\nbody\n\n".format(
+                date_text, index, index)
+            for index, date_text in enumerate(dates)
+        )
+        return write(self.tmp / "log.md",
+                     "# Wiki Log\n\n" + FORMAT_SENTENCE + "\n\n" + entries)
+
+    def test_entry_older_than_a_newer_entry_further_down_refuses(self):
+        # The anchor alone is not the file's newest once the file is inverted:
+        # here it is 2026-08-26 with a 2026-08-27 entry beneath it. An entry
+        # dated 2026-08-26 ties the anchor, clears a comparison against it
+        # alone, and still lands above something newer — the placement this
+        # refusal exists to prevent, reported as a clean prepend.
+        target = self.inverted_tail("2026-08-26", "2026-08-27")
+        original = read(target)
+        entry = ENTRY.replace("2026-08-25", "2026-08-26")
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 entry.encode("utf-8"))
+        self.assertEqual(code, 2, err)
+        self.assertIn("entry dated 2026-08-26 is older", err)
+        self.assertIn("dated 2026-08-27", err)
+        self.assertIn("## [2026-08-27]", err)
+        self.assertEqual(read(target), original, "nothing may be written")
+        self.assertEqual(out, "")
+
+    def test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry(self):
+        # The scope line, pinned deliberately. Same inverted file, but the entry
+        # is newer than everything in it, so the write is correct: it lands on
+        # top and is still the newest. The 26/27 inversion below is damage this
+        # write neither caused nor worsened, and refusing over it would strand
+        # every future close behind one historical typo in the wiki — after the
+        # close has already moved the spec artifacts to DONE/.
+        target = self.inverted_tail("2026-08-26", "2026-08-27")
+        entry = ENTRY.replace("2026-08-25", "2026-08-28")
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 entry.encode("utf-8"))
+        self.assertEqual(code, 0, err)
+        self.assertIn("prepend_log_entry_outcome=prepended", out)
+        headings = [line[:16] for line in read(target).splitlines()
+                    if line.startswith("## [")]
+        self.assertEqual(headings, ["## [2026-08-28] ", "## [2026-08-26] ",
+                                    "## [2026-08-27] "],
+                         "the entry goes on top; the inversion is left as found")
+
+    def test_an_unparseable_date_away_from_the_anchor_is_skipped(self):
+        # Same scope line for dates rather than order. At the anchor an
+        # impossible day is a refusal (ordering is undecidable there); further
+        # down it is skipped, so the scan for the file's newest entry cannot be
+        # derailed by a typo in an entry this write does not touch.
+        target = self.inverted_tail("2026-08-26", "2026-02-30")
+        entry = ENTRY.replace("2026-08-25", "2026-08-28")
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 entry.encode("utf-8"))
+        self.assertEqual(code, 0, err)
+        self.assertIn("prepend_log_entry_outcome=prepended", out)
+        self.assertTrue(read(target).index(entry.split("\n")[0])
+                        < read(target).index("## [2026-08-26]"))
+
     def test_the_ordering_refusals_report_distinct_reasons(self):
         # Exit 2 is the catch-all, so an operator reading only the code cannot
         # tell "your entry is backdated" from "your log.md is corrupt at the

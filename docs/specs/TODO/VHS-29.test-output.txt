@@ -1,4 +1,4 @@
-=== VHS-29 test gate — 2026-08-25T19:29:43Z ===
+=== VHS-29 test gate — 2026-08-25T19:40:14Z ===
 
 $ python --version
 Python 3.14.3
@@ -13,6 +13,9 @@ test_bom_immediately_before_an_entry_heading (test_spec_close_log.TestBom.test_b
 test_bom_with_two_headerless_entries (test_spec_close_log.TestBom.test_bom_with_two_headerless_entries) ... ok
 test_change_between_read_and_replace_is_refused (test_spec_close_log.TestConcurrentChange.test_change_between_read_and_replace_is_refused) ... ok
 test_file_appearing_under_a_missing_file_run_is_refused (test_spec_close_log.TestConcurrentChange.test_file_appearing_under_a_missing_file_run_is_refused) ... ok
+test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry (test_spec_close_log.TestDateOrdering.test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry) ... ok
+test_an_unparseable_date_away_from_the_anchor_is_skipped (test_spec_close_log.TestDateOrdering.test_an_unparseable_date_away_from_the_anchor_is_skipped) ... ok
+test_entry_older_than_a_newer_entry_further_down_refuses (test_spec_close_log.TestDateOrdering.test_entry_older_than_a_newer_entry_further_down_refuses) ... ok
 test_impossible_anchor_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_anchor_date_is_refused) ... ok
 test_impossible_entry_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_entry_date_is_refused) ... ok
 test_older_entry_above_a_newer_one_refuses (test_spec_close_log.TestDateOrdering.test_older_entry_above_a_newer_one_refuses) ... ok
@@ -63,7 +66,7 @@ test_malformed_entry_headings_are_refused (test_spec_close_log.TestWriteSideHead
 test_well_formed_entry_passes (test_spec_close_log.TestWriteSideHeadingValidation.test_well_formed_entry_passes) ... ok
 
 ----------------------------------------------------------------------
-Ran 57 tests in 4.408s
+Ran 60 tests in 4.681s
 
 OK (skipped=3)
 
@@ -72,8 +75,8 @@ lint: 0 error(s), 0 warning(s)
 exit=0
 
 $ python -m unittest discover -s tests -p 'test_*.py'
-................................................................................s............ss................................................................
+...................................................................................s............ss................................................................
 ----------------------------------------------------------------------
-Ran 159 tests in 10.724s
+Ran 162 tests in 10.869s
 
 OK (skipped=3)
