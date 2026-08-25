@@ -11,7 +11,7 @@ duplicates, and lands the bytes through a temp file plus `os.replace`.
 
 The anchor is line-anchored on a real date::
 
-    ENTRY_RE = ^## \\[\\d{4}-\\d{2}-\\d{2}\\]<space>   (re.MULTILINE)
+    ENTRY_RE = ^## \\[(\\d{4})-(\\d{2})-(\\d{2})\\]<space>   (re.MULTILINE)
 
 which is what keeps it off `log.md`'s own header sentence -- ``Format: `## [YYYY-MM-DD]
 action | description` `` -- where a naive ``text.index("## [")`` matches mid-sentence
@@ -19,11 +19,22 @@ and splices the entry into the middle of the header. All three narrowings (line
 start, real digits, trailing space) would have to fail at once for that sentence
 to be selected.
 
-`ENTRY_RE` has two jobs: it finds the anchor on read, and it validates the
-entry's own heading on write. A narrow anchor is only safe if the entries this
-script writes are guaranteed to match it -- otherwise the *next* run's anchor
-skips this entry and inserts underneath it, silently leaving newest-first
-contract one run later.
+`ENTRY_RE` has three jobs: it finds the anchor on read, it validates the
+entry's own heading on write, and its three capture groups carry the date both
+sides are ordered by. A narrow anchor is only safe if the entries this script
+writes are guaranteed to match it -- otherwise the *next* run's anchor skips
+this entry and inserts underneath it, silently leaving newest-first contract
+one run later.
+
+The date fields are *shape*, not calendar: `## [2026-13-45] ` matches ENTRY_RE
+exactly. So the date is parsed on both sides before the write, and three more
+refusals join the heading-shape one, each for the single reason this script
+exists -- the alternative is exit 0 and a reported prepend over a file that has
+silently left newest-first contract, with nothing to prompt a re-sort:
+
+    an entry heading whose date is not a real day
+    an anchor whose date is not a real day (ordering is then undecidable)
+    an entry strictly older than the entry already at the anchor
 
 Outcomes (stdout carries `prepend_log_entry_outcome=<outcome>`):
 
@@ -55,12 +66,13 @@ import os
 import re
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 # The insertion anchor. Line-anchored (`^` under re.M) on a *real* date, with a
 # mandatory trailing space -- three exclusions, each load-bearing against the
 # header's own `Format: ## [YYYY-MM-DD] action | description` sentence.
-ENTRY_RE = re.compile(r"^## \[\d{4}-\d{2}-\d{2}\] ", re.M)
+ENTRY_RE = re.compile(r"^## \[(\d{4})-(\d{2})-(\d{2})\] ", re.M)
 
 # Evidence that a file has entry-shaped headings the anchor could not describe:
 # a hand-edited `### [...]`, a short date `## [2026-8-5]`, a missing space after
@@ -122,6 +134,93 @@ class AnchorMissing(Exception):
         )
 
 
+class NotNewestFirst(Exception):
+    """The entry cannot go above the anchor without breaking newest-first.
+
+    AnchorMissing covers headings the anchor *cannot* describe; this covers the
+    one it can. Two shapes, both refusals:
+
+    - the anchor's own date is not a real calendar day, so there is no ordering
+      to check the entry against, and guessing would file it above a heading
+      nobody can order.
+    - the entry's date is strictly older than the anchor's, so prepending would
+      put an older entry above a newer one.
+
+    Same failure as AnchorMissing's -- exit 0 over a file out of newest-first
+    contract -- so the same answer: refuse, carrying the line number and heading
+    text the operator needs to hand-place the entry.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self._message = message
+
+    def message(self) -> str:
+        return self._message
+
+
+def _line_at(text: str, start: int) -> str:
+    """The single line beginning at `start`, stripped."""
+    end = text.find("\n", start)
+    return (text[start:] if end == -1 else text[start:end]).strip()
+
+
+def _line_number(text: str, start: int) -> int:
+    return text.count("\n", 0, start) + 1
+
+
+def _match_date(match):
+    """The calendar day in an ENTRY_RE match, or None when there is no such day.
+
+    ENTRY_RE's `\\d{2}` fields constrain width, not range -- `## [2026-13-45] `
+    and `## [2026-02-30] ` both match it. Callers treat None as a refusal rather
+    than substituting a guess: an unorderable date is exactly the input that
+    would otherwise be ordered wrongly, and silently.
+    """
+    try:
+        return date(int(match.group(1)), int(match.group(2)),
+                    int(match.group(3)))
+    except ValueError:
+        return None
+
+
+def _check_order(text: str, match, entry: str) -> None:
+    """Refuse when prepending at `match` would not leave the file newest-first.
+
+    Raises NotNewestFirst; returns None when the write is in contract. Equal
+    dates pass: several closes land on one day, and newest-first puts the most
+    recent of them on top.
+
+    A malformed `entry` yields no opinion rather than an exception -- _run()
+    validates the heading before it ever calls splice(), and splice() is also
+    driven directly by unit cases exercising other rules.
+    """
+    anchor_date = _match_date(match)
+    line_number = _line_number(text, match.start())
+    line_text = _line_at(text, match.start())
+    if anchor_date is None:
+        raise NotNewestFirst(
+            "the newest dated entry carries a date that is not a real calendar "
+            "day — line {}: {} — refusing to write above it".format(
+                line_number, line_text
+            )
+        )
+
+    entry_match = ENTRY_RE.match(entry)
+    if entry_match is None:
+        return
+    entry_date = _match_date(entry_match)
+    if entry_date is None or entry_date >= anchor_date:
+        return
+    raise NotNewestFirst(
+        "entry dated {} is older than the newest entry already in the file, "
+        "dated {} — line {}: {} — refusing to write above it".format(
+            entry_date.isoformat(), anchor_date.isoformat(),
+            line_number, line_text
+        )
+    )
+
+
 def normalize_entry(raw: bytes) -> str:
     r"""Decode strict UTF-8, fold \r\n and lone \r to \n, strip a BOM, strip.
 
@@ -157,7 +256,8 @@ def splice(existing, entry):
     outcome is one of: "prepended", "fresh", "created".
     Raises AnchorMissing when existing has heading-like lines the anchor cannot
     place an entry against — either no dated entry at all, or one with
-    heading-like lines above it.
+    heading-like lines above it. Raises NotNewestFirst when the anchor is
+    usable but writing above it would break newest-first order.
     """
     if existing is None:
         return entry + "\n", "created"
@@ -170,11 +270,8 @@ def splice(existing, entry):
 
     def refuse(matches, above_anchor):
         first = matches[0]
-        line_number = text.count("\n", 0, first.start()) + 1
-        line_end = text.find("\n", first.start())
-        line_text = (text[first.start():] if line_end == -1
-                     else text[first.start():line_end]).strip()
-        raise AnchorMissing(len(matches), line_number, line_text, above_anchor)
+        raise AnchorMissing(len(matches), _line_number(text, first.start()),
+                            _line_at(text, first.start()), above_anchor)
 
     headingish = list(HEADINGISH_RE.finditer(text))
 
@@ -190,6 +287,12 @@ def splice(existing, entry):
         above = [m for m in headingish if m.start() < match.start()]
         if above:
             refuse(above, True)
+
+        # ...and neither is a *well-formed* newer entry sitting at the anchor.
+        # The rule above catches the shapes ENTRY_RE cannot read; this catches
+        # the shape it reads perfectly and would still file the new entry
+        # underneath.
+        _check_order(text, match, entry)
 
         head = text[: match.start()].rstrip()
         tail = text[match.start():]
@@ -349,11 +452,21 @@ def _run(argv, context) -> int:
     #    An entry the *next* run's anchor cannot find lands at the top, exits 0,
     #    and then gets the newer entry inserted underneath it: this ticket's own
     #    bug, one run later, with no refusal to prompt a re-sort.
-    if ENTRY_RE.match(entry) is None:
+    entry_match = ENTRY_RE.match(entry)
+    if entry_match is None:
         return fail(
             "entry heading does not match the log format "
             "'## [YYYY-MM-DD] …' — refusing to write an entry the anchor "
             "cannot find: {}".format(first_line)
+        )
+    # ENTRY_RE constrains the date's *width*, not its range, so
+    # `## [2026-13-45] ` clears the check above. An impossible day cannot be
+    # ordered against the entries already in the file, and this entry lands
+    # permanently in the wiki's operations log, so it is refused, not written.
+    if _match_date(entry_match) is None:
+        return fail(
+            "entry heading date is not a real calendar day — refusing to "
+            "write: {}".format(first_line)
         )
 
     # 5. Read. newline="" -- *not* the default newline=None, whose
@@ -388,7 +501,7 @@ def _run(argv, context) -> int:
 
     try:
         new_text, outcome = splice(existing, entry)
-    except AnchorMissing as exc:
+    except (AnchorMissing, NotNewestFirst) as exc:
         return fail(exc.message())
 
     if not write_atomically(path, new_text, baseline, mode):

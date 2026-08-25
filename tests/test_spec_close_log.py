@@ -346,6 +346,102 @@ class TestWriteSideHeadingValidation(PrependCase):
         self.assertIn("prepend_log_entry_outcome=prepended", out)
 
 
+class TestDateOrdering(PrependCase):
+    """Case: newest-first ordering — the rule the anchor alone cannot enforce.
+
+    `TestReadSideRefusal` covers headings ENTRY_RE *cannot* read. These cover
+    the heading it reads perfectly and would still file the new entry
+    underneath: a well-formed entry at the anchor carrying a newer date. Same
+    end state as this ticket's bug — exit 0, "Prepended:" reported, file out of
+    newest-first contract with nothing to prompt a re-sort — so it gets the same
+    refusal.
+    """
+
+    def top_dated(self, date_text: str) -> Path:
+        """log-with-entries.md with its newest entry re-dated."""
+        target = self.copy_fixture("log-with-entries.md")
+        write(target, read(target).replace("## [2026-08-24] merge",
+                                           "## [{}] merge".format(date_text)))
+        return target
+
+    def test_older_entry_above_a_newer_one_refuses(self):
+        # The entry is dated 2026-08-25; the file's newest is 2026-08-26. Both
+        # headings are well formed, so every check that exists before this one
+        # passes and the plain prepend files the older entry on top.
+        target = self.top_dated("2026-08-26")
+        original = read(target)
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 ENTRY.encode("utf-8"))
+        self.assertEqual(code, 2, err)
+        self.assertIn("entry dated 2026-08-25 is older", err)
+        self.assertIn("dated 2026-08-26", err)
+        self.assertIn("refusing to write above it", err)
+        self.assertIn(str(target), err)
+        self.assertIn(GUARD, err)
+        self.assertEqual(read(target), original, "nothing may be written")
+        self.assertEqual(out, "")
+
+    def test_same_day_entry_still_prepends(self):
+        # The guard against over-refusing: several closes land on one day, and
+        # newest-first puts the most recent of them on top. Only a *strictly*
+        # older entry is a contract break.
+        target = self.top_dated("2026-08-25")
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 ENTRY.encode("utf-8"))
+        self.assertEqual(code, 0, err)
+        self.assertIn("prepend_log_entry_outcome=prepended", out)
+        result = read(target)
+        self.assertLess(result.index(HEADING), result.index("## [2026-08-25] merge"))
+
+    def test_impossible_entry_date_is_refused(self):
+        # ENTRY_RE's \d{2} fields constrain width, not range, so these clear the
+        # heading-shape check above and would land permanently in the wiki's
+        # operations log on a day that does not exist.
+        for bad in ("2026-13-45", "2026-02-30", "2026-00-10"):
+            with self.subTest(date=bad):
+                target = self.copy_fixture("log-with-entries.md")
+                original = read(target)
+                entry = ENTRY.replace("2026-08-25", bad)
+                code, out, err = run_cli([str(target), "--guard", GUARD],
+                                         entry.encode("utf-8"))
+                self.assertEqual(code, 2, err)
+                self.assertIn("entry heading date is not a real calendar day", err)
+                self.assertEqual(read(target), original)
+                self.assertEqual(out, "")
+
+    def test_impossible_anchor_date_is_refused(self):
+        # The read-side mirror. There is no ordering to check the entry against,
+        # and a guess would file it above a heading nobody can order — so the
+        # operator is told to fix the file rather than handed a silent write.
+        target = self.top_dated("2026-02-30")
+        original = read(target)
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 ENTRY.encode("utf-8"))
+        self.assertEqual(code, 2, err)
+        self.assertIn("the newest dated entry carries a date that is not a "
+                      "real calendar day", err)
+        self.assertIn("## [2026-02-30] merge", err)
+        self.assertEqual(read(target), original)
+        self.assertEqual(out, "")
+
+    def test_the_ordering_refusals_report_distinct_reasons(self):
+        # Exit 2 is the catch-all, so an operator reading only the code cannot
+        # tell "your entry is backdated" from "your log.md is corrupt at the
+        # top" — the two need different fixes.
+        _c1, _o1, backdated = run_cli(
+            [str(self.top_dated("2026-08-26")), "--guard", GUARD],
+            ENTRY.encode("utf-8"))
+        _c2, _o2, corrupt = run_cli(
+            [str(self.top_dated("2026-02-30")), "--guard", GUARD],
+            ENTRY.encode("utf-8"))
+        self.assertIn("is older than the newest entry", backdated)
+        self.assertNotIn("is not a real calendar day", backdated)
+        self.assertIn("is not a real calendar day", corrupt)
+        self.assertNotIn("is older than the newest entry", corrupt)
+
+
 class TestFreshWiki(PrependCase):
     """Case: fresh wiki — header present, zero dated entries."""
 

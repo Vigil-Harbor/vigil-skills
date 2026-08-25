@@ -1,4 +1,4 @@
-=== VHS-29 test gate — 2026-08-25T16:34:02Z ===
+=== VHS-29 test gate — 2026-08-25T19:29:43Z ===
 
 $ python --version
 Python 3.14.3
@@ -13,6 +13,11 @@ test_bom_immediately_before_an_entry_heading (test_spec_close_log.TestBom.test_b
 test_bom_with_two_headerless_entries (test_spec_close_log.TestBom.test_bom_with_two_headerless_entries) ... ok
 test_change_between_read_and_replace_is_refused (test_spec_close_log.TestConcurrentChange.test_change_between_read_and_replace_is_refused) ... ok
 test_file_appearing_under_a_missing_file_run_is_refused (test_spec_close_log.TestConcurrentChange.test_file_appearing_under_a_missing_file_run_is_refused) ... ok
+test_impossible_anchor_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_anchor_date_is_refused) ... ok
+test_impossible_entry_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_entry_date_is_refused) ... ok
+test_older_entry_above_a_newer_one_refuses (test_spec_close_log.TestDateOrdering.test_older_entry_above_a_newer_one_refuses) ... ok
+test_same_day_entry_still_prepends (test_spec_close_log.TestDateOrdering.test_same_day_entry_still_prepends) ... ok
+test_the_ordering_refusals_report_distinct_reasons (test_spec_close_log.TestDateOrdering.test_the_ordering_refusals_report_distinct_reasons) ... ok
 test_em_dash_survives_and_the_guard_still_matches (test_spec_close_log.TestEmDashRoundTrip.test_em_dash_survives_and_the_guard_still_matches) ... ok
 test_directory_target_exits_two (test_spec_close_log.TestExitOneIsReserved.test_directory_target_exits_two) ... ok
 test_read_only_parent_directory_exits_two (test_spec_close_log.TestExitOneIsReserved.test_read_only_parent_directory_exits_two) ... skipped 'POSIX directory permissions'
@@ -58,7 +63,7 @@ test_malformed_entry_headings_are_refused (test_spec_close_log.TestWriteSideHead
 test_well_formed_entry_passes (test_spec_close_log.TestWriteSideHeadingValidation.test_well_formed_entry_passes) ... ok
 
 ----------------------------------------------------------------------
-Ran 52 tests in 3.662s
+Ran 57 tests in 4.408s
 
 OK (skipped=3)
 
@@ -67,8 +72,8 @@ lint: 0 error(s), 0 warning(s)
 exit=0
 
 $ python -m unittest discover -s tests -p 'test_*.py'
-...........................................................................s............ss................................................................
+................................................................................s............ss................................................................
 ----------------------------------------------------------------------
-Ran 154 tests in 9.414s
+Ran 159 tests in 10.724s
 
 OK (skipped=3)

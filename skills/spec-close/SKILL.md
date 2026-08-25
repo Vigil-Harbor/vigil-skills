@@ -394,7 +394,7 @@ All post-report file operations happen here, after user approval.
    |---|---|---|
    | 0 | Entry written; stdout carries `prepend_log_entry_outcome=prepended`, `=fresh`, or `=created` | On `=prepended`: `Prepended: log.md`. On `=fresh` (no dated entry existed, so the entry went at the end of the file) or `=created` (`log.md` did not exist and now holds this entry alone): surface the script's stderr notice **verbatim, in place of** that line, so a bottom placement or a file creation is never reported as a prepend. Branch on the token, never on whether stderr was empty. |
    | 1 | **Only:** the guard is already present in `log.md`; nothing written | `log.md: entry already present — skipped` |
-   | 2 — **and any other nonzero value not listed above** | Everything else: input validation; a populated `log.md` the anchor cannot place an entry in — either no dated entry it can describe, or a heading-like line sitting *above* the newest dated one (a refusal, never a silent misplacement); a concurrent change; or any I/O failure. A value the script itself never returns comes from the shell rather than the script — **127** being the one to expect: it means `$PY` resolved to nothing on `PATH`, *not* that the script is missing (a missing script is the interpreter's `can't open file …`, which is exit 2). Treat every nonzero value the same way. | Surface stderr verbatim: `log.md NOT written: <stderr>`, then the recovery below |
+   | 2 — **and any other nonzero value not listed above** | Everything else: input validation; a populated `log.md` the anchor cannot place an entry in — no dated entry it can describe, a heading-like line sitting *above* the newest dated one, an entry dated *older* than the newest one already in the file, or a date in either that is not a real calendar day (all refusals, never a silent misplacement); a concurrent change; or any I/O failure. A value the script itself never returns comes from the shell rather than the script — **127** being the one to expect: it means `$PY` resolved to nothing on `PATH`, *not* that the script is missing (a missing script is the interpreter's `can't open file …`, which is exit 2). Treat every nonzero value the same way. | Surface stderr verbatim: `log.md NOT written: <stderr>`, then the recovery below |
 
    **A failed log write never aborts the close.** Step 3 has already moved every spec artifact from `TODO/` to `DONE/`, across two repos neither of which is committed. On **any** nonzero exit — and on the not-found pre-check above, whose invocation is skipped — continue to step 5 and print the completion block, with `log.md NOT written: <stderr>` and the recovery: re-run `/spec-close <DONE-path>`, which the guard makes idempotent.
 
@@ -413,13 +413,15 @@ Wiki (<wiki_root>):
   Created: decisions/YYYY-MM-DD-<slug>.md
   Created: comprehension/YYYY-MM-DD-<slug>.md
   Updated: projects/<project>/state.md
-  Prepended: log.md
+  <log.md line, exactly one, per the step 4 exit table — `Prepended: log.md` only on `outcome=prepended`>
   Status: uncommitted — review with `git diff --stat` then commit.
 
 Suggested commits:
   (in target repo)  git add docs/specs/ && git commit -m "close(<ticket-lower>): archive spec to DONE/"
   (in wiki)         git add -A && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 ```
+
+The `log.md` line is the step 4 table's third column verbatim, and never `Prepended:` on a path that did not prepend: the script's stderr notice on `outcome=fresh` or `=created`, `log.md: entry already present — skipped` on exit 1, and `log.md NOT written: <stderr>` on any other nonzero exit or on the skipped not-found pre-check. A close that reports a prepend over a bottom-placed, unwritten or absent entry sends the operator looking at the top of a file that does not hold it.
 
 For partial-close, omit the wiki block (or show only the log.md line when it was written) and the reconciliation line unless a pre-existing report was archived.
 
