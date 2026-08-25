@@ -1,0 +1,175 @@
+$ python -m unittest discover -s tests -p 'test_session_handoff.py' -v
+test_heading_inside_a_fence_satisfies_presence (test_session_handoff.TestAcceptedLimits.test_heading_inside_a_fence_satisfies_presence) ... ok
+test_placeholder_inside_a_fence_still_trips (test_session_handoff.TestAcceptedLimits.test_placeholder_inside_a_fence_still_trips) ... ok
+test_quoted_handoff_headings_satisfy_presence (test_session_handoff.TestAcceptedLimits.test_quoted_handoff_headings_satisfy_presence) ... ok
+test_chain_round_trip (test_session_handoff.TestChain.test_chain_round_trip) ... ok
+test_fresh_start_line (test_session_handoff.TestChain.test_fresh_start_line) ... ok
+test_hostile_predecessor_title_is_truncated_then_escaped (test_session_handoff.TestChain.test_hostile_predecessor_title_is_truncated_then_escaped) ... ok
+test_predecessor_without_a_usable_h1_falls_back_to_the_filename (test_session_handoff.TestChain.test_predecessor_without_a_usable_h1_falls_back_to_the_filename) ... ok
+test_bom_document_validates (test_session_handoff.TestEncoding.test_bom_document_validates) ... ok
+test_crlf_document_validates_with_zero_missing (test_session_handoff.TestEncoding.test_crlf_document_validates_with_zero_missing) ... ok
+test_non_ascii_commit_subject_writes (test_session_handoff.TestEncoding.test_non_ascii_commit_subject_writes) ... ok
+test_scaffold_is_lf_not_crlf (test_session_handoff.TestEncoding.test_scaffold_is_lf_not_crlf) ... ok
+test_absent_section_reports_missing (test_session_handoff.TestHeadingMatcher.test_absent_section_reports_missing) ... ok
+test_closing_run_is_stripped (test_session_handoff.TestHeadingMatcher.test_closing_run_is_stripped) ... ok
+test_derived_name_tables (test_session_handoff.TestHeadingMatcher.test_derived_name_tables) ... ok
+test_first_heading_title (test_session_handoff.TestHeadingMatcher.test_first_heading_title) ... ok
+test_indent_boundary (test_session_handoff.TestHeadingMatcher.test_indent_boundary) ... ok
+test_level3_section_is_found (test_session_handoff.TestHeadingMatcher.test_level3_section_is_found) ... ok
+test_missing_separator_is_not_a_heading (test_session_handoff.TestHeadingMatcher.test_missing_separator_is_not_a_heading) ... ok
+test_name_comparison_is_case_insensitive (test_session_handoff.TestHeadingMatcher.test_name_comparison_is_case_insensitive) ... ok
+test_prefix_name_does_not_collide (test_session_handoff.TestHeadingMatcher.test_prefix_name_does_not_collide) ... ok
+test_same_name_matches_at_every_depth (test_session_handoff.TestHeadingMatcher.test_same_name_matches_at_every_depth) ... ok
+test_seven_hashes_is_not_a_heading (test_session_handoff.TestHeadingMatcher.test_seven_hashes_is_not_a_heading) ... ok
+test_both_on_disk_shapes_validate (test_session_handoff.TestLegacyCorpus.test_both_on_disk_shapes_validate) ... ok
+test_collision_appends_a_suffix_with_the_claim_removed (test_session_handoff.TestScaffoldRobustness.test_collision_appends_a_suffix_with_the_claim_removed) ... ok
+test_collision_appends_a_suffix_with_the_claim_still_present (test_session_handoff.TestScaffoldRobustness.test_collision_appends_a_suffix_with_the_claim_still_present) ... ok
+test_continues_from_escape_writes_nothing (test_session_handoff.TestScaffoldRobustness.test_continues_from_escape_writes_nothing) ... ok
+test_continues_from_not_found_writes_nothing (test_session_handoff.TestScaffoldRobustness.test_continues_from_not_found_writes_nothing) ... ok
+test_creates_the_handoffs_directory (test_session_handoff.TestScaffoldRobustness.test_creates_the_handoffs_directory) ... ok
+test_failed_render_leaves_the_directory_untouched (test_session_handoff.TestScaffoldRobustness.test_failed_render_leaves_the_directory_untouched) ... ok
+test_git_failure_placeholders_are_not_markers (test_session_handoff.TestScaffoldRobustness.test_git_failure_placeholders_are_not_markers) ... ok
+test_long_slug_still_writes_a_valid_file (test_session_handoff.TestScaffoldRobustness.test_long_slug_still_writes_a_valid_file) ... ok
+test_outside_a_repository_states_the_case_and_still_reaches_ready (test_session_handoff.TestScaffoldRobustness.test_outside_a_repository_states_the_case_and_still_reaches_ready) ... ok
+test_same_second_collision_does_not_clobber (test_session_handoff.TestScaffoldRobustness.test_same_second_collision_does_not_clobber) ... ok
+test_slug_sanitizing_and_cap (test_session_handoff.TestScaffoldRobustness.test_slug_sanitizing_and_cap) ... ok
+test_successful_create_leaves_no_claim_behind (test_session_handoff.TestScaffoldRobustness.test_successful_create_leaves_no_claim_behind) ... ok
+test_todo_shaped_commit_subject_is_neutralized (test_session_handoff.TestScaffoldRobustness.test_todo_shaped_commit_subject_is_neutralized) ... ok
+test_todo_shaped_predecessor_title_is_neutralized (test_session_handoff.TestScaffoldRobustness.test_todo_shaped_predecessor_title_is_neutralized) ... ok
+test_canonical_id_is_accepted (test_session_handoff.TestSessionIdShape.test_canonical_id_is_accepted) ... ok
+test_full_match_is_declared (test_session_handoff.TestSessionIdShape.test_full_match_is_declared) ... ok
+test_malformed_traversal_and_trailing_newline_are_rejected (test_session_handoff.TestSessionIdShape.test_malformed_traversal_and_trailing_newline_are_rejected) ... ok
+test_skill_lints_clean (test_session_handoff.TestSkillLint.test_skill_lints_clean) ... ok
+test_skill_ships_in_the_inventory (test_session_handoff.TestSkillLint.test_skill_ships_in_the_inventory) ... ok
+test_files_modified_marker_sits_outside_the_generated_table (test_session_handoff.TestTemplateRoundTrip.test_files_modified_marker_sits_outside_the_generated_table) ... ok
+test_filled_scaffold_validates_ready (test_session_handoff.TestTemplateRoundTrip.test_filled_scaffold_validates_ready) ... ok
+test_scaffold_has_exactly_one_marker_per_matched_section (test_session_handoff.TestTemplateRoundTrip.test_scaffold_has_exactly_one_marker_per_matched_section) ... ok
+test_scaffold_headings_match_the_class_column_in_order (test_session_handoff.TestTemplateRoundTrip.test_scaffold_headings_match_the_class_column_in_order) ... ok
+test_unfilled_scaffold_is_not_ready (test_session_handoff.TestTemplateRoundTrip.test_unfilled_scaffold_is_not_ready) ... ok
+test_absent_required_heading_is_needs_work (test_session_handoff.TestVerdictMatrix.test_absent_required_heading_is_needs_work) ... ok
+test_branded_prefix_blocks (test_session_handoff.TestVerdictMatrix.test_branded_prefix_blocks) ... ok
+test_clean_document_is_ready (test_session_handoff.TestVerdictMatrix.test_clean_document_is_ready) ... ok
+test_env_style_assignment_blocks (test_session_handoff.TestVerdictMatrix.test_env_style_assignment_blocks) ... ok
+test_long_value_keeps_only_its_ends (test_session_handoff.TestVerdictMatrix.test_long_value_keeps_only_its_ends) ... ok
+test_missing_file_and_no_argument_are_usage_errors (test_session_handoff.TestVerdictMatrix.test_missing_file_and_no_argument_are_usage_errors) ... ok
+test_prose_near_miss_does_not_block (test_session_handoff.TestVerdictMatrix.test_prose_near_miss_does_not_block) ... ok
+test_secrets_outrank_placeholders (test_session_handoff.TestVerdictMatrix.test_secrets_outrank_placeholders) ... ok
+test_short_generic_value_is_fully_masked (test_session_handoff.TestVerdictMatrix.test_short_generic_value_is_fully_masked) ... ok
+test_unfilled_placeholder_is_needs_work (test_session_handoff.TestVerdictMatrix.test_unfilled_placeholder_is_needs_work) ... ok
+
+----------------------------------------------------------------------
+Ran 57 tests in 0.892s
+
+OK
+
+$ python lint.py --strict skills/session-handoff/SKILL.md
+lint: 0 error(s), 0 warning(s)
+exit=0
+
+$ python -m unittest discover -s tests -p 'test_*.py' -v
+test_bad_skill_fires (test_lint.TestLint.test_bad_skill_fires) ... ok
+test_good_skill_clean (test_lint.TestLint.test_good_skill_clean) ... ok
+test_lint_paths_empty (test_lint.TestLint.test_lint_paths_empty) ... ok
+test_robustness_error_fixtures (test_lint.TestLint.test_robustness_error_fixtures) ... ok
+test_robustness_no_error_fixtures (test_lint.TestLint.test_robustness_no_error_fixtures) ... ok
+test_shipped_skills_clean (test_lint.TestLint.test_shipped_skills_clean) ... ok
+test_heading_inside_a_fence_satisfies_presence (test_session_handoff.TestAcceptedLimits.test_heading_inside_a_fence_satisfies_presence) ... ok
+test_placeholder_inside_a_fence_still_trips (test_session_handoff.TestAcceptedLimits.test_placeholder_inside_a_fence_still_trips) ... ok
+test_quoted_handoff_headings_satisfy_presence (test_session_handoff.TestAcceptedLimits.test_quoted_handoff_headings_satisfy_presence) ... ok
+test_chain_round_trip (test_session_handoff.TestChain.test_chain_round_trip) ... ok
+test_fresh_start_line (test_session_handoff.TestChain.test_fresh_start_line) ... ok
+test_hostile_predecessor_title_is_truncated_then_escaped (test_session_handoff.TestChain.test_hostile_predecessor_title_is_truncated_then_escaped) ... ok
+test_predecessor_without_a_usable_h1_falls_back_to_the_filename (test_session_handoff.TestChain.test_predecessor_without_a_usable_h1_falls_back_to_the_filename) ... ok
+test_bom_document_validates (test_session_handoff.TestEncoding.test_bom_document_validates) ... ok
+test_crlf_document_validates_with_zero_missing (test_session_handoff.TestEncoding.test_crlf_document_validates_with_zero_missing) ... ok
+test_non_ascii_commit_subject_writes (test_session_handoff.TestEncoding.test_non_ascii_commit_subject_writes) ... ok
+test_scaffold_is_lf_not_crlf (test_session_handoff.TestEncoding.test_scaffold_is_lf_not_crlf) ... ok
+test_absent_section_reports_missing (test_session_handoff.TestHeadingMatcher.test_absent_section_reports_missing) ... ok
+test_closing_run_is_stripped (test_session_handoff.TestHeadingMatcher.test_closing_run_is_stripped) ... ok
+test_derived_name_tables (test_session_handoff.TestHeadingMatcher.test_derived_name_tables) ... ok
+test_first_heading_title (test_session_handoff.TestHeadingMatcher.test_first_heading_title) ... ok
+test_indent_boundary (test_session_handoff.TestHeadingMatcher.test_indent_boundary) ... ok
+test_level3_section_is_found (test_session_handoff.TestHeadingMatcher.test_level3_section_is_found) ... ok
+test_missing_separator_is_not_a_heading (test_session_handoff.TestHeadingMatcher.test_missing_separator_is_not_a_heading) ... ok
+test_name_comparison_is_case_insensitive (test_session_handoff.TestHeadingMatcher.test_name_comparison_is_case_insensitive) ... ok
+test_prefix_name_does_not_collide (test_session_handoff.TestHeadingMatcher.test_prefix_name_does_not_collide) ... ok
+test_same_name_matches_at_every_depth (test_session_handoff.TestHeadingMatcher.test_same_name_matches_at_every_depth) ... ok
+test_seven_hashes_is_not_a_heading (test_session_handoff.TestHeadingMatcher.test_seven_hashes_is_not_a_heading) ... ok
+test_both_on_disk_shapes_validate (test_session_handoff.TestLegacyCorpus.test_both_on_disk_shapes_validate) ... ok
+test_collision_appends_a_suffix_with_the_claim_removed (test_session_handoff.TestScaffoldRobustness.test_collision_appends_a_suffix_with_the_claim_removed) ... ok
+test_collision_appends_a_suffix_with_the_claim_still_present (test_session_handoff.TestScaffoldRobustness.test_collision_appends_a_suffix_with_the_claim_still_present) ... ok
+test_continues_from_escape_writes_nothing (test_session_handoff.TestScaffoldRobustness.test_continues_from_escape_writes_nothing) ... ok
+test_continues_from_not_found_writes_nothing (test_session_handoff.TestScaffoldRobustness.test_continues_from_not_found_writes_nothing) ... ok
+test_creates_the_handoffs_directory (test_session_handoff.TestScaffoldRobustness.test_creates_the_handoffs_directory) ... ok
+test_failed_render_leaves_the_directory_untouched (test_session_handoff.TestScaffoldRobustness.test_failed_render_leaves_the_directory_untouched) ... ok
+test_git_failure_placeholders_are_not_markers (test_session_handoff.TestScaffoldRobustness.test_git_failure_placeholders_are_not_markers) ... ok
+test_long_slug_still_writes_a_valid_file (test_session_handoff.TestScaffoldRobustness.test_long_slug_still_writes_a_valid_file) ... ok
+test_outside_a_repository_states_the_case_and_still_reaches_ready (test_session_handoff.TestScaffoldRobustness.test_outside_a_repository_states_the_case_and_still_reaches_ready) ... ok
+test_same_second_collision_does_not_clobber (test_session_handoff.TestScaffoldRobustness.test_same_second_collision_does_not_clobber) ... ok
+test_slug_sanitizing_and_cap (test_session_handoff.TestScaffoldRobustness.test_slug_sanitizing_and_cap) ... ok
+test_successful_create_leaves_no_claim_behind (test_session_handoff.TestScaffoldRobustness.test_successful_create_leaves_no_claim_behind) ... ok
+test_todo_shaped_commit_subject_is_neutralized (test_session_handoff.TestScaffoldRobustness.test_todo_shaped_commit_subject_is_neutralized) ... ok
+test_todo_shaped_predecessor_title_is_neutralized (test_session_handoff.TestScaffoldRobustness.test_todo_shaped_predecessor_title_is_neutralized) ... ok
+test_canonical_id_is_accepted (test_session_handoff.TestSessionIdShape.test_canonical_id_is_accepted) ... ok
+test_full_match_is_declared (test_session_handoff.TestSessionIdShape.test_full_match_is_declared) ... ok
+test_malformed_traversal_and_trailing_newline_are_rejected (test_session_handoff.TestSessionIdShape.test_malformed_traversal_and_trailing_newline_are_rejected) ... ok
+test_skill_lints_clean (test_session_handoff.TestSkillLint.test_skill_lints_clean) ... ok
+test_skill_ships_in_the_inventory (test_session_handoff.TestSkillLint.test_skill_ships_in_the_inventory) ... ok
+test_files_modified_marker_sits_outside_the_generated_table (test_session_handoff.TestTemplateRoundTrip.test_files_modified_marker_sits_outside_the_generated_table) ... ok
+test_filled_scaffold_validates_ready (test_session_handoff.TestTemplateRoundTrip.test_filled_scaffold_validates_ready) ... ok
+test_scaffold_has_exactly_one_marker_per_matched_section (test_session_handoff.TestTemplateRoundTrip.test_scaffold_has_exactly_one_marker_per_matched_section) ... ok
+test_scaffold_headings_match_the_class_column_in_order (test_session_handoff.TestTemplateRoundTrip.test_scaffold_headings_match_the_class_column_in_order) ... ok
+test_unfilled_scaffold_is_not_ready (test_session_handoff.TestTemplateRoundTrip.test_unfilled_scaffold_is_not_ready) ... ok
+test_absent_required_heading_is_needs_work (test_session_handoff.TestVerdictMatrix.test_absent_required_heading_is_needs_work) ... ok
+test_branded_prefix_blocks (test_session_handoff.TestVerdictMatrix.test_branded_prefix_blocks) ... ok
+test_clean_document_is_ready (test_session_handoff.TestVerdictMatrix.test_clean_document_is_ready) ... ok
+test_env_style_assignment_blocks (test_session_handoff.TestVerdictMatrix.test_env_style_assignment_blocks) ... ok
+test_long_value_keeps_only_its_ends (test_session_handoff.TestVerdictMatrix.test_long_value_keeps_only_its_ends) ... ok
+test_missing_file_and_no_argument_are_usage_errors (test_session_handoff.TestVerdictMatrix.test_missing_file_and_no_argument_are_usage_errors) ... ok
+test_prose_near_miss_does_not_block (test_session_handoff.TestVerdictMatrix.test_prose_near_miss_does_not_block) ... ok
+test_secrets_outrank_placeholders (test_session_handoff.TestVerdictMatrix.test_secrets_outrank_placeholders) ... ok
+test_short_generic_value_is_fully_masked (test_session_handoff.TestVerdictMatrix.test_short_generic_value_is_fully_masked) ... ok
+test_unfilled_placeholder_is_needs_work (test_session_handoff.TestVerdictMatrix.test_unfilled_placeholder_is_needs_work) ... ok
+test_act_ack_uses_caller_idempotency_key (test_talaria_bridge.TestTalariaBridge.test_act_ack_uses_caller_idempotency_key) ... ok
+test_act_exception_mapping (test_talaria_bridge.TestTalariaBridge.test_act_exception_mapping) ... ok
+test_act_gate_and_dispatch (test_talaria_bridge.TestTalariaBridge.test_act_gate_and_dispatch) ... ok
+test_act_idempotent_returnflags (test_talaria_bridge.TestTalariaBridge.test_act_idempotent_returnflags) ... ok
+test_action_proposal_mrkdwn_and_local_only (test_talaria_bridge.TestTalariaBridge.test_action_proposal_mrkdwn_and_local_only) ... ok
+test_backoff_coarse_suppression (test_talaria_bridge.TestTalariaBridge.test_backoff_coarse_suppression) ... ok
+test_default_discovery_finds_adjacent_talaria_and_hermes_runtime (test_talaria_bridge.TestTalariaBridge.test_default_discovery_finds_adjacent_talaria_and_hermes_runtime) ... ok
+test_doctor_corrupt_state_is_red (test_talaria_bridge.TestTalariaBridge.test_doctor_corrupt_state_is_red) ... ok
+test_load_module_serializes_temporary_sys_path_mutation (test_talaria_bridge.TestTalariaBridge.test_load_module_serializes_temporary_sys_path_mutation) ... ok
+test_operational_connectors_resolution (test_talaria_bridge.TestTalariaBridge.test_operational_connectors_resolution) ... ok
+test_operational_merge_and_degrade (test_talaria_bridge.TestTalariaBridge.test_operational_merge_and_degrade) ... ok
+test_partial_import_keeps_state_reads_and_actions_available (test_talaria_bridge.TestTalariaBridge.test_partial_import_keeps_state_reads_and_actions_available) ... ok
+test_print_failure_outputs_structured_json (test_talaria_bridge.TestTalariaBridge.test_print_failure_outputs_structured_json) ... ok
+test_read_connector_selection_preserves_footer_timestamp (test_talaria_bridge.TestTalariaBridge.test_read_connector_selection_preserves_footer_timestamp) ... ok
+test_read_render_footer_and_budget (test_talaria_bridge.TestTalariaBridge.test_read_render_footer_and_budget) ... ok
+test_read_render_spill_failure_preserves_footer (test_talaria_bridge.TestTalariaBridge.test_read_render_spill_failure_preserves_footer) ... ok
+test_resolve_home_rejects_predecessor (test_talaria_bridge.TestTalariaBridge.test_resolve_home_rejects_predecessor) ... ok
+test_snapshot_cache_single_refresh (test_talaria_bridge.TestTalariaBridge.test_snapshot_cache_single_refresh) ... ok
+test_snapshot_lease_holder_heartbeats_during_refresh (test_talaria_bridge.TestTalariaBridge.test_snapshot_lease_holder_heartbeats_during_refresh) ... ok
+test_eval_rejects_traversal_watch_id_without_orphan_write (test_talaria_watch.TestTalariaWatch.test_eval_rejects_traversal_watch_id_without_orphan_write) ... ok
+test_metrics_owner_degraded (test_talaria_watch.TestTalariaWatch.test_metrics_owner_degraded) ... ok
+test_normal_evaluation_clears_stalled_reported (test_talaria_watch.TestTalariaWatch.test_normal_evaluation_clears_stalled_reported) ... ok
+test_present_absent_thresholds_are_canonicalized_for_dedupe (test_talaria_watch.TestTalariaWatch.test_present_absent_thresholds_are_canonicalized_for_dedupe) ... ok
+test_prior_breached_bridge_unavailable_is_silent (test_talaria_watch.TestTalariaWatch.test_prior_breached_bridge_unavailable_is_silent) ... ok
+test_prior_breached_degraded_owner_is_silent_and_recovery_notes_degraded_window (test_talaria_watch.TestTalariaWatch.test_prior_breached_degraded_owner_is_silent_and_recovery_notes_degraded_window) ... ok
+test_registration_rejects_bad_threshold (test_talaria_watch.TestTalariaWatch.test_registration_rejects_bad_threshold) ... ok
+test_registration_rejects_cron_below_owner_freshness_floor (test_talaria_watch.TestTalariaWatch.test_registration_rejects_cron_below_owner_freshness_floor) ... ok
+test_remove_watch_preserves_files_when_cron_list_fails (test_talaria_watch.TestTalariaWatch.test_remove_watch_preserves_files_when_cron_list_fails) ... ok
+test_remove_watch_preserves_files_when_cron_remove_fails (test_talaria_watch.TestTalariaWatch.test_remove_watch_preserves_files_when_cron_remove_fails) ... ok
+test_remove_watch_rejects_traversal_watch_id_without_unlink (test_talaria_watch.TestTalariaWatch.test_remove_watch_rejects_traversal_watch_id_without_unlink) ... ok
+test_stalled_then_breach_emits_breach_transition (test_talaria_watch.TestTalariaWatch.test_stalled_then_breach_emits_breach_transition) ... ok
+test_watch_config_missing (test_talaria_watch.TestTalariaWatch.test_watch_config_missing) ... ok
+test_watch_degraded_scoped (test_talaria_watch.TestTalariaWatch.test_watch_degraded_scoped) ... ok
+test_watch_registration_creates_config_wrapper_and_cron (test_talaria_watch.TestTalariaWatch.test_watch_registration_creates_config_wrapper_and_cron) ... ok
+test_watch_selector_unresolved (test_talaria_watch.TestTalariaWatch.test_watch_selector_unresolved) ... ok
+test_watch_stalled_tripwire (test_talaria_watch.TestTalariaWatch.test_watch_stalled_tripwire) ... ok
+test_watch_state_atomic_singleflight (test_talaria_watch.TestTalariaWatch.test_watch_state_atomic_singleflight) ... ok
+test_watch_transitions (test_talaria_watch.TestTalariaWatch.test_watch_transitions) ... ok
+
+----------------------------------------------------------------------
+Ran 101 tests in 6.026s
+
+OK
