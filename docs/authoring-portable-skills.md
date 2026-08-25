@@ -38,7 +38,7 @@ What it flags:
 ## Promotion path: warn-only → blocking
 
 The lint ships **warn-only**. To promote it to a hard gate:
-1. **Clear the missing-`requires:` backlog.** Today three shipped skills (`ship-spec`, `spec-close`, `review-pr`) have no `requires:` block — they emit a `missing-requires` WARN. Annotate each with its capability block (VHS-17 annotated only `spec-cycle` as the worked reference). *This is the tracked backlog item.*
+1. **Clear the missing-`requires:` backlog.** Today two shipped skills (`ship-spec`, `review-pr`) have no `requires:` block — they emit a `missing-requires` WARN. Annotate each with its capability block (VHS-17 annotated `spec-cycle` as the worked reference; the third was annotated by VHS-29, when it grew a script and the shell dependency became load-bearing). *This is the tracked backlog item.*
 2. **Install a pre-commit hook** that runs `python lint.py --strict` (mirroring the wiki's `install-hooks` precedent in shape — stdlib Python, not its Node toolchain). Once step 1 is done, `--strict` is clean and the hook blocks regressions.
 
 ## Known v1 limitations (CodeRabbit backstops these)

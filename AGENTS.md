@@ -26,7 +26,7 @@ Three skills form the spec lifecycle. The authoring/impl pair runs in separate s
 
 2. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
 
-3. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and append to wiki `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
+3. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
 
 ### Parallel review agents
 
@@ -97,7 +97,7 @@ the targeted removal. No vendor-managed file is ever edited.
 
 ## Post-merge wiki update
 
-After a PR merges, run `/wiki-after-merge <commit-sha>` **from the wiki directory**. It appends to `log.md`, deltas the filemap, scaffolds comprehension entries for large changes, and chains to `/wiki-state-update` for status flips. Idempotent — safe to re-run for the same SHA. Manual edits are fine for trivial single-file fixes; the skill handles everything else.
+After a PR merges, run `/wiki-after-merge <commit-sha>` **from the wiki directory**. It prepends to `log.md`, deltas the filemap, scaffolds comprehension entries for large changes, and chains to `/wiki-state-update` for status flips. Idempotent — safe to re-run for the same SHA. Manual edits are fine for trivial single-file fixes; the skill handles everything else.
 
 State.md edits require an evidence triple (Plane ID, date, commit hash) — the wiki's pre-commit hook enforces this. See the wiki's `CLAUDE.md` § "Editing state.md safely" for field rules per section.
 
