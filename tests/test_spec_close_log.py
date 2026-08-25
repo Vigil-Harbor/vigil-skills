@@ -262,6 +262,48 @@ class TestReadSideRefusal(PrependCase):
         self.assertEqual(read(target), original, "nothing may be written")
         self.assertEqual(out, "")
 
+    def test_heading_like_line_above_the_anchor_refuses(self):
+        # Regression for VHS-29: a dated entry is not enough on its own. An
+        # operator hand-demotes the newest entry to `### [...]` over older `##`
+        # ones; the anchor then finds the OLDER entry and a plain prepend files
+        # the new entry underneath something newer — exit 0, "Prepended:"
+        # reported, file silently out of newest-first contract.
+        target = self.copy_fixture("log-with-entries.md")
+        text = read(target).replace(
+            "## [2026-08-24] merge", "### [2026-08-26] merge")
+        write(target, text)
+        original = read(target)
+
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 ENTRY.encode("utf-8"))
+        self.assertEqual(code, 2, err)
+        self.assertIn("sit above the newest line-anchored dated entry", err)
+        self.assertIn("refusing to write", err)
+        self.assertIn("### [2026-08-26]", err)
+        self.assertIn(str(target), err)
+        self.assertEqual(read(target), original, "nothing may be written")
+        self.assertEqual(out, "")
+
+    def test_the_two_refusals_report_distinct_reasons(self):
+        # The no-anchor message must not be reused for the above-anchor case:
+        # "no line-anchored dated entry found" would be false there, and the
+        # operator would go looking for the wrong defect.
+        code, _out, err = run_cli(
+            [str(self.copy_fixture("log-h3-entries.md")), "--guard", GUARD],
+            ENTRY.encode("utf-8"))
+        self.assertEqual(code, 2, err)
+        self.assertIn("no line-anchored dated entry found", err)
+        self.assertNotIn("sit above", err)
+
+    def test_normal_shape_still_prepends(self):
+        # The guard against over-refusing: the live log.md header carries no
+        # heading-like line at all, so the ordinary path must be untouched.
+        target = self.copy_fixture("log-with-entries.md")
+        code, out, err = run_cli([str(target), "--guard", GUARD],
+                                 ENTRY.encode("utf-8"))
+        self.assertEqual(code, 0, err)
+        self.assertIn("prepend_log_entry_outcome=prepended", out)
+
     def test_short_date_entries_refuse(self):
         target = write(self.tmp / "log.md",
                        "# Wiki Log\n\n" + FORMAT_SENTENCE

@@ -1,4 +1,4 @@
-=== VHS-29 test gate — 2026-08-25T16:15:45Z ===
+=== VHS-29 test gate — 2026-08-25T16:34:02Z ===
 
 $ python --version
 Python 3.14.3
@@ -38,7 +38,10 @@ test_agents_md_bullets_read_correctly (test_spec_close_log.TestNoStaleWording.te
 test_missing_requires_backlog_no_longer_names_spec_close (test_spec_close_log.TestNoStaleWording.test_missing_requires_backlog_no_longer_names_spec_close) ... ok
 test_skill_md_has_no_append_or_grep_f (test_spec_close_log.TestNoStaleWording.test_skill_md_has_no_append_or_grep_f) ... ok
 test_h3_entries_refuse (test_spec_close_log.TestReadSideRefusal.test_h3_entries_refuse) ... ok
+test_heading_like_line_above_the_anchor_refuses (test_spec_close_log.TestReadSideRefusal.test_heading_like_line_above_the_anchor_refuses) ... ok
+test_normal_shape_still_prepends (test_spec_close_log.TestReadSideRefusal.test_normal_shape_still_prepends) ... ok
 test_short_date_entries_refuse (test_spec_close_log.TestReadSideRefusal.test_short_date_entries_refuse) ... ok
+test_the_two_refusals_report_distinct_reasons (test_spec_close_log.TestReadSideRefusal.test_the_two_refusals_report_distinct_reasons) ... ok
 test_lint_is_clean_including_warns (test_spec_close_log.TestSkillDeclaration.test_lint_is_clean_including_warns) ... ok
 test_requires_block_matches_the_tool_use_notes (test_spec_close_log.TestSkillDeclaration.test_requires_block_matches_the_tool_use_notes) ... ok
 test_devnull_is_refused (test_spec_close_log.TestStdin.test_devnull_is_refused) ... ok
@@ -55,7 +58,7 @@ test_malformed_entry_headings_are_refused (test_spec_close_log.TestWriteSideHead
 test_well_formed_entry_passes (test_spec_close_log.TestWriteSideHeadingValidation.test_well_formed_entry_passes) ... ok
 
 ----------------------------------------------------------------------
-Ran 49 tests in 3.311s
+Ran 52 tests in 3.662s
 
 OK (skipped=3)
 
@@ -64,8 +67,8 @@ lint: 0 error(s), 0 warning(s)
 exit=0
 
 $ python -m unittest discover -s tests -p 'test_*.py'
-...........................................................................s............ss.............................................................
+...........................................................................s............ss................................................................
 ----------------------------------------------------------------------
-Ran 151 tests in 9.327s
+Ran 154 tests in 9.414s
 
 OK (skipped=3)

@@ -64,7 +64,8 @@ ENTRY_RE = re.compile(r"^## \[\d{4}-\d{2}-\d{2}\] ", re.M)
 
 # Evidence that a file has entry-shaped headings the anchor could not describe:
 # a hand-edited `### [...]`, a short date `## [2026-8-5]`, a missing space after
-# the `]`. Their presence turns "no anchor" from fresh-wiki into a refusal.
+# the `]`. Their presence turns "no anchor" from fresh-wiki into a refusal, and
+# their presence *above* the anchor turns a would-be prepend into one too.
 HEADINGISH_RE = re.compile(r"^#{2,6} *\[", re.M)
 
 BOM = "﻿"
@@ -80,19 +81,39 @@ HEREDOC_HINT = (
 
 
 class AnchorMissing(Exception):
-    """A populated file whose headings the anchor cannot describe (D7 refusal).
+    """A populated file the anchor cannot place an entry in (D7 refusal).
+
+    Two shapes, both refusals, because in both the anchor's answer would leave
+    the file out of newest-first contract with exit 0 and nothing to prompt a
+    re-sort:
+
+    - `above_anchor=False` — no line-anchored dated entry at all, but
+      heading-like lines are present, so this is not a fresh wiki.
+    - `above_anchor=True` — a dated entry was found, but heading-like lines sit
+      *above* it, so prepending at the anchor would file the new entry beneath
+      something newer.
 
     Carries the evidence the operator needs to hand-fix the file: how many
     heading-like lines were seen, and where the first one is.
     """
 
-    def __init__(self, count: int, line_number: int, line_text: str) -> None:
-        super().__init__("no line-anchored dated entry found")
+    def __init__(self, count: int, line_number: int, line_text: str,
+                 above_anchor: bool = False) -> None:
+        super().__init__("no usable insertion anchor")
         self.count = count
         self.line_number = line_number
         self.line_text = line_text
+        self.above_anchor = above_anchor
 
     def message(self) -> str:
+        if self.above_anchor:
+            return (
+                "{} heading-like line(s) sit above the newest line-anchored "
+                "dated entry — first is line {}: {} — refusing to write "
+                "beneath them".format(
+                    self.count, self.line_number, self.line_text
+                )
+            )
         return (
             "no line-anchored dated entry found, but {} heading-like line(s) "
             "present — first is line {}: {} — refusing to write".format(
@@ -134,7 +155,9 @@ def splice(existing, entry):
     degenerate no-leading-separator rule would never fire).
 
     outcome is one of: "prepended", "fresh", "created".
-    Raises AnchorMissing when existing has heading-like lines but no dated entry.
+    Raises AnchorMissing when existing has heading-like lines the anchor cannot
+    place an entry against — either no dated entry at all, or one with
+    heading-like lines above it.
     """
     if existing is None:
         return entry + "\n", "created"
@@ -145,8 +168,29 @@ def splice(existing, entry):
         bom = BOM
         text = text[1:]
 
+    def refuse(matches, above_anchor):
+        first = matches[0]
+        line_number = text.count("\n", 0, first.start()) + 1
+        line_end = text.find("\n", first.start())
+        line_text = (text[first.start():] if line_end == -1
+                     else text[first.start():line_end]).strip()
+        raise AnchorMissing(len(matches), line_number, line_text, above_anchor)
+
+    headingish = list(HEADINGISH_RE.finditer(text))
+
     match = ENTRY_RE.search(text)
     if match is not None:
+        # A dated entry is not enough on its own: a heading-like line ABOVE the
+        # anchor means something newer is already at the top — a hand-demoted
+        # `### [...]`, a short date, a missing space after the `]`. Prepending
+        # at the anchor would file this entry underneath it, exit 0, and report
+        # a prepend, leaving the file out of newest-first contract with nothing
+        # to prompt a re-sort. That is the same failure the no-anchor row
+        # refuses, so it gets the same answer.
+        above = [m for m in headingish if m.start() < match.start()]
+        if above:
+            refuse(above, True)
+
         head = text[: match.start()].rstrip()
         tail = text[match.start():]
         # No leading separator when nothing precedes the anchor: without this a
@@ -156,14 +200,8 @@ def splice(existing, entry):
             return bom + head + "\n\n" + entry + "\n\n" + tail, "prepended"
         return bom + entry + "\n\n" + tail, "prepended"
 
-    headingish = list(HEADINGISH_RE.finditer(text))
     if headingish:
-        first = headingish[0]
-        line_number = text.count("\n", 0, first.start()) + 1
-        line_end = text.find("\n", first.start())
-        line_text = (text[first.start():] if line_end == -1
-                     else text[first.start():line_end]).strip()
-        raise AnchorMissing(len(headingish), line_number, line_text)
+        refuse(headingish, False)
 
     body = text.rstrip()
     if body:

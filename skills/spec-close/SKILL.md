@@ -370,6 +370,8 @@ All post-report file operations happen here, after user approval.
    test -f "$SCRIPT" || echo "log.md NOT written: prepend_log_entry.py not found at $SCRIPT — install with 'python sync.py install'"
    ```
 
+   **If that check reports not-found, the invocation block below is skipped entirely** — do not run it. There is no `prepend_log_entry_exit` to read in that case, so there is nothing to branch on; report the not-found line above and go straight to step 5. Running it anyway would print the install hint and then a second, contradictory failure from the interpreter (`can't open file …`, exit 2) for one underlying cause.
+
    ```bash
    if "$PY" "$SCRIPT" "$LOGPATH" --guard 'close | <PROJECT> — <TICKET-ID>:' <<'PREPEND_LOG_ENTRY_EOF'
    ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <title>
@@ -392,9 +394,9 @@ All post-report file operations happen here, after user approval.
    |---|---|---|
    | 0 | Entry written; stdout carries `prepend_log_entry_outcome=prepended`, `=fresh`, or `=created` | On `=prepended`: `Prepended: log.md`. On `=fresh` (no dated entry existed, so the entry went at the end of the file) or `=created` (`log.md` did not exist and now holds this entry alone): surface the script's stderr notice **verbatim, in place of** that line, so a bottom placement or a file creation is never reported as a prepend. Branch on the token, never on whether stderr was empty. |
    | 1 | **Only:** the guard is already present in `log.md`; nothing written | `log.md: entry already present — skipped` |
-   | 2 | Everything else: input validation, a populated `log.md` whose headings the anchor cannot describe (a refusal, never a silent bottom placement), a concurrent change, or any I/O failure | Surface stderr verbatim: `log.md NOT written: <stderr>` |
+   | 2 — **and any other nonzero value not listed above** | Everything else: input validation; a populated `log.md` the anchor cannot place an entry in — either no dated entry it can describe, or a heading-like line sitting *above* the newest dated one (a refusal, never a silent misplacement); a concurrent change; or any I/O failure. A value the script itself never returns comes from the shell rather than the script — **127** being the one to expect: it means `$PY` resolved to nothing on `PATH`, *not* that the script is missing (a missing script is the interpreter's `can't open file …`, which is exit 2). Treat every nonzero value the same way. | Surface stderr verbatim: `log.md NOT written: <stderr>`, then the recovery below |
 
-   **A failed log write never aborts the close.** Step 3 has already moved every spec artifact from `TODO/` to `DONE/`, across two repos neither of which is committed. On exit 2 — and on the not-found pre-check above — continue to step 5 and print the completion block, with `log.md NOT written: <stderr>` and the recovery: re-run `/spec-close <DONE-path>`, which the guard makes idempotent.
+   **A failed log write never aborts the close.** Step 3 has already moved every spec artifact from `TODO/` to `DONE/`, across two repos neither of which is committed. On **any** nonzero exit — and on the not-found pre-check above, whose invocation is skipped — continue to step 5 and print the completion block, with `log.md NOT written: <stderr>` and the recovery: re-run `/spec-close <DONE-path>`, which the guard makes idempotent.
 
 5. **Do not commit.** The skill writes to two separate repos (target repo for archive, wiki repo for entries). Neither is committed — the user controls commit timing.
 
