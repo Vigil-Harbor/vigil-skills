@@ -56,6 +56,29 @@ Standalone skill for triaging CodeRabbit review comments. Reads findings, verifi
 - `docs/portability-contract.md` — What makes a skill portable across harnesses (VHS-17); the contract every cross-harness item targets.
 - `docs/authoring-portable-skills.md` — Authoring discipline for portable skills + the `lint.py` portability lint (VHS-18).
 
+## Superseded vendor skills
+
+`skills/session-handoff/` (VHS-28) replaces the AgentCraft-managed
+`agentcraft-handoff` skill, whose validator capped its heading patterns at `##`
+and so could never see a `###` section. `sync.py` installs the replacement, but
+it cannot remove a vendor copy it never installed — that is an operator step:
+
+> For Claude Code, remove the vendor copy from the skill dir — `rm -rf ~/.claude/skills/agentcraft-handoff/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/agentcraft-handoff/`).
+
+Two warnings:
+
+- **Targeted removal only. Do not reach for `python sync.py install --prune`.**
+  Prune queues a delete for every path under `~/.claude/skills/` that this repo
+  does not contain, and that directory holds third-party skills installed
+  separately.
+- **This departs from recorded practice, deliberately.** `README.md` promises
+  that separately-installed skills are preserved. Deleting is right *here*
+  because this particular copy is broken and superseded — not a general licence
+  to delete third-party skills.
+
+If AgentCraft reinstalls its copy later, that is expected and not fatal: repeat
+the targeted removal. No vendor-managed file is ever edited.
+
 ## Plan & Spec Reviews
 
 - Always verify load-bearing claims against the actual codebase, wiki, and current file state before critiquing — never review from memory or stale buffers.
