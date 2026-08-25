@@ -58,7 +58,7 @@ test_short_generic_value_is_fully_masked (test_session_handoff.TestVerdictMatrix
 test_unfilled_placeholder_is_needs_work (test_session_handoff.TestVerdictMatrix.test_unfilled_placeholder_is_needs_work) ... ok
 
 ----------------------------------------------------------------------
-Ran 57 tests in 0.892s
+Ran 57 tests in 0.891s
 
 OK
 
@@ -170,6 +170,6 @@ test_watch_state_atomic_singleflight (test_talaria_watch.TestTalariaWatch.test_w
 test_watch_transitions (test_talaria_watch.TestTalariaWatch.test_watch_transitions) ... ok
 
 ----------------------------------------------------------------------
-Ran 101 tests in 6.026s
+Ran 101 tests in 6.070s
 
 OK

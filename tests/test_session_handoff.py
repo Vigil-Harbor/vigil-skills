@@ -57,6 +57,22 @@ def load_validator():
     return load_script(SCRIPTS_DIR / "validate_handoff.py", "session_handoff_validate_under_test")
 
 
+@contextlib.contextmanager
+def pushd(path: Path):
+    """Pin the process CWD for the duration, then restore it.
+
+    Every path here resolves from __file__, never cwd, so the suite passes from
+    any working directory - but one test needs the CWD to sit inside a
+    repository to prove anything, and it must not leak that to its neighbours.
+    """
+    previous = Path.cwd()
+    os.chdir(str(path))
+    try:
+        yield
+    finally:
+        os.chdir(str(previous))
+
+
 def run_main(module, argv: list[str]):
     """Call main(argv) and capture its streams. Exit codes are asserted on the
     returned int, never via SystemExit."""
@@ -472,10 +488,16 @@ class TestScaffoldRobustness(TempDirCase):
                 self.assertTrue(placeholder.endswith("_"))
 
     def test_outside_a_repository_states_the_case_and_still_reaches_ready(self):
-        # The test process CWD stays at the repo root: this exercises the
-        # cwd= plumbing, not the ambient environment.
-        self.assertTrue((Path.cwd() / ".git").exists() or True)
-        code, out, err = run_main(self.C, ["orphan", "--project-path", str(self.tmp)])
+        # The process CWD is pinned *inside* a repository while the target
+        # project is outside one, so the not-a-repo placeholder can only come
+        # from the cwd= plumbing. Without it, git would answer about the
+        # repository the caller happens to be standing in - which succeeds, and
+        # so fails silently, filling the field RESUME trusts most with the
+        # wrong branch and the wrong commits.
+        with pushd(REPO_ROOT):
+            self.assertTrue((Path.cwd() / ".git").exists(),
+                            "CWD must sit inside a repository for this to prove anything")
+            code, out, err = run_main(self.C, ["orphan", "--project-path", str(self.tmp)])
         self.assertEqual(code, 0, err)
         path = Path(out.strip())
         text = path.read_text(encoding="utf-8")
