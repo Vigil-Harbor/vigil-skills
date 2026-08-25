@@ -1,0 +1,245 @@
+--- /c/Users/zioni/AppData/Local/Temp/claude/C--Users-zioni-Documents-Vigil-Harbor-vigil-skills/35bd060d-79e2-48ef-af10-975efbb6d1a1/scratchpad/VHS-28.spec.v4-baseline.md	2026-08-23 23:59:16.663272500 -0600
++++ docs/specs/TODO/VHS-28.spec.md	2026-08-24 00:03:34.618600800 -0600
+@@ -1,7 +1,7 @@
+ # VHS-28 — `session-handoff` skill (clean-room), superseding `agentcraft-handoff`
+ 
+ **Brief:** `docs/specs/TODO/VHS-28.brief.md` · **Plane:** VHS-28 · **Namespace:** `skills`
+-**Spec round:** v4 (scoped down after round-3 review) · **Authored:** 2026-08-23
++**Spec round:** v5 (delta patch of round-4 findings on top of v4's scope-down) · **Authored:** 2026-08-23
+ 
+ ## Goal
+ 
+@@ -11,18 +11,20 @@
+ 
+ Rounds 1–3 converged on a design that needed a CommonMark-subset parser — fence pairing, inline-span backtick runs, thematic breaks, setext underlines, length-preserving masking, a masked-vs-normalized string split. Three review rounds produced 19 blocking findings, most of them in that machinery rather than in the feature. v4 removes the machinery instead of specifying it further.
+ 
+-**Why a parser is not an option here.** The repo has no dependency manifest, every import in every shipped script is stdlib, and `sync.py` distributes skills by copying files into the harness skill dir with no install step — so a third-party parser would `ImportError` on every operator machine, and the `requires:` schema (`docs/portability-contract.md` §3) has no key to declare one. Vendoring a parser into a public repo is what D1 refuses for the vendor skill.
++**Why a parser is not an option here.** The repo has no dependency manifest, every import in every shipped script is stdlib, and `sync.py` distributes skills by copying files into the harness skill dir with no install step — so a third-party parser would `ImportError` on every operator machine, and the `requires:` schema (`docs/portability-contract.md` §3) has no key to declare one. Vendoring one into this tree is the same call `decisions/2026-06-15-vhs-19-fork-and-own-converter.md` already made — "**Carry the engine into vigil-skills.** Rejected: breaks the stdlib-only/no-build contract" — and `docs/portability-contract.md` §3 states the constraint normatively.
+ 
+ **Why a parser is not needed.** Every piece of that machinery existed to protect **one** check: the ≥50-character completeness measurement. Fence masking existed so code blocks would not truncate a section's measured length. The subtree fallback existed so container sections measured something. The masked/normalized split existed so the arithmetic landed on the right string.
+ 
+-**So the ≥50-character check is removed.** `create_handoff.py` emits a `[TODO: …]` marker in every section it scaffolds, so *"did the author replace the placeholder"* already answers completeness — better than a character count, which a padded sentence satisfies and a terse-but-complete section fails. The TODO scan was doing the real work all along.
++**So the ≥50-character check is removed.** `create_handoff.py` emits a `[TODO: …]` marker into every **authored** section it scaffolds (not the generated or fixed-format ones — see § `create_handoff.py`), so *"did the author replace the placeholder"* answers completeness for a scaffolded document — better than a character count, which a padded sentence satisfies and a terse-but-complete section fails.
+ 
+ **What that buys, structurally:** with no length measurement, section *content* is never measured, so nothing downstream depends on where a section ends. The validator asks only whether each required heading is **present**. A `#` line inside a fenced block therefore cannot shorten, truncate, or hide anything — the worst it can do is invent a heading that no required name matches. Fence masking, inline-span masking, thematic-break termination, the leaf invariant, and the subtree fallback all become unreachable code, and are cut.
+ 
+ **Accepted limits, recorded deliberately:**
+ 
+ - A `[TODO: …]` quoted inside a code block or inline span still trips the TODO check. Visible, clearable by rewording, and rare — the marker shape is distinctive. This is the one place masking bought something real, and it is not worth a parser.
+-- A fenced line reading exactly `# Current State Summary` would satisfy that section's presence check. This is a false *pass*, not a false fail, and it requires deliberately writing a required section name as a code comment.
++- **A required section name on any line starting with 1–6 `#` satisfies that presence check** — including inside a fenced block, an indented block, or an HTML comment. A handoff that quotes another handoff will hit this, which is not exotic in a skill whose subject *is* handoffs. It is a false *pass*, never a false fail, and the author is the person reading the verdict.
++- **Completeness is checked only where a marker survives.** A section whose placeholder was *deleted* rather than replaced, or left empty under a present heading, validates `READY`. The removed ≥50-character check caught that; the marker scan cannot.
++- **A document this skill did not scaffold gets presence checking only.** All 23 documents in the on-disk corpus carry zero `[TODO:` markers, so for every one of them — and for both legacy fixtures in test item 3 — the completeness half is a no-op. The marker scan answers completeness for the window between generation and first edit, on documents `create_handoff.py` produced; it is an author's checklist, not an adversarial validator, and D8's commitment to reading existing documents is what makes that acceptable.
+ - An empty heading is a heading when followed by whitespace (`## `) and not when bare (`##`). Neither can match a vocabulary name, so no verdict depends on it.
+ 
+ ## Preconditions
+@@ -96,7 +98,7 @@
+ 
+ **Text normalization is a precondition, not a fallback.** All matching operates on: `read_bytes()` → `decode("utf-8", errors="replace")` → strip leading BOM → `text.replace("\r\n", "\n").replace("\r", "\n")`. No `\r` appears in any matcher, because none can reach one.
+ 
+-The newline step is load-bearing. Under `re.MULTILINE`, `$` matches only before `\n`, so on `"## Current State Summary\r\n"` the `\r` is absorbed into the title group, the name comparison fails, and the section reports **`missing`** — the ticket's headline symptom, reproduced by the fix meant to remove it. Measured: `MCP Server/.claude/handoffs/2026-08-15-060410-mcp-45-post-merge.md` is CRLF and all three of its required sections fail that way. `lint._read_lines` (`lint.py:64-73`) is CRLF-safe only because it ends in `.splitlines()`; a whole-document matcher inherits none of that.
++The newline step is load-bearing. Under `re.MULTILINE`, `$` matches only before `\n`, so on `"## Current State Summary\r\n"` the `\r` is absorbed into the title group, the name comparison fails, and the section reports **`missing`** — the ticket's headline symptom, reproduced by the fix meant to remove it. Measured: `MCP Server/.claude/handoffs/2026-08-15-060410-mcp-45-post-merge.md` is CRLF and all three of its required sections fail that way. `lint._read_lines` (`lint.py:63-73`) is CRLF-safe only because it ends in `.splitlines()`; a whole-document matcher inherits none of that.
+ 
+ **Why `_sections.py` cannot import `lint.py`:** `sync.py` mirrors only `skills/` and `agents/`, so `lint.py` does not exist beside the installed skill. Regex shapes are reproduced deliberately, not copied for convenience.
+ 
+@@ -116,10 +118,14 @@
+ - **The captured title is `.strip()`ed, then compared case-insensitively by name** — never by interpolating the name into a regex, which is what created the substring-collision failure.
+ - **Setext headings are not recognized.** The template emits ATX only.
+ 
+-**Presence is the only question asked.** Per D0 there is no content measurement, so `_sections.py` exposes:
++**Presence is the only question asked.** Per D0 there is no content measurement, so `_sections.py` exposes exactly three callables:
+ 
+ ```python
+-def has_section(normalized, name) -> bool:
++def normalize(raw: bytes) -> str:
++    """Decode utf-8 with errors='replace', strip a leading BOM, and fold
++    \r\n and lone \r to \n. Every other function here takes this output."""
++
++def has_section(normalized: str, name: str) -> bool:
+     """True if any ATX heading at ANY depth 1-6 has this title.
+ 
+     Lookup is BY NAME ONLY; depth never participates. Measured across the five
+@@ -128,13 +134,19 @@
+     required sections `missing` on 60% of that corpus, which is a depth bug, i.e.
+     precisely the defect VHS-28 was filed for.
+     """
++
++def first_heading_title(normalized: str) -> str | None:
++    """The title of the first depth-1 heading, or None if the document has none.
++    Public so `create_handoff.py` never touches `_HEADING_RE` itself (D4)."""
+ ```
+ 
+-No `section_span`, no terminator rule, no masking. That is the whole matcher surface.
++No `section_span`, no terminator rule, no masking. `normalize`, `has_section`, `first_heading_title` and the name tables are the module's whole public surface; `_HEADING_RE` and `TODO_MARKER_RE` stay private to it.
+ 
+ ### D4 — One vocabulary, shared by file-path import
+ 
+-`_sections.py` declares `TEMPLATE_SECTIONS`, `REQUIRED_SECTIONS`, `RECOMMENDED_SECTIONS`, `_HEADING_RE`, the normalizer, and `has_section()`.
++`_sections.py` declares `TEMPLATE_SECTIONS`, `REQUIRED_SECTIONS`, `RECOMMENDED_SECTIONS`, the private `_HEADING_RE` and `TODO_MARKER_RE`, and the three public callables `normalize()`, `has_section()`, `first_heading_title()`.
++
++**`TODO_MARKER_RE` lives here, not in either entry point.** Since D0 makes the placeholder scan the *whole* completeness gate, the marker is now a load-bearing shared string — exactly the "one matcher, several places, diverging" shape VHS-28 was filed for. It is `re.compile(r"\[TODO\b[^\]]*\]", re.IGNORECASE)`; `create_handoff.py` renders markers through a helper from this module and `validate_handoff.py` scans with the same object.
+ 
+ **Both entry points load it by file path**, following the repo's only precedent (`talaria_read.py:23-32`; `talaria_watch.py:33-42`), which is the full loader shape — `spec_from_file_location` alone loads nothing:
+ 
+@@ -157,6 +169,7 @@
+ 
+ | Depth | Name | Class |
+ |---|---|---|
++| `#` | *(document title)* | title |
+ | `##` | Session Metadata | container |
+ | `###` | Recent Commits | generated |
+ | `##` | Current State Summary | **required** |
+@@ -176,9 +189,13 @@
+ 
+ `REQUIRED_SECTIONS` = `Current State Summary`, `Important Context`, `Immediate Next Steps`. `RECOMMENDED_SECTIONS` = the six marked recommended.
+ 
++**The title row and the container rows carry `None` as their name.** They are rendered, never matched: `create_handoff.py` supplies their heading text from its own rendering constants, and no validator check ever looks for them. That is what D1's "container heading names are not fixed" means — *not matched by the validator*, not *absent from the schema*. Consequently the single-source claim covers the **named** rows only, and the `if name` filter in test item 2 is what makes the drift assertion well-formed.
++
++**The title row is filled as `# Handoff: <slug, hyphens replaced by spaces>`.** No `--title` argument is added — the slug is the title, which keeps the CLI at three arguments and means a generated document's title is always ASCII, `[a-z0-9 ]`, and ≤60 characters. That bounds what `Previous title` can ever have to escape (D5's `first_heading_title` reads exactly this line), and it is why test item 8's `|`/backtick/200-character case chains from an **authored fixture** rather than from a generated document, which could not carry such a title.
++
+ **No leaf invariant.** It existed to protect the length measurement; with D0 there is nothing to protect, and arbitrary documents may nest freely.
+ 
+-**Structural prevention of a duplicated table** is the § `create_handoff.py` rule that the table is never restated — not a test. Test item 4's round-trip *detects drift* in an inlined copy; it does not prevent one.
++**Structural prevention of a duplicated table** is the § `create_handoff.py` rule that the table is never restated — not a test. Test item 2's round-trip *detects drift* in an inlined copy; it does not prevent one.
+ 
+ ### D5 — Session transfer: declared, portable, bounded, degradable
+ 
+@@ -204,6 +221,8 @@
+ 
+ **No advisory score.** It existed to summarize the length measurement D0 removed. Recommended-section gaps print as informational lines and change nothing.
+ 
++**The TODO scan is whole-document, and a marker left in a *recommended* section is therefore `NEEDS WORK` too.** That is deliberate, and it is stated here so authors learn the rule rather than discover it: a *missing* recommended section is informational, but a recommended section still holding its placeholder is unfinished work. The asymmetry does create one perverse incentive — deleting `### Potential Gotchas` outright ships green where leaving an honest empty one does not — and scoping the scan per-section would need the sectioning D0 refuses. Accepted, and recorded next to the incentive it creates.
++
+ **No metadata exemption.** v3 carved the generic assignment class out of an "auto-generated metadata block"; two lenses independently rated that a P1, because `validate_handoff.py` receives only a file path and cannot observe provenance, so the region had to be a structural proxy an author could write themselves — a security gate whose exemption region is authored content. **Nothing is exempt.** If a commit subject carries `client_secret = <20 chars>`, that is a real credential in real git history and blocking is the correct outcome, not a false positive. The remedy is documented in CREATE: the locus and redacted excerpt identify the line; edit it and re-validate.
+ 
+ **Deliberate divergence from `lint.py`.** `lint.py` is warn-only by default and gates only under `--strict`, because it carries a `missing-requires` migration backlog to grandfather. `validate_handoff.py` is greenfield, so it gates on first run.
+@@ -225,7 +244,7 @@
+ `ship-spec` PRs this repo; it cannot touch `~/.claude/`.
+ 
+ 1. `skills/session-handoff/SKILL.md` § *Superseding a previously installed handoff skill* — operative sentence **harness-neutral** ("remove any previously installed vendor handoff skill from this harness's skill directory"), literal path as a non-operative note. D5 exiles `~/.claude/projects/**` from this same portable body; an uninstall command naming `~/.claude/skills/agentcraft-handoff/` is the same §2 violation, and `lint.py` would not catch it.
+-2. `AGENTS.md` § *Superseded vendor skills* — machine-facing, **harness-qualified and dual-shell**, matching AGENTS.md:9's own "for Claude Code: `~/.claude/skills/`":
++2. `AGENTS.md` § *Superseded vendor skills* — machine-facing, **harness-qualified and dual-shell**, matching AGENTS.md:7's own "for Claude Code: `~/.claude/skills/`":
+ 
+    > For Claude Code, remove the vendor copy from the skill dir — `rm -rf ~/.claude/skills/agentcraft-handoff/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/agentcraft-handoff/`).
+ 
+@@ -248,7 +267,7 @@
+ 
+ ### D12 — In-repo consistency calls
+ 
+-- **`reference/`, singular.** The repo's only precedent is `skills/hermes-kanban-awareness/reference/`. This **overrides the brief**, which writes `references/` at brief:30 — the one place this spec contradicts brief text rather than extending it.
++- **`reference/`, singular.** The repo's only precedent is `skills/hermes-kanban-awareness/reference/`. This **overrides the brief**, which writes `references/` at brief:30 — one of two places this spec contradicts brief text rather than extending it (the other, larger one is D0; see § Deferred).
+ - **No `AGENTS.md` § File layout row.** The file's rows are inconsistent — `skills/spec-close/SKILL.md` has an ordinary one (`AGENTS.md:54`) while the last three skills to ship added none (`a0ad847`, `386dc6c`, `8946f58`). **And no `README.md` § Skills entry either** — that list is 3-of-7 stale (`README.md:9-11` names only `/spec-cycle`, `/ship-spec`, `/review-pr`) and none of the last four skills added one. The § Superseded vendor skills entry stays: genuinely new information, required by brief done-when #5.
+ 
+ ## Design
+@@ -274,16 +293,20 @@
+ Body sections:
+ 
+ 1. **Mode selection** — UUID argument (D5's `fullmatch`) → SESSION TRANSFER; save/pause intent → CREATE; resume/load intent → RESUME.
+-2. **CREATE** — `create_handoff.py <slug> [--continues-from <file>] [--project-path <dir>]`, fill every `[TODO: …]`, `validate_handoff.py <file>`, report path + verdict + first next action. **Act on the verdict and exit code.** Do not finalize on `BLOCKED`; the locus and redacted excerpt identify the line — edit it and re-validate, including when the match is in a generated commit subject (a credential in git history is a real finding).
++2. **CREATE** — `create_handoff.py [slug] [--continues-from <file>] [--project-path <dir>]` (slug omitted or empty → `handoff`), fill every `[TODO: …]`, `validate_handoff.py <file>`, report path + verdict + first next action. **Act on the verdict and exit code.** Do not finalize on `BLOCKED`; the locus and redacted excerpt identify the line — edit it and re-validate, including when the match is in a generated commit subject (a credential in git history is a real finding).
+ 3. **RESUME** —
+    - List `*.md` in `<project-path>/.claude/handoffs/`, newest first; **ignore `*.tmp`**. **If the directory is absent or holds no `*.md`, say so plainly and offer CREATE — do not prompt for a path**, matching D5's never-interrogate posture.
+    - **Compare the recorded branch against the current one first** — a mismatch outranks commit count, and is the common case since every ship-spec run cuts a new branch. Then `git log --oneline --since=<ts> --all`, preferring the timestamp from the **filename** over the body line. Rubric: no commits, same branch → fresh; few, unrelated → review then resume; many, or touching Critical Files, or branch mismatch → verify carefully; weeks plus divergence → consider a fresh handoff.
+-   - Read fully, **following the `Continues from` link to a maximum of 5 hops, tracking `resolve()`d absolute paths compared case-insensitively on Windows.** Prefer the markdown href, resolved relative to the handoffs directory. **If the line carries no href** — two on-disk documents record a bare backticked path instead — take the first backticked or bare path on the line, resolving it relative to the handoffs directory when bare and to `<project-path>` when it begins `.claude/`. If neither yields an existing file, note it and stop the chain rather than guessing. A cycle terminates with a note.
++   - Read fully, **following the `Continues from` link to a maximum of 5 hops, tracking `resolve()`d absolute paths compared case-insensitively on Windows.** Prefer the markdown href, resolved relative to the handoffs directory. **If the line carries no href** — two on-disk documents record a bare backticked path instead — take the first backticked or bare path on the line, resolving it relative to the handoffs directory when bare and to `<project-path>` when it begins `.claude/` — **unless the text before it on that line contains `None` or `new thread`.** Three corpus documents record a *rejected* auto-link in exactly that shape (`- **Continues from**: None. The scaffold auto-linked \`…\``), and following it resumes from an unrelated session while presenting the result as chain context. If neither yields an existing file, note it and stop the chain rather than guessing. A cycle terminates with a note.
+    - Verify branch/blockers/assumptions; begin at Immediate Next Steps #1.
+ 4. **SESSION TRANSFER** — per D5.
+ 5. **Superseding a previously installed handoff skill** — per D9, harness-neutral.
+ 6. **Test plan / Test command / Done-when** — following `skills/talaria/SKILL.md`. These ship into operator installs (`sync.py` mirrors byte-for-byte); intentional, as it is for talaria.
+ 
++### Module conventions (all three files)
++
++Each of `_sections.py`, `create_handoff.py` and `validate_handoff.py` opens with `from __future__ import annotations`, as every stdlib script in this repo does (`lint.py`, `sync.py`, the three `talaria_*.py`, `read_board.py`). This is load-bearing, not cosmetic: `AGENTS.md` declares a Python 3.8 floor, and the PEP 585 annotations used here (`list[str]`, `str | None`) are evaluated at def time without it and raise `TypeError: 'type' object is not subscriptable` on 3.8. The precedent signature is `def main(argv: list[str] | None = None) -> int` (`talaria_bridge.py:1070`, `talaria_read.py:289`, `talaria_watch.py:738`).
++
+ ### Encoding discipline (both entry points)
+ 
+ **All file I/O is explicitly UTF-8**, reads normalized per D3. Measured on the operator machine: `locale.getpreferredencoding(False)` is **`cp1252`**, `sys.flags.utf8_mode == 0`. A bare `write_text`/`read_text` uses cp1252 — a `UnicodeEncodeError` crash on git metadata it cannot encode (this repo's `git log` contains `U+FEFF`), and valid UTF-8 documents reported undecodable.
+@@ -295,11 +318,16 @@
+ 
+ CLI: `create_handoff.py [slug] [--continues-from FILE] [--project-path PATH]`. Stdlib only. **Imports `TEMPLATE_SECTIONS` from `_sections` by file path (D4); the section table is never restated in this file.** Exposes `main(argv: list[str]) -> int`; the `__main__` guard is `sys.exit(main(sys.argv[1:]))`, following `talaria_bridge.py`'s return-an-int discipline so tests assert on a returned value, not `SystemExit`.
+ 
+-- **`--project-path`** defaults to CWD, must be an existing directory (else clear message, non-zero exit), and bases the output directory, `--continues-from` resolution, **and the working directory of every git subprocess** (`cwd=<resolved project path>`). Without the third, a document written into another repo is pre-filled with the *calling* repo's branch and commits — silently wrong in the field RESUME's staleness check trusts most.
++- **`--project-path`** defaults to CWD, must be an existing directory (else clear message, non-zero exit), and bases the output directory, `--continues-from` resolution, **and the working directory of every git subprocess** (`cwd=<resolved project path>`, **with `GIT_DIR` and `GIT_WORK_TREE` removed from the child environment** so `cwd` alone decides the repository — git resolves those variables ahead of discovery, so `cwd=` by itself does not redirect it under a git hook or an aliased shell). Without this, a document written into another repo is pre-filled with the *calling* repo's branch and commits — silently wrong in the field RESUME's staleness check trusts most, and it fails silently because git succeeds, just against the wrong repository.
+ - **Create the output directory** — `mkdir(parents=True, exist_ok=True)` on `<project-path>/.claude/handoffs/`. Without it the first CREATE in any project raises an uncaught `FileNotFoundError`. Failure exits non-zero naming the resolved directory.
+ - **Slug:** sanitize to `[a-z0-9-]`, collapse runs of `-`, strip leading/trailing `-`, **truncate to 60 characters**, and only *then* default to `handoff` if empty. Reproduced with `LongPathsEnabled=1`, a 316-character target path still raises `OSError [Errno 22]`.
+-- **Collision and atomicity are two mechanisms, not one.** Claim the target with `open(path, "x")` before rendering; on `FileExistsError` append `-2`, `-3`, … to a small cap, then fail non-zero. Render via `tempfile.mkstemp(dir=<handoffs dir>, suffix=".md.tmp")` so concurrent runs never share a temp path, then `os.replace`. Remove the temp file in a `finally` if rendering fails. (`os.replace` alone is atomic *replacement* — it would clobber an existing document silently, which is the opposite of collision safety.)
++- **Collision and atomicity are two mechanisms, not one.** (`os.replace` alone is atomic *replacement* — it would clobber an existing document silently, which is the opposite of collision safety.) In order:
++  1. **Validate everything first** — `--project-path`, the slug, and `--continues-from` — *before* claiming a name. The `--continues-from` hard-error path promises "no document written", which only holds if no name has been claimed yet.
++  2. **Claim** with `with open(path, "x"): pass` — the handle is closed immediately, because on Windows `os.replace` fails with `PermissionError` while a handle on the target is open. On `FileExistsError` append `-2` … `-9`, then fail non-zero.
++  3. **Render** via `tempfile.mkstemp(dir=<handoffs dir>, suffix=".md.tmp")` so concurrent runs never share a temp path, then `os.replace` onto the claimed name.
++  4. **`try/finally` spans the claim through the replace**, removing **both** the temp file and the claim file on any failure. Without this a failed CREATE strands a zero-byte `.md` that RESUME then offers as the newest handoff — it lists `*.md` and ignores only `*.tmp`.
+ - **Git metadata** — branch, last 5 commits, modified + staged files — **every call wrapped with a 10-second timeout**, a timeout treated exactly like a non-zero exit. Placeholder text distinguishes not-a-repo / no-commits / git-unavailable-or-timed-out so the failure is diagnosable from the document. A silent indefinite hang is the worst failure here.
++- **`[TODO: …]` markers go into exactly the author-filled sections** — every name in `REQUIRED_SECTIONS ∪ RECOMMENDED_SECTIONS`, rendered through `_sections`' helper, one per section and nowhere else. `Session Metadata`, `Recent Commits`, `Files Modified` and `Handoff Chain` are generated or fixed-format and **never** carry one. Critically, the git-failure strings above are diagnostics, not author work: they are plain prose (`_not a git repository_`) and **must not** use the marker shape. A git placeholder written as `[TODO: not a git repository]` would make every CREATE outside a repo permanently un-`READY`, with nothing for the author to replace.
+ - **Markdown safety:** paths gathered with `-z` and `-c core.quotepath=false`; `|` and backticks escaped before entering a table cell; table capped at 10 rows with `… and N more`.
+ - **`--continues-from`:** resolved against `<project-path>/.claude/handoffs/`; base and candidate both `resolve()`d; comparison case-insensitive on Windows. A path that escapes the directory **or names a file that does not exist is a hard error** — message naming the resolved path and base, non-zero exit, no document written.
+ - **The chain block is a pinned two-line format**, matching what the corpus actually carries:
+@@ -307,14 +335,14 @@
+   - **Continues from**: [<filename>](./<filename>)
+     - Previous title: <escaped, ≤80 chars>
+   ```
+-  with `- **Continues from**: None (fresh start)` emitted **only when the flag is not passed at all**. `Previous title` is read from the previous document's first `#` heading via `_sections`' matcher on normalized text; backticks are escaped and the title truncated to 80 characters with an ellipsis. **The filename and href are never escaped or truncated.**
++  with `- **Continues from**: None (fresh start)` emitted **only when the flag is not passed at all**. `Previous title` comes from `_sections.first_heading_title(normalize(...))` — the previous document's first **depth-1** heading; backticks are escaped and the title truncated to 80 characters with an ellipsis. If it returns `None` (the target need not be a document this skill generated), emit the filename in place of the title; never fail the create. **The filename and href are never escaped or truncated.**
+ - Prints the resulting path to stdout.
+ 
+ ### `scripts/validate_handoff.py`
+ 
+ CLI: `validate_handoff.py <handoff-file>`. Stdlib only. Imports `_sections` by file path. Exposes `main(argv: list[str]) -> int` with the same guard.
+ 
+-- Checks, in order, all on the **normalized** text (D0: no masked copy exists): each name in `REQUIRED_SECTIONS` present via `has_section`; no unfilled `[TODO: …]`; recommended sections present (informational only); secret scan (D1's list, nothing exempt).
++- Checks, in order, all on `_sections.normalize()`d text (D0: no masked copy exists): each name in `REQUIRED_SECTIONS` present via `has_section`; no `TODO_MARKER_RE` match anywhere in the document; recommended sections present (informational only); secret scan (D1's list, nothing exempt).
+ - Report per D6; exits `0`/`1`/`2`/`3`.
+ - No `--json`; nothing consumes it yet.
+ 
+@@ -327,13 +355,13 @@
+ Run from the repo root. Stdlib `unittest`, matching `tests/test_lint.py` and `tests/test_talaria_*.py`; scripts load via an `importlib` `load_script` helper. Exit codes are asserted on the **returned int** from `main(argv)`, never via `SystemExit`. Cases are generated in temp dirs except the two fixtures.
+ 
+ 1. **Heading matcher — the filed bug.** A `###` required section is found (proves depth-blindness); a genuinely absent one reports `missing`; **the same name matches at every depth 1–6**. Plus: 7 `#` is not a heading; `#hashtag` and `##Foo` are not headings; 3-space indent is a heading, 4-space is not; a trailing `##` closing run is stripped; a mixed-case name matches; a name that prefixes another required name resolves correctly.
+-2. **Template round-trip.** Generate a scaffold → replace every `[TODO: …]` → validate → `READY`, exit `0`, zero `missing`. Every name in `REQUIRED ∪ RECOMMENDED` appears as a heading in a fresh scaffold, and the scaffold's heading sequence equals `[name for _, name in TEMPLATE_SECTIONS if name]` in order (drift detection for an inlined table).
++2. **Template round-trip.** Generate a scaffold → replace every `[TODO: …]` → validate → `READY`, exit `0`, zero `missing`. Every name in `REQUIRED ∪ RECOMMENDED` appears as a heading in a fresh scaffold, and the **subsequence** of scaffold headings whose titles appear in `TEMPLATE_SECTIONS` equals `[name for _, name in TEMPLATE_SECTIONS if name]` in order — a subsequence, because the title row and the four container rows carry `None` and are rendered from `create_handoff.py`'s own constants (D4). Also: a fresh scaffold contains **exactly one `[TODO: …]` per `REQUIRED ∪ RECOMMENDED` name and none anywhere else**, which is what makes the completeness gate non-vacuous.
+ 3. **Legacy-corpus compatibility — both shapes.** `legacy-flat.md` (all-`##`) and `legacy-nested.md` (`##`/`###`), both **authored, not copied**, validating with zero `missing`.
+ 4. **Verdict / exit matrix.** Clean → `READY`/`0`; unfilled TODO → `NEEDS WORK`/`1`; absent required heading → `NEEDS WORK`/`1`; planted fake credential → `BLOCKED`/`2`; secrets **and** TODOs → `BLOCKED`; missing file and no-argument → `3`. Secret positives must include a bare `KEY=value` env-style line and an `sk-ant-api03-…`-shaped string; a near-miss negative ("token" in prose) must not trip; **a `BLOCKED` report for an 8-character generic value contains none of that value's characters** (D6 redaction).
+-5. **Accepted limits (D0), pinned so they are decisions not surprises.** A `[TODO: x]` inside a fenced block **does** trip the TODO check; a fenced line reading exactly `# Current State Summary` **does** satisfy that presence check. Both assert the documented behavior.
++5. **Accepted limits (D0), pinned so they are decisions not surprises.** A `[TODO: x]` inside a fenced block **does** trip the TODO check; a fenced line reading exactly `# Current State Summary` **does** satisfy that presence check. A required heading quoted inside a fenced block from another handoff **does** satisfy that presence check. All three assert documented behavior rather than aspiration.
+ 6. **Encoding.** A scaffold generated where the HEAD commit subject contains an emoji writes successfully; the generated scaffold is **LF, not CRLF**; a **CRLF** handoff validates `READY` with **zero `missing`**; a BOM-prefixed handoff validates correctly.
+-7. **Scaffold robustness.** `--project-path <tmpdir>` outside any repository asserts the not-a-repo placeholder **with the test process CWD left at the repo root** (this tests the `cwd=` fix rather than the environment); generation into a project with no `.claude/` creates the directory; slug sanitizing and the 60-char cap (a 300-char slug still writes a valid file); `--continues-from` not-found and absolute-path escape both exit non-zero with **no file created**; a same-second collision produces `-2` rather than clobbering.
+-8. **Chain round-trip.** Create A, then B `--continues-from A`; assert both emitted lines match the pinned format and the href resolves back to A — including when A's title contains `|`, backticks, and 200 characters (asserted against the `Previous title` line).
++7. **Scaffold robustness.** `--project-path <tmpdir>` outside any repository asserts the not-a-repo placeholder **with the test process CWD left at the repo root** (this tests the `cwd=` fix rather than the environment); generation into a project with no `.claude/` creates the directory; slug sanitizing and the 60-char cap (a 300-char slug still writes a valid file); `--continues-from` not-found and absolute-path escape both exit non-zero with **no file created**; a same-second collision produces `-2` rather than clobbering; and after a **forced rendering failure** the handoffs directory is byte-identical to its pre-call state — no orphaned claim file, no orphaned `.tmp`. Also: the not-a-repo scaffold, with its markers replaced, validates `READY` (proving the git placeholder is not marker-shaped).
++8. **Chain round-trip.** Create A, then B `--continues-from A`; assert both emitted lines match the pinned format and the href resolves back to A. The escaping case chains from an **authored fixture** whose H1 contains `|`, backticks and 200 characters — a *generated* document cannot carry such a title, since D4 derives it from the sanitized 60-char slug. Also assert a predecessor with no depth-1 heading yields the filename in place of the title rather than failing.
+ 9. **Session-id validation.** Malformed, traversal-shaped, and **trailing-newline** ids are rejected before any filesystem lookup.
+ 10. **Lint.** `skills/session-handoff/SKILL.md` yields zero ERROR and zero WARN, asserted **programmatically** via `lint.lint_path(...)` (as `tests/test_lint.py:44-46` does) — `lint.py --strict` exits non-zero only on ERRORs (`lint.py:291`), so the console command cannot check the WARN half.
+ 11. **Inventory tripwire.** `tests/test_lint.py` bumped `7 → 8`, and the per-skill zero-ERROR loop passes for all 8.
+@@ -358,11 +386,11 @@
+ 
+ ## Done when
+ 
+-Mapped 1:1 to the brief's acceptance criteria.
++Mapped to the brief's acceptance criteria. **#2 and #3 are narrowed by D0**, as recorded in § Deferred — this is not a 1:1 map and should not be read as one.
+ 
+ 1. **(brief #1)** `skills/session-handoff/` exists, `python sync.py install` places it under the harness skill dir, and `lint.py` reports no ERROR and no WARN for it (test item 10).
+-2. **(brief #2)** The heading matcher is specified once in `_sections.py` — depth, indent, mandatory separator, closing sequence, case, newline normalization — matching **by name at any depth**, with every call site deriving from it. A freshly generated scaffold with placeholders replaced validates with **no section reported `missing`**, and so do both legacy on-disk shapes (test items 2, 3).
+-3. **(brief #3)** `tests/test_session_handoff.py` passes, covering depth-blind matching, the scaffold round-trip, and secret positives including the generic `KEY=value` class.
++2. **(brief #2, narrowed)** brief:42 names three call sites including a section-terminator scan; D0 removes the terminator, so the matcher is specified once in `_sections.py` — depth, indent, mandatory separator, closing sequence, case, newline normalization — matching **by name at any depth**, with every call site deriving from it. A freshly generated scaffold with placeholders replaced validates with **no section reported `missing`**, and so do both legacy on-disk shapes (test items 2, 3).
++3. **(brief #3, narrowed)** `tests/test_session_handoff.py` passes, covering **two of brief:44's three distinctions** — a `###` section is found, a genuinely absent one reports `missing` — plus the scaffold round-trip and secret positives including the generic `KEY=value` class. The third distinction (`5 characters → still incomplete`) cannot be written: D0 retires the `incomplete` verdict.
+ 4. **(brief #4)** All three modes work with `agentcraft-handoff` uninstalled: CREATE produces a `READY` document, RESUME loads and assesses one (degrading gracefully on an empty directory), SESSION TRANSFER either reads a real transcript within the 256 KB bound or degrades per D5 with the applicable case stated.
+ 5. **(brief #5)** `~/.claude/skills/agentcraft-handoff/` is removed on the operator machine, and the uninstall step (dual-shell), the `--prune` warning, and the AgentCraft-may-restore-it caveat are recorded in tracked files (`SKILL.md` harness-neutral + `AGENTS.md` literal), not in gitignored `CLAUDE.md`.
+ 6. **(brief #6)** VHS-28's own done-when #1, #2, #4 are satisfied by items 1–3; its #3 is satisfied by adoption-via-rewrite, recorded as D1 and reflected in the AGENTS.md entry.
+@@ -370,7 +398,8 @@
+ ## Out of scope
+ 
+ - **Solving the "referenced file(s) not found" false positive.** No path-classification logic (D7).
+-- **Parsing markdown** (D0). No fence/inline-span/thematic-break/setext handling, no content-length measurement, no third-party or vendored parser.
++- **Parsing markdown** (D0). No fence/inline-span/thematic-break/setext handling, no third-party or vendored parser.
++- **The `incomplete` verdict and any content-length measurement** (D0). The verdict vocabulary is `READY` / `NEEDS WORK` / `BLOCKED` only.
+ - **Generating a Hermes (or other harness) adapter** — the VHS-16 line.
+ - **Migrating or rewriting existing handoff documents.** They must remain readable (test item 3); they are not touched.
+ - **Preventing AgentCraft from reinstalling its managed skill.** No vendor-managed file is edited.
+@@ -380,6 +409,8 @@
+ 
+ ## Deferred (P2+)
+ 
+-- **Drift roll-up for the human check.** (c)-class additions carrying rationale but not authorized by the brief: D12's `reference/` singular overriding brief:30's literal `references/`; D3's newline-normalization requirement; D4's relocation of the section schema from `reference/handoff-template.md` (brief:30) to `_sections.TEMPLATE_SECTIONS`; D0's removal of the completeness-length check, which narrows the brief's "required sections present **and populated**" (brief:44) to presence-plus-no-placeholder. No (d) items — nothing is a silent addition. **D0 is the one worth a human eye.**
++- **Drift roll-up for the human check.** (c)-class additions carrying rationale but not authorized by the brief: D12's `reference/` singular overriding brief:30's literal `references/`; D3's newline-normalization requirement; D4's relocation of the section schema from `reference/handoff-template.md` (brief:30) to `_sections.TEMPLATE_SECTIONS`; and **D0's removal of the completeness-length check**. No (d) items — nothing is a silent addition.
++
++  **D0 is the item requiring explicit human authorization, and here is exactly what it costs against the brief.** brief:44 does not say "present and populated" (an earlier draft of this entry quoted that phrase; it appears nowhere in the brief). It says: *"Preserve the three distinctions the vendor fix was smoke-tested against: level-3 section with real content → passes; genuinely absent section → still `missing`; level-3 section with 5 characters → still `incomplete`."* D0 deletes the third distinction and the `incomplete` verdict with it, so brief done-when #3's "the three heading distinctions" becomes two (found / missing). D0 also supersedes brief:42's section-terminator-scan requirement and brief:29's `score`. The *direction* is authorized — the brief's own § Open questions asks whether to keep the numeric threshold "or replace it with a pass/fail on required-sections-plus-no-secrets", which is precisely D6+D0, and none of this sits in § Decisions carried forward — but the narrowing is real and is yours to accept.
+ - **edge-cases/F-14 (r2, P3)** — `__pycache__` mirroring through `sync.py` is pre-existing; noted in § Left alone because it interacts with D9's `--prune` warning.
+ - **Corpus sampling note.** Measurements cited as "the five documents" are `MCP Server/.claude/handoffs/`. The wider ecosystem corpus is 23 documents across seven projects; its additional shapes are handled by the name-only rule rather than by fixture.
