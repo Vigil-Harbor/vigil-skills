@@ -111,3 +111,7 @@ and a single line when it does not:
 
 A predecessor with no depth-1 heading, or an empty one, records its filename in
 place of the title rather than an empty line.
+
+The link label is neutralized and the href is percent-encoded, so a hand-named
+predecessor such as `[TODO] notes.md` cannot leave a marker in generated content
+that the author has no way to clear. Both are no-ops for a generated filename.

@@ -23,6 +23,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 GIT_TIMEOUT_SECONDS = 10
 MAX_FILE_ROWS = 10
@@ -251,8 +252,16 @@ def chain_lines(predecessor: Path | None) -> list[str]:
         if len(title) > MAX_PREVIOUS_TITLE_CHARS:
             title = title[: MAX_PREVIOUS_TITLE_CHARS - 1] + "…"
         shown = safe_inline(title)
+    # The filename is a string the author cannot edit either, and nothing stops
+    # a hand-created predecessor from being named `[TODO] notes.md` - which
+    # would trip the whole-document marker scan on a fully written handoff,
+    # unclearable without editing generated content. The label is neutralized
+    # like every other uneditable string; the href is percent-encoded, which
+    # breaks the marker shape *and* keeps the link resolvable. Both are no-ops
+    # for a generated filename, whose slug is already `[a-z0-9-]`.
     return [
-        "- **Continues from**: [{0}](./{0})".format(filename),
+        "- **Continues from**: [{}](./{})".format(
+            neutralize_todo(filename), quote(filename)),
         "  - Previous title: {}".format(shown),
     ]
 

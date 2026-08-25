@@ -5,6 +5,7 @@ test_quoted_handoff_headings_satisfy_presence (test_session_handoff.TestAccepted
 test_chain_round_trip (test_session_handoff.TestChain.test_chain_round_trip) ... ok
 test_fresh_start_line (test_session_handoff.TestChain.test_fresh_start_line) ... ok
 test_hostile_predecessor_title_is_truncated_then_escaped (test_session_handoff.TestChain.test_hostile_predecessor_title_is_truncated_then_escaped) ... ok
+test_marker_shaped_predecessor_filename_is_clearable (test_session_handoff.TestChain.test_marker_shaped_predecessor_filename_is_clearable) ... ok
 test_predecessor_without_a_usable_h1_falls_back_to_the_filename (test_session_handoff.TestChain.test_predecessor_without_a_usable_h1_falls_back_to_the_filename) ... ok
 test_bom_document_validates (test_session_handoff.TestEncoding.test_bom_document_validates) ... ok
 test_crlf_document_validates_with_zero_missing (test_session_handoff.TestEncoding.test_crlf_document_validates_with_zero_missing) ... ok
@@ -58,7 +59,7 @@ test_short_generic_value_is_fully_masked (test_session_handoff.TestVerdictMatrix
 test_unfilled_placeholder_is_needs_work (test_session_handoff.TestVerdictMatrix.test_unfilled_placeholder_is_needs_work) ... ok
 
 ----------------------------------------------------------------------
-Ran 57 tests in 0.891s
+Ran 58 tests in 0.861s
 
 OK
 
@@ -79,6 +80,7 @@ test_quoted_handoff_headings_satisfy_presence (test_session_handoff.TestAccepted
 test_chain_round_trip (test_session_handoff.TestChain.test_chain_round_trip) ... ok
 test_fresh_start_line (test_session_handoff.TestChain.test_fresh_start_line) ... ok
 test_hostile_predecessor_title_is_truncated_then_escaped (test_session_handoff.TestChain.test_hostile_predecessor_title_is_truncated_then_escaped) ... ok
+test_marker_shaped_predecessor_filename_is_clearable (test_session_handoff.TestChain.test_marker_shaped_predecessor_filename_is_clearable) ... ok
 test_predecessor_without_a_usable_h1_falls_back_to_the_filename (test_session_handoff.TestChain.test_predecessor_without_a_usable_h1_falls_back_to_the_filename) ... ok
 test_bom_document_validates (test_session_handoff.TestEncoding.test_bom_document_validates) ... ok
 test_crlf_document_validates_with_zero_missing (test_session_handoff.TestEncoding.test_crlf_document_validates_with_zero_missing) ... ok
@@ -170,6 +172,6 @@ test_watch_state_atomic_singleflight (test_talaria_watch.TestTalariaWatch.test_w
 test_watch_transitions (test_talaria_watch.TestTalariaWatch.test_watch_transitions) ... ok
 
 ----------------------------------------------------------------------
-Ran 101 tests in 6.070s
+Ran 102 tests in 6.164s
 
 OK

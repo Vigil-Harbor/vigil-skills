@@ -23,6 +23,7 @@ import unittest
 from datetime import datetime as real_datetime
 from pathlib import Path
 from unittest import mock
+from urllib.parse import unquote
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -55,6 +56,20 @@ def load_creator():
 
 def load_validator():
     return load_script(SCRIPTS_DIR / "validate_handoff.py", "session_handoff_validate_under_test")
+
+
+def write_text(path: Path, text: str, encoding: str = "utf-8",
+               newline: str = "\n") -> Path:
+    """Write text with explicit newline translation.
+
+    `Path.write_text()` only grew a `newline` parameter in 3.10, and AGENTS.md
+    declares a Python 3.8 floor — so go through `open()`, which has always had
+    one. Without this the suite does not import on the oldest supported
+    interpreter.
+    """
+    with open(path, "w", encoding=encoding, newline=newline) as handle:
+        handle.write(text)
+    return path
 
 
 @contextlib.contextmanager
@@ -117,7 +132,7 @@ def init_repo(path: Path, subject: str = "init") -> None:
     git("config", "user.email", "vhs28@example.invalid")
     git("config", "user.name", "VHS-28 Test")
     git("config", "commit.gpgsign", "false")
-    (path / "README.md").write_text("seed\n", encoding="utf-8", newline="\n")
+    write_text(path / "README.md", "seed\n")
     git("add", "README.md")
     git("commit", "-q", "--no-verify", "-m", subject)
 
@@ -142,7 +157,7 @@ class TempDirCase(unittest.TestCase):
     def write(self, name: str, text: str, encoding: str = "utf-8") -> Path:
         path = self.tmp / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding=encoding, newline="")
+        write_text(path, text, encoding=encoding, newline="")
         return path
 
     def handoffs_dir(self, project: Path | None = None) -> Path:
@@ -502,7 +517,7 @@ class TestScaffoldRobustness(TempDirCase):
         path = Path(out.strip())
         text = path.read_text(encoding="utf-8")
         self.assertIn(self.C.NOT_A_REPO, text)
-        path.write_text(fill_markers(self.S, text), encoding="utf-8", newline="\n")
+        write_text(path, fill_markers(self.S, text))
         code, report, _ = run_main(self.V, [str(path)])
         self.assertEqual(code, 0, report)
 
@@ -602,7 +617,7 @@ class TestScaffoldRobustness(TempDirCase):
         path = Path(out.strip())
         text = path.read_text(encoding="utf-8")
         self.assertIn("&#91;TODO] wire up X", text)
-        path.write_text(fill_markers(self.S, text), encoding="utf-8", newline="\n")
+        write_text(path, fill_markers(self.S, text))
         code, report, _ = run_main(self.V, [str(path)])
         self.assertEqual(code, 0, report)
 
@@ -610,7 +625,7 @@ class TestScaffoldRobustness(TempDirCase):
         handoffs = self.handoffs_dir()
         handoffs.mkdir(parents=True)
         prior = handoffs / "2026-01-01-000000-prior.md"
-        prior.write_text("# [TODO] finish the migration\n", encoding="utf-8", newline="\n")
+        write_text(prior, "# [TODO] finish the migration\n")
         code, out, err = run_main(self.C, [
             "after", "--project-path", str(self.tmp),
             "--continues-from", prior.name])
@@ -618,7 +633,7 @@ class TestScaffoldRobustness(TempDirCase):
         path = Path(out.strip())
         text = path.read_text(encoding="utf-8")
         self.assertIn("&#91;TODO] finish the migration", text)
-        path.write_text(fill_markers(self.S, text), encoding="utf-8", newline="\n")
+        write_text(path, fill_markers(self.S, text))
         code, report, _ = run_main(self.V, [str(path)])
         self.assertEqual(code, 0, report)
 
@@ -662,7 +677,7 @@ class TestChain(TempDirCase):
         handoffs.mkdir(parents=True)
         prior = handoffs / "2026-01-01-000000-hostile.md"
         title = "pipes | and `backticks` " + "x" * 200
-        prior.write_text("# " + title + "\n", encoding="utf-8", newline="\n")
+        write_text(prior, "# " + title + "\n")
         block = self.chain_block(self.create("after", "--continues-from", prior.name))
         shown = block[1].split("Previous title: ", 1)[1]
         self.assertIn("|", shown)               # bullets are not table cells
@@ -671,6 +686,34 @@ class TestChain(TempDirCase):
         self.assertLessEqual(len(shown.replace("\\", "")),
                              self.C.MAX_PREVIOUS_TITLE_CHARS)
 
+    def test_marker_shaped_predecessor_filename_is_clearable(self):
+        # Regression for VHS-28 (CodeRabbit, PR #24): the filename is a string
+        # the author cannot edit, and nothing stops a hand-created predecessor
+        # from being named `[TODO] notes.md`. Left raw it survives in both the
+        # link label and the href, so a handoff with all nine section markers
+        # filled still reported NEEDS WORK with nothing left to replace.
+        handoffs = self.handoffs_dir()
+        handoffs.mkdir(parents=True)
+        prior = handoffs / "[TODO] draft notes.md"
+        write_text(prior, "# A perfectly ordinary title\n")
+        path = self.create("after", "--continues-from", prior.name)
+        text = path.read_text(encoding="utf-8")
+
+        # The author replaces the nine section markers, and nothing else.
+        for name in matched_names(self.S):
+            text = text.replace(self.S.todo_marker(name), "written by the author")
+        write_text(path, text)
+
+        validator = load_validator()
+        code, report, _ = run_main(validator, [str(path)])
+        self.assertEqual(code, 0, report)
+
+        # The link still resolves once the href is percent-decoded, which is
+        # what SKILL.md's RESUME step tells the agent to do.
+        block = self.chain_block(path)
+        href = re.search(r"\]\(\./([^)]+)\)", block[0]).group(1)
+        self.assertEqual((handoffs / unquote(href)).resolve(), prior.resolve())
+
     def test_predecessor_without_a_usable_h1_falls_back_to_the_filename(self):
         handoffs = self.handoffs_dir()
         handoffs.mkdir(parents=True)
@@ -678,7 +721,7 @@ class TestChain(TempDirCase):
                  "2026-01-01-000000-empty.md": "# \n\n## Body\n"}
         for name, body in cases.items():
             with self.subTest(name=name):
-                (handoffs / name).write_text(body, encoding="utf-8", newline="\n")
+                write_text(handoffs / name, body)
                 block = self.chain_block(
                     self.create("after-" + name[:10], "--continues-from", name))
                 self.assertEqual(block[1], "  - Previous title: " + name)

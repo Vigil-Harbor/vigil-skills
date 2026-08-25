@@ -87,7 +87,10 @@ section that is genuinely absent is only informational.
    `Continues from` link to a maximum of **5 hops**, tracking resolved absolute
    paths (compared case-insensitively on Windows) so a cycle terminates with a
    note rather than looping.
-   - Prefer the markdown href, resolved relative to the handoffs directory.
+   - Prefer the markdown href, **percent-decoded**, resolved relative to the
+     handoffs directory. Generated filenames are `[a-z0-9-]` and decode to
+     themselves; a hand-named predecessor may carry spaces or brackets, which
+     the href encodes.
    - **If the line carries no href**, take the first backticked or bare path on
      the line — resolving it relative to the handoffs directory when bare, and
      relative to `<project-path>` when it begins `.claude/`.
