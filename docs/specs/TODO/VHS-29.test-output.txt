@@ -1,0 +1,82 @@
+=== VHS-29 test gate — 2026-08-25T19:40:14Z ===
+
+$ python --version
+Python 3.14.3
+
+$ python -m unittest discover -s tests -p 'test_spec_close_log.py' -v
+test_entry_re_ignores_the_format_sentence (test_spec_close_log.TestAnchor.test_entry_re_ignores_the_format_sentence) ... ok
+test_entry_re_rejects_each_narrowing (test_spec_close_log.TestAnchor.test_entry_re_rejects_each_narrowing) ... ok
+test_mid_write_failure_leaves_the_original_and_no_temp (test_spec_close_log.TestAtomicWrite.test_mid_write_failure_leaves_the_original_and_no_temp) ... ok
+test_no_temp_survives_a_successful_run (test_spec_close_log.TestAtomicWrite.test_no_temp_survives_a_successful_run) ... ok
+test_bom_before_a_header_survives_and_the_entry_lands_first (test_spec_close_log.TestBom.test_bom_before_a_header_survives_and_the_entry_lands_first) ... ok
+test_bom_immediately_before_an_entry_heading (test_spec_close_log.TestBom.test_bom_immediately_before_an_entry_heading) ... ok
+test_bom_with_two_headerless_entries (test_spec_close_log.TestBom.test_bom_with_two_headerless_entries) ... ok
+test_change_between_read_and_replace_is_refused (test_spec_close_log.TestConcurrentChange.test_change_between_read_and_replace_is_refused) ... ok
+test_file_appearing_under_a_missing_file_run_is_refused (test_spec_close_log.TestConcurrentChange.test_file_appearing_under_a_missing_file_run_is_refused) ... ok
+test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry (test_spec_close_log.TestDateOrdering.test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry) ... ok
+test_an_unparseable_date_away_from_the_anchor_is_skipped (test_spec_close_log.TestDateOrdering.test_an_unparseable_date_away_from_the_anchor_is_skipped) ... ok
+test_entry_older_than_a_newer_entry_further_down_refuses (test_spec_close_log.TestDateOrdering.test_entry_older_than_a_newer_entry_further_down_refuses) ... ok
+test_impossible_anchor_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_anchor_date_is_refused) ... ok
+test_impossible_entry_date_is_refused (test_spec_close_log.TestDateOrdering.test_impossible_entry_date_is_refused) ... ok
+test_older_entry_above_a_newer_one_refuses (test_spec_close_log.TestDateOrdering.test_older_entry_above_a_newer_one_refuses) ... ok
+test_same_day_entry_still_prepends (test_spec_close_log.TestDateOrdering.test_same_day_entry_still_prepends) ... ok
+test_the_ordering_refusals_report_distinct_reasons (test_spec_close_log.TestDateOrdering.test_the_ordering_refusals_report_distinct_reasons) ... ok
+test_em_dash_survives_and_the_guard_still_matches (test_spec_close_log.TestEmDashRoundTrip.test_em_dash_survives_and_the_guard_still_matches) ... ok
+test_directory_target_exits_two (test_spec_close_log.TestExitOneIsReserved.test_directory_target_exits_two) ... ok
+test_read_only_parent_directory_exits_two (test_spec_close_log.TestExitOneIsReserved.test_read_only_parent_directory_exits_two) ... skipped 'POSIX directory permissions'
+test_entry_lands_after_the_header (test_spec_close_log.TestFreshWiki.test_entry_lands_after_the_header) ... ok
+test_exact_match_does_suppress (test_spec_close_log.TestGuardPrecision.test_exact_match_does_suppress) ... ok
+test_ticket_11_does_not_suppress_ticket_1 (test_spec_close_log.TestGuardPrecision.test_ticket_11_does_not_suppress_ticket_1) ... ok
+test_guard_present_only_in_the_body (test_spec_close_log.TestGuardShape.test_guard_present_only_in_the_body) ... ok
+test_guard_without_trailing_colon (test_spec_close_log.TestGuardShape.test_guard_without_trailing_colon) ... ok
+test_wholly_unsubstituted_guard_names_the_placeholder (test_spec_close_log.TestGuardShape.test_wholly_unsubstituted_guard_names_the_placeholder) ... ok
+test_naive_index_would_split_the_header (test_spec_close_log.TestHeaderCorruption.test_naive_index_would_split_the_header) ... ok
+test_prepends_above_the_newest_entry_and_leaves_the_header_intact (test_spec_close_log.TestHeaderCorruption.test_prepends_above_the_newest_entry_and_leaves_the_header_intact) ... ok
+test_second_run_skips_and_changes_nothing (test_spec_close_log.TestIdempotency.test_second_run_skips_and_changes_nothing) ... ok
+test_documented_form_lands_the_entry (test_spec_close_log.TestInvocationString.test_documented_form_lands_the_entry) ... ok
+test_failing_run_reports_a_nonzero_exit_token (test_spec_close_log.TestInvocationString.test_failing_run_reports_a_nonzero_exit_token) ... ok
+test_file_is_created_with_the_entry_alone (test_spec_close_log.TestMissingFile.test_file_is_created_with_the_entry_alone) ... ok
+test_created_mode_matches_a_plain_open (test_spec_close_log.TestMode.test_created_mode_matches_a_plain_open) ... skipped 'POSIX mode bits'
+test_existing_mode_is_preserved (test_spec_close_log.TestMode.test_existing_mode_is_preserved) ... skipped 'POSIX mode bits'
+test_crlf_entry_on_stdin_produces_no_cr (test_spec_close_log.TestNewlines.test_crlf_entry_on_stdin_produces_no_cr) ... ok
+test_crlf_target_keeps_crlf_except_the_boundary_line (test_spec_close_log.TestNewlines.test_crlf_target_keeps_crlf_except_the_boundary_line) ... ok
+test_lf_file_stays_lf (test_spec_close_log.TestNewlines.test_lf_file_stays_lf) ... ok
+test_stderr_comes_back_as_utf8_with_lf (test_spec_close_log.TestNewlines.test_stderr_comes_back_as_utf8_with_lf) ... ok
+test_agents_md_bullets_read_correctly (test_spec_close_log.TestNoStaleWording.test_agents_md_bullets_read_correctly) ... ok
+test_missing_requires_backlog_no_longer_names_spec_close (test_spec_close_log.TestNoStaleWording.test_missing_requires_backlog_no_longer_names_spec_close) ... ok
+test_skill_md_has_no_append_or_grep_f (test_spec_close_log.TestNoStaleWording.test_skill_md_has_no_append_or_grep_f) ... ok
+test_h3_entries_refuse (test_spec_close_log.TestReadSideRefusal.test_h3_entries_refuse) ... ok
+test_heading_like_line_above_the_anchor_refuses (test_spec_close_log.TestReadSideRefusal.test_heading_like_line_above_the_anchor_refuses) ... ok
+test_normal_shape_still_prepends (test_spec_close_log.TestReadSideRefusal.test_normal_shape_still_prepends) ... ok
+test_short_date_entries_refuse (test_spec_close_log.TestReadSideRefusal.test_short_date_entries_refuse) ... ok
+test_the_two_refusals_report_distinct_reasons (test_spec_close_log.TestReadSideRefusal.test_the_two_refusals_report_distinct_reasons) ... ok
+test_lint_is_clean_including_warns (test_spec_close_log.TestSkillDeclaration.test_lint_is_clean_including_warns) ... ok
+test_requires_block_matches_the_tool_use_notes (test_spec_close_log.TestSkillDeclaration.test_requires_block_matches_the_tool_use_notes) ... ok
+test_devnull_is_refused (test_spec_close_log.TestStdin.test_devnull_is_refused) ... ok
+test_tty_stdin_names_the_heredoc (test_spec_close_log.TestStdin.test_tty_stdin_names_the_heredoc) ... ok
+test_whitespace_only_entry_is_refused (test_spec_close_log.TestStdin.test_whitespace_only_entry_is_refused) ... ok
+test_fresh_and_created_end_in_exactly_one_newline (test_spec_close_log.TestWhitespaceDiscipline.test_fresh_and_created_end_in_exactly_one_newline) ... ok
+test_no_leading_separator_on_an_empty_file (test_spec_close_log.TestWhitespaceDiscipline.test_no_leading_separator_on_an_empty_file) ... ok
+test_no_leading_separator_when_nothing_precedes_the_anchor (test_spec_close_log.TestWhitespaceDiscipline.test_no_leading_separator_when_nothing_precedes_the_anchor) ... ok
+test_normal_outcome_leaves_a_missing_trailing_newline_alone (test_spec_close_log.TestWhitespaceDiscipline.test_normal_outcome_leaves_a_missing_trailing_newline_alone) ... ok
+test_one_blank_line_on_each_side_in_the_normal_outcome (test_spec_close_log.TestWhitespaceDiscipline.test_one_blank_line_on_each_side_in_the_normal_outcome) ... ok
+test_second_close_against_a_bom_prefixed_created_file (test_spec_close_log.TestWhitespaceDiscipline.test_second_close_against_a_bom_prefixed_created_file) ... ok
+test_second_close_against_a_created_file (test_spec_close_log.TestWhitespaceDiscipline.test_second_close_against_a_created_file) ... ok
+test_malformed_entry_headings_are_refused (test_spec_close_log.TestWriteSideHeadingValidation.test_malformed_entry_headings_are_refused) ... ok
+test_well_formed_entry_passes (test_spec_close_log.TestWriteSideHeadingValidation.test_well_formed_entry_passes) ... ok
+
+----------------------------------------------------------------------
+Ran 60 tests in 4.681s
+
+OK (skipped=3)
+
+$ python lint.py --strict skills/spec-close/SKILL.md
+lint: 0 error(s), 0 warning(s)
+exit=0
+
+$ python -m unittest discover -s tests -p 'test_*.py'
+...................................................................................s............ss................................................................
+----------------------------------------------------------------------
+Ran 162 tests in 10.869s
+
+OK (skipped=3)

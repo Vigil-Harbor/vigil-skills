@@ -1,7 +1,12 @@
 ---
 name: spec-close
-description: Close a shipped spec in one pass — diff it against shipped code (reconciliation report), decompose into wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from TODO/ to DONE/, and append to wiki log.md. Plane state gates full-close vs partial-close; --report-only writes just the report, --partial archives without wiki decomposition. Supersedes the former two-step reconcile/retire flow. Pair with /spec-cycle and /ship-spec for the full spec lifecycle.
+description: Close a shipped spec in one pass — diff it against shipped code (reconciliation report), decompose into wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from TODO/ to DONE/, and prepend an entry to the wiki's newest-first log.md. Plane state gates full-close vs partial-close; --report-only writes just the report, --partial archives without wiki decomposition. Supersedes the former two-step reconcile/retire flow. Pair with /spec-cycle and /ship-spec for the full spec lifecycle.
 user_invocable: true
+requires:
+  shell: true
+  filesystem: [read, write]
+  network: true
+  services: [issue-tracker?, shared-memory?]
 ---
 
 Invoked as:
@@ -23,7 +28,7 @@ The skill preserves the read-only-analysis-then-confirmed-mutations split intern
    `Note: Spec file is untracked (gitignored). Archive step will use mv + git add instead of git mv.`
    Continue regardless — the file exists on disk, which is sufficient.
 3. Read `<project_root>/CLAUDE.md`. Resolve the wiki path (resolve username-bearing paths per spec-cycle convention: replace the username segment with the current user — Windows: `$env:USERNAME`; Unix: `$USER` — and re-check). Set `wiki_available` = the wiki directory exists. A missing wiki here is a **warning**, not a halt — Phase 1 applies the per-mode behavior (rows 7–8).
-4. Read `~/.claude/skills/ship-spec/states.json` (`~/.claude/` on Unix; `%USERPROFILE%\.claude\` on Windows). Handle failure modes — all warn and set `force_partial_close = true` (Plane lookups cannot proceed without `project_id`):
+4. Read `<config-dir>/skills/ship-spec/states.json`, where `<config-dir>` is `$CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude/` on Unix and `%USERPROFILE%\.claude\` on Windows (the same resolution order `sync.py` installs with, and the one Phase 5 step 4 resolves the log script through). Handle failure modes — all warn and set `force_partial_close = true` (Plane lookups cannot proceed without `project_id`):
    - **File missing or unreadable:** Warn: `states.json missing or unreadable — skipping Plane state gate, entering partial-close mode.`
    - **Invalid JSON:** Warn: `states.json contains invalid JSON — skipping Plane state gate, entering partial-close mode.`
    - **Prefix not found:** Warn: `Project prefix "<project_prefix>" not found in states.json. Skipping Plane state gate — entering partial-close mode.`
@@ -201,7 +206,7 @@ Classify applicability:
 
 If the reconciliation report has no `## Wiki-ready` section (sed produces empty output), treat all categories as applicable and fall through to normal derivation.
 
-Note: `log.md` is not included in the coverage model. The close log entry is a distinct event from the merge log entry that wiki-after-merge writes. Phase 3c always compiles a close log entry, and Phase 5's idempotency guard (`grep -F "close | <PROJECT> — <TICKET-ID>:"`) prevents duplicates while allowing the close entry to coexist with wiki-after-merge's merge entry.
+Note: `log.md` is not included in the coverage model. The close log entry is a distinct event from the merge log entry that wiki-after-merge writes. Phase 3c always compiles a close log entry, and Phase 5's idempotency guard (`scripts/prepend_log_entry.py --guard "close | <PROJECT> — <TICKET-ID>:"`) prevents duplicates while allowing the close entry to coexist with wiki-after-merge's merge entry.
 
 Note: `filemap.md` is intentionally **out of scope** for spec-close. File add/delete/move deltas are `/wiki-after-merge`'s responsibility — spec-close derives close-event wiki entries (comprehension, decisions, state.md, log.md) but never edits the filemap. If this close added or removed files, run `/wiki-after-merge <merge-sha>` from the wiki (or update `filemap.md` by hand) to capture them.
 
@@ -306,7 +311,7 @@ Archive (TODO/ → DONE/<TICKET-ID>/, ticket prefix stripped):
   - <TICKET-ID>.reconciliation.md → reconciliation.md
   - <TICKET-ID>.reviews/ → reviews/ (N files)
 
-Log.md append:
+Log.md entry (prepended):
   ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <title>
   <summary>
 
@@ -340,12 +345,58 @@ All post-report file operations happen here, after user approval.
    - Tracked files: `git mv <source> <destination>`
    - Untracked files: `mv <source> <destination>` then `git add <destination>`
 
-4. **Log.md** (skipped when Phase 1 row 8 dropped it). Append the approved entry to `<wiki_root>/log.md`. Idempotency: `grep -F "close | <PROJECT> — <TICKET-ID>:" <wiki_root>/log.md` first; skip if already present. The trailing colon is load-bearing — without it, closing `<PROJECT>-1` after `<PROJECT>-11` would false-match and silently skip the entry. If `log.md` does not exist (fresh wiki), treat as not-present and create the file on append. `<PROJECT>` is `project_prefix` from Phase 0 step 1. This `close |`-prefixed match distinguishes close entries from wiki-after-merge's merge-event entries (which also contain the ticket ID). Format:
+4. **Log.md** (skipped when Phase 1 row 8 dropped it). Write the approved entry to the **top** of `<wiki_root>/log.md`, above the newest existing dated entry — the file is newest-first, and an entry at the bottom is out of contract. The byte work belongs to `scripts/prepend_log_entry.py`, which owns anchor location, the idempotency guard, and an atomic write; this step supplies the entry and reads the result. `<PROJECT>` is `project_prefix` from Phase 0 step 1. Format:
    ```markdown
    ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <spec title> (archived from TODO/)
 
    <1-3 sentences: what the spec covered, reconciliation status, wiki entries created.>
    ```
+
+   **The guard literal is `close | <PROJECT> — <TICKET-ID>:`**, built here and passed as `--guard`. Both halves are load-bearing: the `close |` prefix distinguishes close entries from wiki-after-merge's merge-event entries (which also contain the ticket ID), and the trailing colon keeps closing `<PROJECT>-1` after `<PROJECT>-11` from false-matching and silently skipping the entry. The script refuses a guard that lacks the colon, one that still contains `<` or `>` (an unsubstituted template, which would otherwise land a literal-placeholder entry at position 1), and one absent from the entry's first line.
+
+   **Resolve the script, the log path and the interpreter first.** The script path resolves relative to the **installed skill directory**, never relative to `project_root` — /spec-close runs with cwd set to the *target* repo, which is normally not the repo this skill is authored in:
+
+   ```bash
+   SCRIPT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-close/scripts/prepend_log_entry.py"
+   LOGPATH="<wiki_root>/log.md"
+   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+   ```
+
+   All three assignments are required — the invocation reads `"$PY"`, and an omitted assignment expands to the empty string and fails at the shell. The interpreter probe tests *executability*, not presence: `python` is absent from `PATH` on a stock Debian/Ubuntu host, and on Windows `python3.exe` can be an App Execution Alias stub that exits without reading stdin. Write `$HOME` / `$CLAUDE_CONFIG_DIR`, never `~` or `%USERPROFILE%` — bash does not expand a tilde inside the double quotes every later use requires, so a tilde-rendered path makes the pre-check below report not-found for an installed script.
+
+   **Pre-check, then invoke.** A missing script and a refusing script both exit 2, so the install hint cannot be inferred from the code afterwards:
+
+   ```bash
+   test -f "$SCRIPT" || echo "log.md NOT written: prepend_log_entry.py not found at $SCRIPT — install with 'python sync.py install'"
+   ```
+
+   **If that check reports not-found, the invocation block below is skipped entirely** — do not run it. There is no `prepend_log_entry_exit` to read in that case, so there is nothing to branch on; report the not-found line above and go straight to step 5. Running it anyway would print the install hint and then a second, contradictory failure from the interpreter (`can't open file …`, exit 2) for one underlying cause.
+
+   ```bash
+   if "$PY" "$SCRIPT" "$LOGPATH" --guard 'close | <PROJECT> — <TICKET-ID>:' <<'PREPEND_LOG_ENTRY_EOF'
+   ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <title>
+
+   <body>
+   PREPEND_LOG_ENTRY_EOF
+   then rc=0; else rc=$?; fi
+   echo "prepend_log_entry_exit=$rc"
+   ```
+
+   Four details in that block are load-bearing, and three of them fail silently or misleadingly rather than loudly:
+   - **Single-quote the guard.** It contains ` | ` by construction; unquoted, bash splits it into a pipeline, the script receives `--guard close`, and the shell then tries to run the ticket prefix as a command.
+   - **Double-quote both paths, expanded.** An unquoted Windows path has its backslashes consumed as escapes, yielding a *relative* path that does not exist — which takes the missing-file outcome, creates a stray `log.md` in the target repo's cwd, and exits 0. Python accepts `/` separators on Windows.
+   - **Keep the `PREPEND_LOG_ENTRY_EOF` delimiter.** Quoting a heredoc suppresses *expansion*, not *termination*: a body line equal to the delimiter ends the entry there and hands the remainder to the shell as commands, in a tree step 3 has already moved files in. The truncated entry still validates and still lands, reporting success. Close bodies are hundreds of words of composed prose, so `EOF` and `ENTRY` are reachable; this delimiter is not.
+   - **Capture the exit code through the `if`.** A bare `"$PY" … ; echo "$?"` loses the value under a `set -e` shell on exactly the two paths that matter. `$?` after `fi` is **always 0** — both branches end in an assignment, and a compound command returns the status of its last command — so it is not a shorthand for this.
+
+   **Branch on the echoed integer**, never on the harness's success/failure signal: a harness reports only pass/fail, so 1 and 2 both read as failure and a correctly-skipped idempotent re-run — an expected path, per the *Interrupted execute* and *Partial-then-full re-run* failure modes below — would be reported as a write that did not happen.
+
+   | `prepend_log_entry_exit` | Meaning | Report in the completion block |
+   |---|---|---|
+   | 0 | Entry written; stdout carries `prepend_log_entry_outcome=prepended`, `=fresh`, or `=created` | On `=prepended`: `Prepended: log.md`. On `=fresh` (no dated entry existed, so the entry went at the end of the file) or `=created` (`log.md` did not exist and now holds this entry alone): surface the script's stderr notice **verbatim, in place of** that line, so a bottom placement or a file creation is never reported as a prepend. Branch on the token, never on whether stderr was empty. |
+   | 1 | **Only:** the guard is already present in `log.md`; nothing written | `log.md: entry already present — skipped` |
+   | 2 — **and any other nonzero value not listed above** | Everything else: input validation; a populated `log.md` the anchor cannot place an entry in — no dated entry it can describe, a heading-like line sitting *above* the newest dated one, an entry dated *older* than the newest one already in the file, or a date in either that is not a real calendar day (all refusals, never a silent misplacement); a concurrent change; or any I/O failure. A value the script itself never returns comes from the shell rather than the script — **127** being the one to expect: it means `$PY` resolved to nothing on `PATH`, *not* that the script is missing (a missing script is the interpreter's `can't open file …`, which is exit 2). Treat every nonzero value the same way. | Surface stderr verbatim: `log.md NOT written: <stderr>`, then the recovery below |
+
+   **A failed log write never aborts the close.** Step 3 has already moved every spec artifact from `TODO/` to `DONE/`, across two repos neither of which is committed. On **any** nonzero exit — and on the not-found pre-check above, whose invocation is skipped — continue to step 5 and print the completion block, with `log.md NOT written: <stderr>` and the recovery: re-run `/spec-close <DONE-path>`, which the guard makes idempotent.
 
 5. **Do not commit.** The skill writes to two separate repos (target repo for archive, wiki repo for entries). Neither is committed — the user controls commit timing.
 
@@ -362,13 +413,15 @@ Wiki (<wiki_root>):
   Created: decisions/YYYY-MM-DD-<slug>.md
   Created: comprehension/YYYY-MM-DD-<slug>.md
   Updated: projects/<project>/state.md
-  Appended: log.md
+  <log.md line, exactly one, per the step 4 exit table — `Prepended: log.md` only on `outcome=prepended`>
   Status: uncommitted — review with `git diff --stat` then commit.
 
 Suggested commits:
   (in target repo)  git add docs/specs/ && git commit -m "close(<ticket-lower>): archive spec to DONE/"
   (in wiki)         git add -A && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 ```
+
+The `log.md` line is the step 4 table's third column verbatim, and never `Prepended:` on a path that did not prepend: the script's stderr notice on `outcome=fresh` or `=created`, `log.md: entry already present — skipped` on exit 1, and `log.md NOT written: <stderr>` on any other nonzero exit or on the skipped not-found pre-check. A close that reports a prepend over a bottom-placed, unwritten or absent entry sends the operator looking at the top of a file that does not hold it.
 
 For partial-close, omit the wiki block (or show only the log.md line when it was written) and the reconciliation line unless a pre-existing report was archived.
 
@@ -377,8 +430,8 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 - Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data.
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup.
 - plane-proxy's state-list and work-item-lookup capabilities (e.g., `mcp__plane__list_states` and `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalents in your host's Plane integration) for the mode gate.
-- Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `grep -F` (idempotency check), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
-- Write for the reconciliation report, wiki entries, and log.md. Edit for state.md updates (surgical line replacement).
+- Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
+- Write for the reconciliation report and wiki entries. Edit for state.md updates (surgical line replacement). `log.md` is deliberately **not** a Write target: `scripts/prepend_log_entry.py` owns it, which makes the duplicate check and the insert one operation rather than a check this skill could read and then write anyway.
 - **Mutation boundary:** no file mutation before the Phase 4 confirmation except the reconciliation report (generated audit-trail output, Phase 2c). All other writes — wiki entries, state.md, archive moves, log.md — happen in Phase 5, after explicit user approval.
 - This skill never commits. Do not push. Do not open PRs.
 
@@ -393,7 +446,7 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 - **Wiki path missing.** Per-mode behavior (Phase 1 rows 7–8): full-close prompts partial-or-abort before any reconciliation work; partial-close degrades to archive-only with a printed notice. Never discovered mid-execute.
 - **Interrupted execute.** If Phase 5 dies mid-sequence (a move fails, user interrupts), re-run `/spec-close` with the **DONE** path (`docs/specs/DONE/<TICKET-ID>/spec.md`). Duplicate detection, the log idempotency guard, and the skip-if-source-missing archive steps make re-execution idempotent.
 - **Partial-then-full re-run.** A prior partial-close wrote a `close |` log entry; the later full-close's idempotency guard matches it and skips a second entry by design — the wiki-harvest event is visible in the created entry files and state.md, not in a second log line.
-- **Log-guard encoding.** The `grep -F` idempotency pattern depends on the literal em dash (`—`) in the entry format; tools that normalize it to `--`/`-` will break dedup and produce duplicate entries on re-run.
+- **Log-guard encoding.** The `--guard` substring compare depends on the literal em dash (`—`) in the entry format; tools that normalize it to `--`/`-` will break dedup and produce duplicate entries on re-run. The script pins UTF-8 on every file open, on stdin, and on both output streams, which is what makes that compare reliable on platforms whose default encoding is not UTF-8.
 - **`state.md` evidence incomplete.** Skip the `state.md` update, warn, and suggest `/wiki-state-update` as a follow-up. Don't block the rest of the close.
 - **Untracked spec files.** Some spec artifacts may not be committed yet. Use `mv` + `git add` instead of `git mv` for untracked files. Detect via `git ls-files --error-unmatch <file> 2>/dev/null`.
 - **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print explicit commit suggestions for both repos. The user controls when and how to commit.
