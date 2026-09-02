@@ -1,5 +1,6 @@
 ---
 name: spec-reviewer-conventions
+model: opus
 description: Review an engineering spec for adherence to repo conventions and prior decisions. Reads CLAUDE.md, the project wiki (if any), and greps the codebase for established patterns. Flags premature abstractions, contradictions with prior decisions, and unneeded backwards-compat shims. Returns severity-ranked findings with a machine-parseable STATUS line.
 ---
 
