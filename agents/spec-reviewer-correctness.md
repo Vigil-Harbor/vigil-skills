@@ -1,5 +1,6 @@
 ---
 name: spec-reviewer-correctness
+model: opus
 description: Review an engineering spec for correctness — does the proposed implementation actually solve the problem the brief states? Verifies every claim about current code by reading the actual files. Surfaces internal contradictions, references to nonexistent symbols, unsatisfied acceptance criteria, and stale anchors. Returns severity-ranked findings with a machine-parseable STATUS line.
 ---
 

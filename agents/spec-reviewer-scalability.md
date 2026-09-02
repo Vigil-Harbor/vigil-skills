@@ -1,5 +1,6 @@
 ---
 name: spec-reviewer-scalability
+model: opus
 description: Review an engineering spec for scalability — does the design hold at the brief's declared target N? Probes algorithmic complexity, per-item work that should be batched, unbounded accumulation, per-instance state collision, uncapped fan-out, single-valued config where a power user needs many, and operational scale (cost/latency/token budget). Dispatched only when the brief declares scale a factor. Returns severity-ranked findings with a machine-parseable STATUS line.
 ---
 
