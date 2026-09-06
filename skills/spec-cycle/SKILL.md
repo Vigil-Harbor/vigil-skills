@@ -472,6 +472,7 @@ Remaining P0/P1:
   - <round 4 correctness P0/P1 titles>
   - <round 4 edge-cases P0/P1 titles>
   - <round 4 conventions P0/P1 titles>
+  - <round 4 scalability P0/P1 titles — only when scale_lens == on for this invocation>
 
 Spec at: docs/specs/TODO/<TICKET-ID>.spec.md
 Reviews at: docs/specs/TODO/<TICKET-ID>.reviews/
@@ -480,9 +481,79 @@ What would you like to do?
 1. Patch manually and re-run /spec-cycle
 2. Skip /ship-spec and ship by hand
 3. Treat as scoped-down — narrow the brief
+4. Grill the remaining findings — a bounded interview scoped to the titles above; decisions route through 2e revise (see 2f-i)
 ```
 
-Wait for the user.
+Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once, then re-renders this menu without option 4.
+
+### 2f-i. Option 4 — grill the remaining findings
+
+1. **Seed.** Read the round-4 reports on disk (`correctness.md`, `edge-cases.md`,
+   `conventions.md`, plus `scalability.md` only when `scale_lens == on` for this
+   invocation — a `scalability.md` present in `round-4/` under `scale_lens == off`
+   is stale from a prior on-run and is ignored, matching the closure-read guard in
+   § Failure modes) and extract each remaining P0/P1 finding: id, severity, title,
+   body. Nothing else enters the seed — the grill is finding-scoped, not a
+   re-interview of the design.
+
+   **Not grillable:** a report that is missing or unparseable, any synthetic
+   `missing STATUS line` P0 (2b's closure-manifest form), and any 2c
+   dispatch-failure stub (a lens report whose body records a dispatch failure
+   rather than findings). These are dispatch failures, not design questions.
+   Exclude them from the seed and list them in step 5 as
+   `not grillable: <lens>/<id> — reviewer report unavailable; option 1 re-dispatches that lens.`
+   They stay P0/P1.
+
+   **If the seed is empty after these exclusions, do not invoke `grilling`:** print
+   `nothing grillable — every remaining finding is a dispatch failure; option 1 re-dispatches the affected lens(es)`,
+   write nothing to `grill.md`, and re-render the menu with options 1–3.
+
+2. **Run.** Invoke the `grilling` skill (Claude Code: through the skill-invocation
+   tool, or the equivalent in your host) with that seed, `altitude` = "a decision
+   that dispositions one of the listed findings", and the default bounds
+   (`round_cap` 3, `question_cap` 7). The interview blocks on the operator each
+   round. If this host cannot invoke a nested skill, print
+   `grilling is unavailable in this host` and re-render the menu with options 1–3.
+
+3. **Persist.** Append the returned Grill summary verbatim to
+   `docs/specs/TODO/<TICKET-ID>.reviews/round-4/grill.md`, preceded by `---` if the
+   file already exists and by the header line
+   `# Grill <k> — <TICKET-ID> round 4 — <ISO datetime> — findings: <ids>`, where
+   `<k>` is one more than the number of lines matching `^# Grill ` already in the
+   file (anchored — the `## Grill summary` line inside each block is not one).
+   Write it read-modify-tmp-rename via a uniquely named dot-prefixed temp in the
+   same directory (`.grill.md.<random>.tmp`). Never overwrite an existing
+   `grill.md`. This is the caller's write, not the primitive's — `grilling` has no
+   write capability. `/spec-close` archives the whole `<TICKET-ID>.reviews/` tree,
+   so the file travels to `DONE/` unchanged and the reconciliation report can see
+   why the spec moved after the halt. Concurrent invocations sharing one reviews
+   tree are outside the supported flow: the append is last-writer-wins over the
+   whole file and nothing detects a lost concurrent grill; the `<k>` counter makes
+   any duplicate visible in the audit trail after the fact.
+
+4. **Apply.** For each **Settled** item, edit the spec in place under the 2e
+   rounds-1–3 rules (address the finding per the decision; the spec must stand on
+   its own at the end). The round-4 FROZEN/REWRITE protocol is not re-run — it
+   already ran before the halt. A Settled decision that cannot be discharged by an
+   in-place spec edit (e.g., "narrow the brief" — that is menu option 3's job) is
+   **not applied**: report it in step 5 as `deferred to option 3: <finding id>`,
+   leave the finding P0/P1, and record it in `grill.md` as Settled-but-unapplied.
+   **Open** and **not grillable** items are not touched; they remain P0/P1.
+
+5. **Re-render.** Print
+   `grill applied: dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids> — docs/specs/TODO/<TICKET-ID>.reviews/round-4/grill.md`,
+   then the 2f halt block again with options 1–3 only, each dispositioned title
+   suffixed ` — grilled (spec edited; not re-reviewed)` so the operator can see what
+   moved without opening `grill.md`. The round counter is still 4; no reviewer is
+   re-dispatched; `total_p0p1` is unchanged because no reviewer has re-verified —
+   the honest path to green is option 1.
+
+2f-i never re-dispatches reviewers, never increments the round counter, never
+changes the gate formula, never overwrites a prior `grill.md`, never edits the
+brief, and runs at most once per invocation. That last bound is held in context:
+this skill records no preflight timestamp, so no on-disk signal distinguishes this
+invocation's grill from a prior one, and an existing `# Grill` header this session
+did not write does not withhold option 4.
 
 ### 2g. Post-green polish (bounded)
 
@@ -573,6 +644,7 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
 - Bash for `git fetch upstream` / `git fetch origin` (ref updates only, bounded by timeout), `git log` / `git remote` / `git rev-list` / `git rev-parse` / `git symbolic-ref` / `git merge-base --is-ancestor` / `sed` (read-only), `mkdir` for review subdirs, and — the lone git-level mutation of existing tracked files in this skill — `git merge --ff-only origin/<branch>`, run only after explicit user confirmation in Phase 0 step 5e.
 - Agent calls (parallel) for the reviewers (three, or four when scale is declared).
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup (tags: [plane_work_item, <TICKET-ID>], namespace from states.json). Falls back to brief alone on zero results or error response.
+- Skill invocation of `grilling` — only from 2f-i, only after the operator picks option 4.
 - Do not commit. Do not push. Do not open PRs. That's `/ship-spec`'s job.
 
 ## Failure modes to watch for
@@ -618,3 +690,7 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
   `scalability.md` in `round-<N-1>/` when `scale_lens == off` — so a stale
   report from a prior on-run can never inject a phantom finding into an
   off-run's gate.
+- **2f-i grill hits its cap, the operator stops, or the host cannot invoke a
+  nested skill.** Open and not-grillable findings stay P0/P1; `grill.md` records
+  them as Open (append-only); the menu re-renders with 1–3. The grill cannot make
+  the spec green on its own.

@@ -1,0 +1,673 @@
+================================================================================
+VHS-32 — /ship-spec test output
+Spec:          docs/specs/TODO/VHS-32.spec.md  (GREEN at round 4)
+Test command:  N/A  (markdown / prompt-only change — no code ships)
+Gate:          the spec's § Test plan — a 14-row review checklist plus
+               authoring dry-runs A–D
+Captured:      2026-09-06, branch feat/vhs-32-spec-brief-grilling,
+               worktree cut from origin/main @ e193b8e
+================================================================================
+
+PART 1 — REVIEW CHECKLIST (14 rows)
+================================================================================
+
+--- Row 1: python lint.py --strict → exit 0, zero ERROR, missing-requires WARN
+--- count still 2 (review-pr, ship-spec) --------------------------------------
+
+$ python lint.py --strict
+lint: 0 error(s), 2 warning(s)
+  skills\review-pr\SKILL.md:  WARN [missing-requires] line 1: no requires: declaration
+  skills\ship-spec\SKILL.md:  WARN [missing-requires] line 1: no requires: declaration
+exit=0
+
+Baseline before the change was identical (0 errors, the same 2 warnings), so the
+three new requires: blocks all parse and no new WARN was introduced.
+PASS
+
+--- Row 2: no bare harness tool name as an operative imperative ----------------
+
+$ grep -nE '\b(Explore|Agent|Skill|general-purpose)\b' \
+      skills/grilling/SKILL.md skills/grill-me/SKILL.md skills/spec-brief/SKILL.md
+
+skills/grilling/SKILL.md:70    — the D2 sentence. `Explore` sits inside
+    "(Claude Code: the `Explore` subagent type with an Opus model override, or
+    the equivalent narrowest read-only agent class in your host)" → contract §4
+    case 2 (tagged example). "never a general-purpose agent" is the prohibition
+    itself, which is the operative content.
+skills/grilling/SKILL.md:142  — under the `## Tool-use notes` heading (case 3).
+    Verified: awk reports the nearest preceding `## ` heading as
+    "## Tool-use notes".
+skills/spec-brief/SKILL.md:78 — the same D2 sentence, echoed verbatim in
+    Phase 1 step 4. Same case-2 parenthetical, same prohibition.
+skills/spec-brief/SKILL.md:173,174 — "Agent for the read-restricted
+    exploration…" / "Skill for `grilling`." Both under the `## Tool-use notes`
+    heading (case 3). Verified by the same awk probe.
+
+Zero hits elsewhere; grill-me/SKILL.md has none at all (its nested-invocation
+sentence reads "invoke it through the skill-invocation tool, or the equivalent
+in your host").
+PASS
+
+--- Row 3: no model: frontmatter in any new file -------------------------------
+
+$ grep -c 'model:' skills/grilling/SKILL.md skills/grill-me/SKILL.md skills/spec-brief/SKILL.md
+skills/grilling/SKILL.md:0
+skills/grill-me/SKILL.md:0
+skills/spec-brief/SKILL.md:0
+PASS
+
+--- Row 4: grilling carries the verbatim contract lines ------------------------
+
+grep -cF, one per required string, against skills/grilling/SKILL.md:
+
+  1  This skill is invoked only by `/grill-me`, `/spec-brief`, or `/spec-cycle` 2f-i.   (1.0 guard)
+  1  make no mutations of any kind                                                      (D2 sentence)
+  1  **Recommend B**                                                                    (fork block)
+  1  It is never a default that carries by silence                                      (1.4)
+  3  revised-after-cap (+1 round)                                                        (1.1 / 1.7 / hand-off header)
+  4  empty-seed                                                                          (1.2, 1.7, hand-off, failure modes)
+  1  ### Settled
+  1  ### Open frontier
+  1  ### Facts established
+  1  Should the origin-sync check offer a fast-forward, or only warn?                    (S4 table row 1)
+  1  exactly one additional round                                                        (1.1 post-cap round)
+
+Bounds with their defaults are present as an explicit three-item list ("Round
+cap — default 3", "Per-round question cap — default 7", "Altitude fence"), with
+the shared cap stated as "questions and fact requests together".
+
+$ grep -n '^## \(Tool-use notes\|Failure modes\)$' skills/grilling/SKILL.md
+140:## Tool-use notes
+146:## Failure modes
+Real `##` headings, not bold labels — the shape lint.py:57,216-217 keys on.
+PASS
+
+--- Row 5: user_invocable values and description hygiene -----------------------
+
+$ grep -n 'user_invocable' skills/*/SKILL.md
+skills/grilling/SKILL.md:4:user_invocable: false
+skills/grill-me/SKILL.md:4:user_invocable: true
+skills/spec-brief/SKILL.md:4:user_invocable: true
+
+grilling's description matched none of "grill me" / "stress-test" / "poke holes"
+(count 0) — those trigger phrases live only in grill-me, so the two skills do
+not compete for the same user utterance.
+PASS
+
+--- Row 6: spec-cycle diff is confined to the four named edit sites -------------
+
+$ git diff -U0 skills/spec-cycle/SKILL.md | grep '^@@'
+@@ -474,0 +475 @@   → the scalability line in the halt block's Remaining P0/P1
+@@ -482,0 +484 @@   → menu option 4
+@@ -485 +487,70 @@  → "Wait for the user." reworded + the new ### 2f-i subsection
+@@ -575,0 +647 @@   → one Tool-use notes bullet
+@@ -620,0 +693,4 @@ → one Failure modes bullet
+
+Five hunks, no others. Gate arithmetic untouched:
+$ git show HEAD:skills/spec-cycle/SKILL.md | grep -c 'total_p0p1 == 0'   → 2
+$ grep -c 'total_p0p1 == 0' skills/spec-cycle/SKILL.md                   → 2
+
+2e and 2g byte-identical (md5 of each section body, HEAD vs worktree):
+  IDENTICAL: ### 2e. Revise (rounds 1–3) or rewrite (round 4)
+  IDENTICAL: ### 2g. Post-green polish (bounded)
+PASS
+
+--- Row 7: 2f-i invariants and the halt block's scalability line ---------------
+
+grep -cF against skills/spec-cycle/SKILL.md:
+  1  never re-dispatches reviewers
+  1  never increments the round counter
+  1  never overwrite            (matches "never overwrites a prior `grill.md`")
+  1  at most once per invocation
+  1  never edits the            (matches "never edits the brief")
+  3  not grillable
+  1  nothing grillable
+  2  deferred to option 3
+  2  reviews/round-4/grill.md
+  1  scalability P0/P1 titles   (the halt block's new fourth line)
+PASS
+
+--- Row 8: all three docs describe four stages, brief → cycle → ship → close ---
+
+  AGENTS.md                        spec-brief=1  spec-close=2  grill-me=2
+  docs/spec-workflow-reference.md  spec-brief=2  spec-close=2  grill-me=1
+  README.md                        spec-brief=4  spec-close=2  grill-me=3
+
+Both files that were at 0 for spec-close now carry it:
+  README.md          → a § Skills bullet for /spec-close
+  spec-workflow-ref  → a new "## Skill 3: spec-close" section before
+                       "## Adapting to your stack"
+
+Order statements:
+  AGENTS.md:23   "Four skills form the spec lifecycle. The interview stage is
+                  separate so the brief … is settled before review context is
+                  spent; …" followed by items 1–4 in lifecycle order.
+  README.md:3    "…a Plane.so-aware brief → spec → review → ship → close
+                  workflow with a bounded design interview…"
+  reference:3    "Four AI-driven skills: an interview stage that produces the
+                  brief, two that split spec authoring from implementation into
+                  separate sessions, and a post-merge close."
+PASS
+
+--- Row 9: spec-brief body assertions ------------------------------------------
+
+  1  "1 ≤ N ≤ 10"                          (--rounds range)
+  1  "1 ≤ N ≤ 15"                          (--questions range)
+  1  "there is no `0` alias"
+  4  ".<TICKET-ID>.brief.md.tmp"           (Phase 0 step 2, Phase 4, never-list, Tool-use notes)
+  1  "rename it over the target in one step"
+  1  "`## Scale` emission"                 (the four-case rule)
+  1  "stale temp removed"                  (the no-halt log token)
+
+Phase 0 step 2 checks all four paths — brief, spec, reviews/, and the stale
+temp — and removes the temp without halting when it is the only artifact
+present.
+
+$ grep -n '^## \(Tool-use notes\|Failure modes\)$' skills/spec-brief/SKILL.md
+170:## Tool-use notes
+179:## Failure modes
+PASS
+
+--- Row 10: sync.py round-trip ------------------------------------------------
+
+Run against a scratch config dir (--claude-dir) so an unmerged branch is not
+installed over the live ~/.claude/. The real `python sync.py install` is the
+post-merge step /ship-spec's summary already prescribes.
+
+$ python sync.py install --claude-dir <scratch>
+26 action(s) applied.        (includes the three new skills/<name>/SKILL.md)
+$ python sync.py status --claude-dir <scratch>
+In sync.
+$ python sync.py push --claude-dir <scratch>
+No changes - Claude dir matches repo for tracked files.
+
+Byte-for-byte round trip confirmed; `git status --short` after the push showed
+only the four intended modified files and the three new skill directories, i.e.
+push wrote nothing back.
+
+sync.py needed no change: three new skills/<name>/SKILL.md directories sit
+inside the already-mirrored `skills/` subtree.
+
+Name-collision check on this machine: neither ~/.claude/skills/grilling nor
+~/.claude/skills/grill-me exists, so no separately-installed upstream copy is
+overwritten here. The overwrite behaviour is documented in AGENTS.md § Superseded
+vendor skills regardless (row 12).
+
+Slash-command probe for `/grilling` (user_invocable: false): deferred to the
+post-merge install. Per spec Done-when 10 / Risk 11 this is documented either
+way — the operative guard is the body's opening sentence, verified in row 4.
+PASS
+
+--- Row 11: untouched trees ----------------------------------------------------
+
+$ git diff --name-only HEAD -- agents/ skills/ship-spec/ skills/spec-close/
+(no output)
+No reviewer agent, no ship-spec file (states.json included), no spec-close file
+changed.
+PASS
+
+--- Row 12: AGENTS.md collision paragraph, "Two warnings:" list intact ---------
+
+$ grep -c 'mattpocock' AGENTS.md → 1
+The paragraph is appended after the closing "If AgentCraft reinstalls its copy
+later…" paragraph, as a paragraph and not as a list item.
+
+Bullets under "Two warnings:" → 2 (unchanged; the section's only counted list
+is byte-identical).
+PASS
+
+--- Row 13: --no-grill and Phase 3 option-2 paths ------------------------------
+
+  1  "ignored under --no-grill"                                       (cap-flag warning)
+  1  "not established (exploration failed); spec author pins this"    (--no-grill failed-dispatch → Risks)
+  1  "Add a decision (state it)"                                      (--no-grill option 2 wording)
+  1  "prior_summary"                                                  (option 2 re-invocation)
+  1  "single post-cap round"                                          (granted by the primitive)
+  1  "re-renders with options 1 and 3"                                (post-resume fallback)
+
+The --no-grill `## Scale` derivation is stated in its own paragraph at the end
+of the Phase 4 emission rule ("Under `--no-grill`, apply the same four cases to
+a scale declaration the ticket text states explicitly…").
+PASS
+
+--- Row 14: no dry-run leakage ------------------------------------------------
+(Checked after Part 2; see the end of this file.)
+
+
+PART 2 — AUTHORING DRY-RUNS
+================================================================================
+Procedure. The new skills are not installed inside this worktree (a merged skill
+is inert until `python sync.py install`), so each run is an *authoring* dry-run:
+the implementer reads skills/spec-brief/SKILL.md and skills/grilling/SKILL.md
+from the worktree and follows them literally, acting as the operator for every
+round. Distinct ids per run (ZZZ-1 / ZZZ-2 / ZZZ-3) so no run trips another's
+artifacts-exist halt or grounds on another's brief. All runs are conversation-
+only mode. The briefs the runs emit are deleted before commit; only this
+transcript is kept.
+
+
+================================ RUN A — empty frontier ========================
+Command: /spec-brief ZZZ-1 --rounds 3
+
+--- Phase 0 — Preflight --------------------------------------------------------
+1. project_root = the worktree. Read AGENTS.md (this repo's project-instructions
+   file). No wiki configured in the worktree → wiki: none.
+2. Output collision: docs/specs/TODO/ZZZ-1.brief.md, ZZZ-1.spec.md,
+   ZZZ-1.reviews/, .ZZZ-1.brief.md.tmp — none exist. Continue.
+3. Namespace: states.json read; prefix "ZZZ" not found →
+   warning: prefix "ZZZ" not found in states.json — namespace defaults to "plane"
+4. Origin sync: remote present; fetch ok; branch feat/vhs-32-spec-brief-grilling,
+   no origin counterpart → <cmp> = main; rev-list HEAD..origin/main = 0 →
+   origin: in-sync
+5. Ticket resolution:
+   a. shared-memory tag-only search, tags [plane_work_item, ZZZ-1], namespace
+      "plane" → 0 results.
+   b. tracker retrieve-by-identifier ZZZ / 1 → not found.
+   c. conversation-only mode:
+
+      ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.
+
+   OPERATOR:
+      lint.py only flags mcp__* identifiers as bare harness tool names; ordinary
+      names like Explore, Agent and Skill slip through, so every skill review
+      ends with a manual grep the reviewer has to remember to run.
+
+      Extend the lint to flag those names too, reusing the case-2 ("or the
+      equivalent") and case-3 (notes-heading) exemptions it already applies to
+      mcp__*. Nothing else about the lint changes.
+
+   → ticket: local-only
+6. ticket: local-only · namespace: plane · wiki: none · origin: in-sync · grill: on (rounds=3, questions=7)
+
+--- Phase 1 — Grounding --------------------------------------------------------
+1. The operator's paragraph (the seed).
+2. wiki_root unresolved → grounding step 2 skipped silently.
+3. Files the seed names, by path: lint.py, docs/portability-contract.md.
+4. No gaps left → no exploration dispatched.
+
+grounding: 2 files read, 0 explorations dispatched (0 failed)
+
+--- Phase 2 — Interview --------------------------------------------------------
+Seed gate: two paragraphs, states a problem, decisions hang off it → pass.
+Invoke grilling: seed as above, brief altitude, round_cap 3, question_cap 7.
+
+ROUND 1 (frontier = 3 root decisions, all prerequisites settled)
+
+❓ **Q1 — Which names does the lint flag?**: The seed names three, but the set is
+the thing every future skill is measured against.
+
+  **A.** A fixed list in lint.py (`Explore`, `Agent`, `Skill`, `Task`) — *For:*
+  one obvious place to read the rule; no config to drift.  *Against:* a new
+  harness affordance needs a code change.
+  **B.** A configurable list read from docs/portability-contract.md — *For:* the
+  contract stays the single source of truth.  *Against:* a parser for prose, at
+  N=1; the contract has no machine-readable list today.
+
+➡️ **Recommend A** — the contract's §4 vocabulary changes about once a year;
+a config mechanism at N=1 is the abstraction the conventions lens flags.
+
+❓ **Q2 — What severity do the new names carry?**: mcp__* is ERROR today.
+
+  **A.** ERROR, same as mcp__* — *For:* one rule, one severity; --strict gates
+  uniformly.  *Against:* the ordinary names are far more common in prose, so a
+  false positive now breaks a build instead of nagging.
+  **B.** WARN for the new names, ERROR for mcp__* — *For:* lets the rule land
+  without a flag day.  *Against:* two severities for one contract rule; a WARN
+  nobody reads is the manual grep with extra steps.
+
+➡️ **Recommend B** — the lint's own docstring already records bare-name
+detection as a deferred v1 limitation; landing it as WARN is the honest first
+step, and promotion is a one-line follow-up.
+
+❓ **Q3 — Do the existing exemptions change?**: The case-2 window is ±1 non-blank
+line and the case-3 exemption is heading-keyed.
+➡️ No. Reuse both unchanged — a second exemption mechanism would need its own
+justification, and the seed's last sentence fences it out.
+
+Answer by item number: a question by number and branch letter (e.g. `Q3 B`), a fact request by number and the fact (e.g. `F1 <answer>`); a plain answer is recorded as given. "defer" moves a question to the open frontier.
+"stop" ends the interview. Unanswered questions are re-asked once, then deferred; a partly answered round still uses one of your 3 rounds. Round 1 of 3.
+
+OPERATOR: Q1 A · Q2 B · Q3 yes, unchanged
+
+ROUND 2 (Q1's answer settles the list, which unblocks one descendant; Q2 and Q3
+have no unsettled descendants)
+
+❓ **Q4 — Does the fixed list ship as a `--strict`-only check, or always on?**:
+Q1 settled a fixed list; this is the last decision that changes a brief line.
+
+  **A.** Always on, WARN-level — *For:* consistent with every other lint rule;
+  visible on the default run.  *Against:* adds noise to a run people use as a
+  smoke test.
+  **B.** Only under --strict — *For:* no change to the default run's output.
+  *Against:* a WARN that only appears under the gating flag is invisible exactly
+  when authoring, which is when it is useful.
+
+➡️ **Recommend A** — Q2 already chose WARN precisely so it can be always-on
+without breaking anything.
+
+Answer by item number: … Round 2 of 3.
+
+OPERATOR: Q4 A
+
+ROUND 3: frontier recomputed → empty. Every decision's descendants are settled or
+out of altitude (regex shape, message wording, test placement are all
+implementation detail — the fence's second column). Exit without rendering.
+
+## Grill summary — lint bare-name detection (rounds: 2/3, exit: empty-frontier; reason: tree fully visited)
+
+### Settled
+1. **Which names the lint flags** (Q1) — chose A: a fixed list in lint.py
+   (`Explore`, `Agent`, `Skill`, `Task`); no configurable source at N=1.
+   Facts relied on: none.
+2. **Severity for the new names** (Q2) — chose B: WARN for the ordinary names,
+   ERROR stays for `mcp__*`. Facts relied on: none.
+3. **Existing exemptions** (Q3) — chose the plain recommendation: case-2 (±1
+   non-blank line) and case-3 (heading-keyed) reused unchanged. Facts relied
+   on: none.
+4. **Always-on vs --strict-only** (Q4) — chose A: always on, at WARN level.
+   Facts relied on: none.
+
+### Open frontier
+(none)
+
+### Facts established
+(none — no exploration was dispatched)
+
+--- Phase 3 — Confirm ----------------------------------------------------------
+Preview rendered: 4 numbered Decisions carried forward; Risks / decisions empty.
+
+Write the brief?
+1. Write docs/specs/TODO/ZZZ-1.brief.md
+2. Revise an answer (name the Q number) — that decision and everything settled downstream of it return to the frontier; if the cap was hit, one extra round is granted, once
+3. Abort — nothing written
+
+OPERATOR: 1
+
+--- Phase 4 — Write ------------------------------------------------------------
+Wrote .ZZZ-1.brief.md.tmp, renamed onto docs/specs/TODO/ZZZ-1.brief.md.
+
+=== BRIEF WRITTEN: ZZZ-1 ===
+Path: docs/specs/TODO/ZZZ-1.brief.md
+Interview: 2 rounds, exit empty-frontier; 4 settled, 0 open
+Ticket: local-only
+
+=== NEXT ===
+/spec-cycle docs/specs/TODO/ZZZ-1.brief.md
+
+ASSERTIONS
+  [x] exit empty-frontier, reached in 2 rounds (≤ 3)
+  [x] the confirm block appeared before any write
+  [x] header carries "**Status:** local-only · **Priority:** unset ·
+      **Assignee:** unassigned" and "**Plane:** unresolved (local-only)"
+  [x] all eight standing sections present, in order; no `## Scale` section
+      (scale never asked → no section, case 4 of the emission rule)
+  [x] `## Risks / decisions` carries NO "spec author pins this" item
+      (grep -c "spec author pins this" ZZZ-1.brief.md → 0)
+  [x] `## References` final bullet reads
+      "Interview: 2 rounds, exit empty-frontier"
+  [x] no .ZZZ-1.brief.md.tmp left behind
+RUN A: PASS
+
+
+================================ RUN B — round cap =============================
+Command: /spec-brief ZZZ-2 --rounds 1 --questions 3
+
+--- Phase 0 / Phase 1 (abbreviated — same shape as Run A) ----------------------
+ticket: local-only · namespace: plane · wiki: none · origin: in-sync · grill: on (rounds=1, questions=3)
+grounding: 1 file read, 0 explorations dispatched (0 failed)
+
+OPERATOR's seed paragraph (deliberately a deep tree):
+   We want a /spec-metrics skill that reports, per closed ticket, how many
+   review rounds it took, which lens raised the blocking findings, and how long
+   each phase sat idle. It should work across every project in states.json and
+   produce something a human reads weekly.
+
+--- Phase 2 — Interview --------------------------------------------------------
+Seed gate: passes.
+Invoke grilling: round_cap 1, question_cap 3.
+
+ROUND 1 — the frontier holds 6 candidate decisions at brief altitude (data
+source; output shape; scope across projects; time model; storage; invocation).
+The cap is 3, so the round renders 3 and carries the rest. Ordering per the
+truncation rule: nothing is carried or re-asked yet, so shallowest depth first
+(data source and scope both gate everything downstream), then blast radius.
+
+❓ **Q1 — Where do the metrics come from?**
+
+  **A.** The persisted reviews tree on disk (`<TICKET-ID>.reviews/round-*/`) —
+  *For:* already exists for every ticket that ran the loop; no new writes.
+  *Against:* archived under DONE/<TICKET-ID>/ after /spec-close, so the reader
+  must know both layouts.
+  **B.** The issue tracker's activity log — *For:* authoritative timestamps.
+  *Against:* a required service for a reporting skill, and it knows nothing
+  about lenses or rounds.
+
+➡️ **Recommend A** — the round/lens data only exists on disk; the tracker
+cannot answer two of the three questions the seed asks.
+
+❓ **Q2 — What is the reporting scope?**
+
+  **A.** One project, the repo you invoke it in — *For:* no cross-checkout
+  reads; matches every other skill in the lifecycle.  *Against:* the seed says
+  "across every project in states.json".
+  **B.** Every project in states.json — *For:* what was asked.  *Against:*
+  needs a checkout path per project, which states.json does not carry today.
+
+➡️ **Recommend A** for v1, with B as a follow-up once states.json carries
+paths — but this changes a Scope row either way, so it is the operator's.
+
+❓ **Q3 — What does it emit?**
+
+  **A.** A markdown table to stdout — *For:* zero new artifacts.  *Against:*
+  nothing accumulates; "weekly" implies a series.
+  **B.** A file appended per run under docs/specs/metrics.md — *For:* a series
+  a human can read weekly.  *Against:* a new tracked artifact and an
+  append-ordering rule to pin.
+
+➡️ **Recommend B** — "reads weekly" only works if last week is still there.
+
+Answer by item number: a question by number and branch letter (e.g. `Q3 B`), a fact request by number and the fact (e.g. `F1 <answer>`); a plain answer is recorded as given. "defer" moves a question to the open frontier.
+"stop" ends the interview. Unanswered questions are re-asked once, then deferred; a partly answered round still uses one of your 1 rounds. Round 1 of 1.
+
+OPERATOR: Q1 A · Q2 A · Q3 B
+
+Round cap reached (rounds_used 1 = round_cap 1). Exit round-cap.
+
+## Grill summary — /spec-metrics (rounds: 1/1, exit: round-cap; reason: cap reached)
+
+### Settled
+1. **Metrics source** (Q1) — chose A: the persisted reviews tree on disk.
+   Facts relied on: none.
+2. **Reporting scope** (Q2) — chose A: one project, the repo it is invoked in.
+   Facts relied on: none.
+3. **Output shape** (Q3) — chose B: appended to a tracked metrics file.
+   Facts relied on: none.
+
+### Open frontier
+1. **Time model — what counts as "idle"** (not rendered) — unresolved because: round-cap.
+2. **Storage location and append ordering for the metrics file** (not rendered) — unresolved because: round-cap.
+3. **Invocation surface — slash command, or a flag on /spec-close** (not rendered) — unresolved because: round-cap.
+
+### Facts established
+(none)
+
+ASSERTIONS (interview half)
+  [x] the single round rendered AT MOST 3 items — it rendered exactly 3, and
+      the cap is the checkable observable (the exact decomposition is the
+      model's)
+  [x] round-end line reads "Round 1 of 1"
+  [x] exit round-cap
+  [x] the confirm preview shows ≥ 1 Open item (it shows 3)
+
+--- Phase 3 — Confirm ----------------------------------------------------------
+Preview rendered: 3 Decisions carried forward; 3 Risks / decisions items, each
+ending "spec author pins this".
+
+Write the brief?
+1. Write docs/specs/TODO/ZZZ-2.brief.md
+2. Revise an answer (name the Q number) — …
+3. Abort — nothing written
+
+>>> Run D continues from exactly this point, before option 1 is taken. Run B's
+>>> write assertion is checked after D returns.
+
+
+================================ RUN D — revise after cap ======================
+(Continues Run B's ZZZ-2 session at its confirm block.)
+
+OPERATOR: 2 — revise Q2
+
+/spec-brief re-invokes grilling with the Grill summary as `prior_summary`, the
+same round_cap (1) and question_cap (3), and the Q number to revise.
+
+Resume contract applied: Q2 and everything settled downstream of it return to
+the frontier — nothing was settled downstream of Q2, so only Q2 returns. Q1 and
+Q3 stay Settled. Prior Open items stay Open and are not re-asked (none is
+downstream of Q2). Numbering continues the prior series. rounds_used = 1, which
+is ≥ round_cap 1, so this invocation runs exactly one additional round.
+
+ROUND 2 (post-cap revision round)
+
+❓ **Q2 — What is the reporting scope?** *(re-asked — revising)*
+
+  **A.** One project, the repo you invoke it in — *For:* no cross-checkout
+  reads.  *Against:* not what the seed asked for.
+  **B.** Every project in states.json — *For:* what was asked.  *Against:*
+  needs a checkout path per project, which states.json does not carry.
+
+➡️ **Recommend A** — unchanged; B needs a states.json schema addition first.
+
+Answer by item number: a question by number and branch letter (e.g. `Q3 B`), a fact request by number and the fact (e.g. `F1 <answer>`); a plain answer is recorded as given. "defer" moves a question to the open frontier.
+"stop" ends the interview. Unanswered questions are re-asked once, then deferred; a partly answered round still uses one of your 1 rounds. Round 1+1 of 1 (post-cap revision round — the last).
+
+OPERATOR: Q2 B — take the states.json schema addition as part of the scope
+
+## Grill summary — /spec-metrics (rounds: 1+1/1, exit: revised-after-cap (+1 round); reason: resume)
+
+### Settled
+1. **Metrics source** (Q1) — chose A: the persisted reviews tree on disk. Facts relied on: none.
+2. **Reporting scope** (Q2) — chose B: every project in states.json, which
+   carries the schema addition of a per-project checkout path. Facts relied on: none.
+3. **Output shape** (Q3) — chose B: appended to a tracked metrics file. Facts relied on: none.
+
+### Open frontier
+1. **Time model — what counts as "idle"** — unresolved because: round-cap.
+2. **Storage location and append ordering for the metrics file** — unresolved because: round-cap.
+3. **Invocation surface — slash command, or a flag on /spec-close** — unresolved because: round-cap.
+
+### Facts established
+(none)
+
+Confirm re-renders — option 2 is no longer offered:
+
+Write the brief?
+1. Write docs/specs/TODO/ZZZ-2.brief.md
+3. Abort — nothing written
+
+OPERATOR: 1
+
+ASSERTIONS
+  [x] the resume rendered EXACTLY ONE further round
+  [x] its round-end line reads "Round 1+1 of 1 (post-cap revision round — the
+      last)." — i.e. the <round_cap>+1 of <round_cap> form
+  [x] exit token is "revised-after-cap (+1 round)", suffix included
+  [x] the hand-off header renders "rounds: 1+1/1"
+  [x] Q2's revision replaced the prior Settled entry; Q1/Q3 unchanged; the
+      three Open items carried through untouched
+  [x] the confirm block re-rendered with options 1 and 3 only
+RUN D: PASS
+
+--- Run B, Phase 4 — Write (checked after D returned) --------------------------
+=== BRIEF WRITTEN: ZZZ-2 ===
+Path: docs/specs/TODO/ZZZ-2.brief.md
+Interview: 1+1 rounds, exit revised-after-cap (+1 round); 3 settled, 3 open
+Ticket: local-only
+
+ASSERTIONS (write half)
+  [x] `## Risks / decisions` carries the 3 Open items, each ending
+      "spec author pins this" (grep -c → 3)
+  [x] `## Decisions carried forward` carries 3 numbered items, each with its
+      chosen branch and one-line why
+  [x] no `## Scale` section (scale never reached the frontier before the cap)
+  [x] `## References` final bullet reads
+      "Interview: 1+1 rounds, exit revised-after-cap (+1 round)"
+  [x] no .ZZZ-2.brief.md.tmp left behind
+RUN B: PASS
+
+
+================================ RUN C — empty seed ============================
+Command: /spec-brief ZZZ-3
+
+--- Phase 0 --------------------------------------------------------------------
+Steps 1–4 as before. Step 5: memory → 0 results; tracker → not found;
+conversation-only mode:
+
+  ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.
+
+OPERATOR: ok
+
+Seed gate: "ok" is under two sentences and states no problem — nothing a design
+decision could hang off. Re-prompt once (local-only mode repeats Phase 0 step
+5c's request):
+
+  ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.
+
+OPERATOR: ok
+
+Halt:
+
+  No problem statement — nothing to grill. Re-run /spec-brief when you have one.
+
+ASSERTIONS
+  [x] re-prompted exactly once before halting
+  [x] halt message is the S9 text verbatim
+  [x] grilling was never invoked (the gate is upstream of Phase 2)
+  [x] $ ls docs/specs/TODO/ZZZ-3.brief.md → No such file or directory
+  [x] no .ZZZ-3.brief.md.tmp created
+RUN C: PASS
+
+
+PART 3 — CLEANUP AND ROW 14
+================================================================================
+The two emitted briefs were deleted after their assertions were checked; only
+this transcript is kept.
+
+$ rm docs/specs/TODO/ZZZ-1.brief.md docs/specs/TODO/ZZZ-2.brief.md
+$ git status --porcelain docs/specs/TODO/
+?? docs/specs/TODO/VHS-32.test-output.txt
+
+No ZZZ-* path and no .*.tmp path remain.
+Row 14: PASS
+
+
+SUMMARY
+================================================================================
+Review checklist:  14 / 14 PASS
+Dry-runs:          A (empty frontier) PASS · B (round cap) PASS ·
+                   C (empty seed) PASS · D (revise after cap) PASS
+lint.py --strict:  exit 0, 0 errors, 2 pre-existing warnings (unchanged)
+sync.py:           install → status "In sync." → push no-op (byte-for-byte)
+
+Post-merge, per spec Risk 7 and /ship-spec's own summary:
+  python sync.py install        # never --prune
+  /spec-close docs/specs/TODO/VHS-32.spec.md
+
+
+DEVIATIONS FROM THE SPEC (stated, for /spec-close reconciliation)
+================================================================================
+1. docs/spec-workflow-reference.md — one edit outside the three sites Design 5
+   names (`:3`, before `:7`, after `:161`). Phase 2 step 8 of the spec-cycle
+   section read "ask the user what to do (patch manually, ship by hand, or
+   narrow the brief)" — a three-option menu that Design 4 has just made four.
+   Left alone it would contradict the § "The grilling contract" subsection this
+   spec adds two sections above it, which names the post-round-4 halt as one of
+   the primitive's three callers. The clause now names the fourth option and its
+   two invariants. No other line of that section changed.
+
+2. Checklist row 10 was run with `--claude-dir <scratch>` rather than against
+   the live ~/.claude/. Installing an unmerged branch over the config dir that
+   actually runs would leave the live skills diverged from main until merge;
+   the round-trip property the row tests (install → status clean → push no-op,
+   byte-for-byte) is fully exercised either way. The real `python sync.py
+   install` is the post-merge step above. The `/grilling` slash-command probe
+   in the same row moves with it, and is non-blocking by the row's own wording.
