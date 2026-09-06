@@ -1,6 +1,38 @@
 # Spec Workflow — Clean-Room Reference
 
-Two AI-driven skills that split spec authoring from implementation into separate sessions. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
+Four AI-driven skills: an interview stage that produces the brief, two that split spec authoring from implementation into separate sessions, and a post-merge close. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
+
+---
+
+## Skill 0: spec-brief
+
+**Purpose:** produce the brief. Why it sits upstream of everything else: every reviewer lens treats the brief as authority, so a fork left open in it is invisible to review and surfaces later as a P0/P1 against the spec — a branch settled in an interview costs one question, the same branch settled at review round 2 costs a full parallel dispatch plus a revision pass.
+
+**Invocation:** `/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`. `--rounds` takes 1–10 (default 3), `--questions` takes 1–15 (default 7); there is no `0` alias, because a zero-width round is a stall, not a bound. `--no-grill` skips the interview but not the confirmation step.
+
+**Phase 0 — Preflight.** Read the project-instructions file and resolve the wiki. Check for existing artifacts at `docs/specs/TODO/<TICKET-ID>.*` — a brief, a spec, a reviews tree — and halt rather than overwrite the axiom prior review rounds were measured against; a stale temp file from an interrupted run is removed without halting. Run a warn-only origin-sync check (grounding reads the local tree; the skill never updates it). Resolve the ticket through the shared-memory cache, then the issue tracker, then — if both are unreachable — conversation-only mode, where the operator states the problem in a paragraph.
+
+**Phase 1 — Grounding (read-only).** Retrieval-first: the ticket text, then the project wiki's state and filemap, then the files the ticket names by path, and only then read-restricted exploration agents for the gaps that remain — dispatched in one bounded parallel batch, instructed to answer with `path:line` evidence and make no mutations.
+
+**Phase 2 — Interview.** Run the grilling contract below against the grounded seed at brief altitude. A seed that states no problem is gated first: re-prompt once, then halt. Nothing is written on an empty seed.
+
+**Phase 3 — Confirm.** Render the settled decisions and the open frontier as they will appear in the brief, then ask: write, revise an answer by question number, or abort. Confirmation happens even under `--no-grill` — the brief is the artifact every downstream lens treats as authority, and the cost is one prompt.
+
+**Phase 4 — Write.** Write `docs/specs/TODO/<TICKET-ID>.brief.md` through a dot-prefixed temp file renamed over the target, so an interrupted write never leaves a truncated brief. Settled decisions become `## Decisions carried forward`; open frontier items become `## Risks / decisions`, each ending "spec author pins this"; established facts become `## References` with their `path:line`; an optional `## Scale` section is emitted only when the operator settled scale as a factor *and* gave a target N.
+
+**Termination shapes and where each lands.** An emptied frontier means the tree was fully visited (or nothing met the altitude fence) — the brief carries no open items. A cap hit or an operator stop is a documented outcome, not a failure: the unresolved branches go to `## Risks / decisions` for the spec author. An empty seed is the one shape that writes nothing at all.
+
+### The grilling contract
+
+The interview itself is a separate, model-invocable primitive, reused by three callers — this skill, an ad-hoc `/grill-me` command, and the post-round-4 halt menu in spec-cycle. It is never fired unprompted.
+
+It models the problem as a **design tree**: every decision branches into the decisions that hang off it, and the **frontier** is every decision whose prerequisites are already settled. Each round asks the whole frontier at once — never one question at a time — then waits. A question that genuinely branches is rendered as a **fork** with two or three weighed candidates (each with a `For:` and an `Against:`) and an explicit recommendation. That recommendation is **advisory**: it is never a default that carries by silence, and the primitive must not proceed on an unanswered question by adopting its own answer.
+
+Facts are the agent's job; decisions are the operator's. A frontier question that needs a repo fact is **dispatched to a read-restricted exploration agent**, not asked — and where a host offers no agent class that withholds the file-edit tools, the primitive renders the fact as an explicit request rather than dispatching something write-capable.
+
+Three bounds, and nothing else, end the interview: a **round cap** (default 3), a **per-round item cap** (default 7, a hard truncation, with fact requests counting against the same cap so nothing rendered to the operator is unbounded), and an **altitude fence** — only decisions that would change a line of the brief's Scope, Decisions carried forward, or Out of scope are askable at all. Implementation detail is the spec's job.
+
+It ends by rendering a **hand-off block** — settled decisions, the open frontier with a reason for each unresolved item, and the facts established with their sources — and writes no file: every write belongs to the caller.
 
 ---
 
@@ -51,7 +83,7 @@ Each round:
 5. **Gate check:** Sum P0+P1 across all dispatched reviewers. If zero, the spec is green — break the loop.
 6. **If still red (rounds 1-3):** Edit the spec in place. Address every P0 and P1. P2+ items either get fixed or listed in a `## Deferred (P2+)` section.
 7. **If still red at round 4:** Targeted rewrite — classify each spec section as FROZEN (no unresolved P0/P1) or REWRITE. Build a closed-issues manifest from rounds 1-3 as regression constraints. No blank-slate rewrites.
-8. **If still red after round 4:** Halt. Present remaining P0/P1 and ask the user what to do (patch manually, ship by hand, or narrow the brief).
+8. **If still red after round 4:** Halt. Present remaining P0/P1 and ask the user what to do (patch manually, ship by hand, narrow the brief, or grill the remaining findings — a bounded interview scoped to those titles, whose decisions route back through the in-place revise rules; it never re-dispatches reviewers and never increments the round counter).
 
 **Round 2+ closure tracking:** Each reviewer reads all prior-round reviewer reports present (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table showing which findings are CLOSED, PARTIAL, REOPENED, or NEW. Reopened items are P0 unless the spec deliberately changed direction with rationale.
 
@@ -156,6 +188,12 @@ Move the ticket to a review/in-review state. Comment on the ticket with the PR U
 ### Phase 7 — Summary
 
 Print the PR URL, spec path, branch, worktree path. The worktree stays alive for review fixes (the user can `cd` into it and push follow-up commits). Remind the user to clean up the worktree after merge and run any post-merge wiki/docs update workflow.
+
+---
+
+## Skill 3: spec-close
+
+**Purpose:** retire the spec once its PR has merged. In one pass it reconciles the spec against the code that actually shipped (a reconciliation report — the lone write before the confirmation checkpoint), proposes wiki entries from the difference (decisions, comprehension notes, state updates), archives the spec artifacts from `docs/specs/TODO/` to `docs/specs/DONE/<TICKET-ID>/`, and prepends an entry to the wiki's newest-first `log.md`. The issue tracker's state gates the mode: a completed ticket permits a full close, anything else offers a partial close. `--report-only` writes just the reconciliation report; `--partial` forces archive-only. See `skills/spec-close/SKILL.md` for the phase-by-phase detail.
 
 ---
 
