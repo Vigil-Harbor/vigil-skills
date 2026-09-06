@@ -676,6 +676,26 @@ DEVIATIONS FROM THE SPEC (stated, for /spec-close reconciliation)
    after the edit: five hunks still, 2e/2g still byte-identical, gate count
    still 2, lint still 0 errors / 2 pre-existing warnings.
 
+   Second correction to the same pinned text, from CodeRabbit's incremental
+   review of that fix: the cap/stop bullet still said `grill.md` records
+   *not-grillable* findings as Open. It cannot — step 1 excludes them from the
+   seed, so the primitive's summary (the only thing step 3 appends) never
+   mentions them; the step 5 `not grillable <ids>` line is their only record.
+   The bullet now says so.
+
+1c. skills/spec-cycle/SKILL.md § 2f-i step 3 — one guard the spec does not
+   state. Design 4 step 3 appends "the returned Grill summary" unconditionally,
+   but the primitive's own contract (Design 1.11) has an `empty-seed` exit that
+   returns no hand-off block, and an interview that is abandoned or cut short
+   returns nothing at all. Step 3 now checks for a `## Grill summary` block
+   first; absent one it writes nothing, prints `grill returned no summary —
+   nothing persisted`, and re-renders options 1–3. The never-starts failure
+   bullet names this case. Consistent with S9 (callers never write on
+   `empty-seed`) and S8 (`grill.md` is append-only, never partial). Raised by
+   CodeRabbit on PR #26. Re-verified after both edits: five hunks still,
+   2e/2g still byte-identical, gate count still 2, lint still 0 errors / 2
+   pre-existing warnings, checklist row 7 strings all present.
+
 2. Checklist row 10 was run with `--claude-dir <scratch>` rather than against
    the live ~/.claude/. Installing an unmerged branch over the config dir that
    actually runs would leave the live skills diverged from main until merge;

@@ -515,7 +515,12 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
    round. If this host cannot invoke a nested skill, print
    `grilling is unavailable in this host` and re-render the menu with options 1–3.
 
-3. **Persist.** Append the returned Grill summary verbatim to
+3. **Persist.** First check what came back. If the primitive returned `empty-seed`,
+   or returned without a `## Grill summary` block (the interview was abandoned,
+   errored, or the host cut it short), there is nothing to persist: write nothing to
+   `grill.md`, print `grill returned no summary — nothing persisted`, and re-render
+   the menu with options 1–3. Never write a partial or reconstructed summary.
+   Otherwise append the returned Grill summary verbatim to
    `docs/specs/TODO/<TICKET-ID>.reviews/round-4/grill.md`, preceded by `---` if the
    file already exists and by the header line
    `# Grill <k> — <TICKET-ID> round 4 — <ISO datetime> — findings: <ids>`, where
@@ -690,10 +695,14 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
   `scalability.md` in `round-<N-1>/` when `scale_lens == off` — so a stale
   report from a prior on-run can never inject a phantom finding into an
   off-run's gate.
-- **2f-i grill hits its cap, or the operator stops.** Open and not-grillable
-  findings stay P0/P1; `grill.md` records them as Open (append-only); the menu
+- **2f-i grill hits its cap, or the operator stops.** Open findings stay P0/P1
+  and `grill.md` records them as Open (they are in the returned summary;
+  append-only). Not-grillable findings also stay P0/P1 but are **not** written to
+  `grill.md` — they never enter the seed, so the summary never mentions them;
+  the step 5 `not grillable <ids>` line is their only record. The menu
   re-renders with 1–3. The grill cannot make the spec green on its own.
-- **2f-i never starts** — either the host cannot invoke a nested skill (step 2)
-  or every remaining finding is a dispatch failure (step 1). Step 3 is never
-  reached, so **no `grill.md` is written**: the findings stay P0/P1 exactly as
-  the halt left them, and the menu re-renders with 1–3.
+- **2f-i never starts, or returns nothing persistable** — the host cannot invoke
+  a nested skill (step 2), every remaining finding is a dispatch failure (step 1),
+  or the primitive returns `empty-seed` or no `## Grill summary` block (step 3's
+  guard). In every case **no `grill.md` is written**: the findings stay P0/P1
+  exactly as the halt left them, and the menu re-renders with 1–3.
