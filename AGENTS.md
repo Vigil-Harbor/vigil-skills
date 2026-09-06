@@ -20,13 +20,15 @@ Flags: `--dry-run`, `--verbose`, `--prune` (install only), `--claude-dir <path>`
 
 ### Workflow: spec lifecycle
 
-Three skills form the spec lifecycle. The authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
+Four skills form the spec lifecycle. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
 
-1. **`/spec-cycle <brief-path>`** — Authors a spec from a brief, then runs a parallel review loop — three default lenses plus an optional fourth scalability lens — up to 4 rounds. Halts at a session boundary with a drift-check checklist. Does not implement or commit anything.
+1. **`/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`** — Produces the brief. Resolves the ticket (tracker optional — degrades to conversation), grounds against repo + wiki, runs the bounded `grilling` interview (round cap 3, seven items per round, brief-altitude fence), confirms, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. Reads tickets; never creates or transitions them. `grilling` is the shared model-invocable primitive (also behind `/grill-me` and `/spec-cycle`'s post-round-4 option 4); it is never fired unprompted.
 
-2. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
+2. **`/spec-cycle <brief-path>`** — Authors a spec from a brief, then runs a parallel review loop — three default lenses plus an optional fourth scalability lens — up to 4 rounds. Halts at a session boundary with a drift-check checklist, or — if still red after 4 rounds — a menu whose fourth option grills the remaining findings. Does not implement or commit anything.
 
-3. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
+3. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
+
+4. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
 
 ### Parallel review agents
 
@@ -78,6 +80,13 @@ Two warnings:
 
 If AgentCraft reinstalls its copy later, that is expected and not fatal: repeat
 the targeted removal. No vendor-managed file is ever edited.
+
+**`grilling` / `grill-me` (VHS-32) — superseded by overwrite, not removal.** These
+share directory names with `mattpocock/skills`; `sync.py install` overwrites a
+separately-installed upstream copy at those paths. Intended — the clean-room
+rewrite supersedes it, and because the install overwrites in place there is no
+operator removal step and no two-copies routing ambiguity. To keep both, rename
+the upstream copy before installing.
 
 ## Plan & Spec Reviews
 
