@@ -664,6 +664,18 @@ DEVIATIONS FROM THE SPEC (stated, for /spec-close reconciliation)
    the primitive's three callers. The clause now names the fourth option and its
    two invariants. No other line of that section changed.
 
+1b. skills/spec-cycle/SKILL.md § Failure modes — a correction to text the spec
+   pinned verbatim (Design 4 Edit 3). The spec's bullet reads "2f-i grill hits
+   its cap, the operator stops, or the host cannot invoke a nested skill …
+   `grill.md` records them as Open". But 2f-i step 2 returns before step 3 on
+   the cannot-invoke path, and step 1 returns before step 3 on the
+   nothing-grillable path, so no `grill.md` is written on either. The bullet is
+   now split in two: cap/stop (which does reach the persist step) and
+   never-started (which does not). Raised by CodeRabbit on PR #26; a genuine
+   internal contradiction the four review rounds did not catch. Re-verified
+   after the edit: five hunks still, 2e/2g still byte-identical, gate count
+   still 2, lint still 0 errors / 2 pre-existing warnings.
+
 2. Checklist row 10 was run with `--claude-dir <scratch>` rather than against
    the live ~/.claude/. Installing an unmerged branch over the config dir that
    actually runs would leave the live skills diverged from main until merge;

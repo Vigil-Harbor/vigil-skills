@@ -690,7 +690,10 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
   `scalability.md` in `round-<N-1>/` when `scale_lens == off` — so a stale
   report from a prior on-run can never inject a phantom finding into an
   off-run's gate.
-- **2f-i grill hits its cap, the operator stops, or the host cannot invoke a
-  nested skill.** Open and not-grillable findings stay P0/P1; `grill.md` records
-  them as Open (append-only); the menu re-renders with 1–3. The grill cannot make
-  the spec green on its own.
+- **2f-i grill hits its cap, or the operator stops.** Open and not-grillable
+  findings stay P0/P1; `grill.md` records them as Open (append-only); the menu
+  re-renders with 1–3. The grill cannot make the spec green on its own.
+- **2f-i never starts** — either the host cannot invoke a nested skill (step 2)
+  or every remaining finding is a dispatch failure (step 1). Step 3 is never
+  reached, so **no `grill.md` is written**: the findings stay P0/P1 exactly as
+  the halt left them, and the menu re-renders with 1–3.
