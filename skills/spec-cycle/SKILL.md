@@ -574,7 +574,8 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
      lists report what the grill touched, not the full red list.
    - `deferred to option 3` lists ids on Settled items step 4 could not apply.
    - `unreferenced decisions applied: <n>` counts Settled items with `ref: none`
-     that step 4 applied. It always prints, `0` included, like the other lists.
+     — or with no `ref:` field at all — that step 4 applied. It always prints,
+     `0` included, like the other lists.
    - On `fence-empty` the `dispositioned`, `left open`, and `deferred to option
      3` lists are empty and the count is `0`; `not grillable` is unaffected —
      those findings never entered the seed and this line is their only record.
