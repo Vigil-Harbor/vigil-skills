@@ -15,7 +15,7 @@ This skill is invoked only by `/grill-me`, `/spec-brief`, or `/spec-cycle` 2f-i.
 
 The caller supplies these, in prose or as a labelled list:
 
-- **`seed`** — the problem statement and any grounding facts already established. `/grill-me` supplies the user's topic; `/spec-brief` supplies the ticket's problem statement plus its grounding; 2f-i supplies the remaining P0/P1 findings with their bodies.
+- **`seed`** — the problem statement and any grounding facts already established. `/grill-me` supplies the user's topic; `/spec-brief` supplies the ticket's problem statement plus its grounding; 2f-i supplies the remaining P0/P1 findings with their bodies. Each seed item may carry an optional **`id`** — a caller-stable string the primitive echoes back as `ref:` on every Settled and Open item that descends from it. 2f-i passes finding ids; `/spec-brief` and `/grill-me` pass none, and then no `ref:` field is rendered at all.
 - **`altitude`** — the fence, stated as *which artifact lines a decision must change to be askable*. The default (brief altitude) is: "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope." 2f-i supplies: "a decision that dispositions one of the listed findings."
 - **`round_cap`** (default 3) and **`question_cap`** (default 7).
 - **`prior_summary`** *(optional)* — a Grill summary this skill returned earlier in the same session, plus the Q number to revise. This is the only resume path, and it exists for the revise case alone. The caller decides whether to offer a resume at all.
@@ -55,6 +55,8 @@ Answer by item number: a question by number and branch letter (e.g. `Q3 B`), a f
 ```
 
 and then **wait**. On the single post-cap resume round the last sentence reads `Round <round_cap>+1 of <round_cap> (post-cap revision round — the last).` instead, and the hand-off header renders `rounds: <round_cap>+1/<round_cap>`.
+
+**Plain language.** Every rendered round glosses each internal identifier on its first use in that round — a section code such as `2f-i`, an exit token such as `empty-frontier`, a file or block name — with a few words in parentheses saying what it is. Write in the ASD-STE100 style: short sentences, one instruction per sentence, one meaning per term. Keep question bodies short; the fork's `For:` / `Against:` lines carry the detail. The STE controlled dictionary is not applied. This rule governs rendered rounds; the hand-off block is rendered exactly as its contract states.
 
 ## Decisions are the operator's
 
@@ -101,11 +103,11 @@ Implementation detail is the spec's job. Asking it here duplicates `/spec-cycle`
 
 ## Termination
 
-The exits are `empty-frontier`, `round-cap`, `stop`, `revised-after-cap (+1 round)` (the suffix is part of the rendered token), and `empty-seed`.
+The exits are `empty-frontier`, `fence-empty`, `round-cap`, `stop`, `revised-after-cap (+1 round)` (the suffix is part of the rendered token), and `empty-seed`.
 
-`empty-frontier` is reachable only after at least one round was rendered. If the tree has a root but no round-1 candidate satisfies the altitude fence, the exit is still `empty-frontier`, but the hand-off header's reason reads `no candidate decision met the altitude fence` rather than `tree fully visited`, so the caller can tell the two apart.
+`empty-frontier` is reachable only after at least one round was rendered; its reason line distinguishes `tree fully visited` from `no candidate decision met the altitude fence` (a later round's remaining candidates all fell below the fence). If the tree has a root but no round-1 candidate satisfies the altitude fence, nothing is rendered and the exit is `fence-empty`, with that same fence reason and `rounds: 1/<round_cap>` — the round was attempted and consumed. Both go through the hand-off block; on `fence-empty` its Settled and Open frontier sections are empty, and `### Facts established` is rendered as on any exit — empty unless the seed supplied facts or a dispatch returned one.
 
-On `stop`, every question answered in the stopping round is Settled, in-flight explorations are abandoned, and their questions are Open with `unresolved because: stopped`.
+On `stop`, every question answered in the stopping round is Settled (a `defer` is not a settling answer — the question is Open with `unresolved because: deferred`, per § Decisions are the operator's), pending explorations are abandoned (fact needs not yet dispatched or not yet resolved when `stop` lands — none is an active dispatch, since a batch blocks the round it belongs to), and their fact needs are Open `F<n>` items with `unresolved because: stopped`, and any question that was waiting on one is Open with `unresolved because: blocked-on: F<n>`.
 
 Every exit but `empty-seed` goes through the hand-off contract below; `empty-seed` returns the token and a one-line reason, and nothing else.
 
@@ -116,22 +118,25 @@ Reaching a cap is a documented outcome, not a failure; the caller decides what t
 End by rendering exactly this block in-conversation, then return. Write no file — the caller owns every write.
 
 ```
-## Grill summary — <seed title> (rounds: <n>/<round_cap>, exit: empty-frontier | round-cap | stop | revised-after-cap (+1 round); reason: tree fully visited | no candidate decision met the altitude fence | cap reached | operator stop | resume)
+## Grill summary — <seed title> (rounds: <n>/<round_cap>, exit: empty-frontier | fence-empty | round-cap | stop | revised-after-cap (+1 round); reason: tree fully visited | no candidate decision met the altitude fence | cap reached | operator stop | resume)
 
 ### Settled
-1. **<decision title>** (Q<n>) — chose <A/B/free-form answer>: <one line>. Facts relied on: <F-ids or "none">.
+1. **<decision title>** (Q<n>) — chose <A/B/free-form answer>: <one line>. Facts relied on: <F-ids or "none">. ref: <id>[, <id>…] | none
 
 ### Open frontier
-1. **<question title>** (Q<n>) — branches: <A/B>; recommendation: <X>; unresolved because: <round-cap | deferred | stopped | fact not established | blocked-on: Q<m>>.
-2. **<parent title> — downstream decisions not explored (deferred at round <n>)**
+1. **<question title>** (Q<n>) — branches: <A/B>; recommendation: <X>; unresolved because: <round-cap | deferred | stopped | blocked-on: Q<m> | blocked-on: F<n>>. ref: <…>
+2. **F<n> — <fact needed>** — unresolved because: <fact not established | stopped>. ref: <…>
+3. **<parent title> — downstream decisions not explored (deferred at round <n>)**. ref: <…>
 
 ### Facts established
 - F1 — <fact> (source: <path:line>)
 ```
 
+`ref:` renders on every Settled and Open item when any seed item carried an `id`, and on none otherwise. An item's ids are those of the seed items it descends from: a question descends from the seed items it was raised to disposition, a decision from its question, a fact request from the question whose need raised it (or from the seed items directly when the need arose from the seed), the rolled-up deferred item from the deferred question. Ids are listed in seed order; an item descending from no identified seed item (a decision whose question an established fact raised rather than a seed item, or a question raised about an unidentified seed item) renders `ref: none`; relying on a fact never changes an item's ids — `Facts relied on` and `ref:` are independent. That value exists only in a run where some seed item carried an `id`; a run whose seed carried no ids omits the field on every item and never writes `ref: none`.
+
 The Open frontier is bounded by construction at `(round_cap + 1) × question_cap` named items plus one rolled-up item per deferred subtree.
 
-Callers map the block: `/spec-brief` turns Settled into `## Decisions carried forward` and Open into `## Risks / decisions` items ending "spec author pins this", and feeds Facts into Scope and References; 2f-i drives its 2e edits from Settled and leaves Open in the red list.
+Callers map the block: `/spec-brief` turns Settled into `## Decisions carried forward`, Open Q-items and F-items into `## Risks / decisions` items ending "spec author pins this", and feeds Facts into Scope and References; 2f-i drives its 2e edits from Settled, matching each decision to its findings by `ref:`, and leaves Open in the red list.
 
 ## What this skill never does
 
@@ -148,4 +153,4 @@ Writes a file; edits a spec or brief; dispatches a write-capable agent; invokes 
 - **Failed dispatch** (error, empty, or no fact returned) — the question becomes an `ℹ️` fact request in the next round; see § Fact-finding.
 - **No read-restricted agent class in this host** — every fact need is rendered as a fact request, tagged as such; never dispatch a write-capable agent instead.
 - **`empty-seed`** — the seed has no root decision; exit at once with the token and a one-line reason, rendering no round and no hand-off block.
-- **`stop` with explorations in flight** — abandon them; their questions are Open with `unresolved because: stopped`.
+- **`stop` with explorations pending** — abandon them (fact needs not yet dispatched or not yet resolved when `stop` lands; no dispatch is active, since a batch blocks its round); their fact needs are Open `F<n>` items with `unresolved because: stopped`, and any question that was waiting on one is Open with `unresolved because: blocked-on: F<n>`.
