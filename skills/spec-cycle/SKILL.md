@@ -493,7 +493,10 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
    invocation — a `scalability.md` present in `round-4/` under `scale_lens == off`
    is stale from a prior on-run and is ignored, matching the closure-read guard in
    § Failure modes) and extract each remaining P0/P1 finding: id, severity, title,
-   body. Nothing else enters the seed — the grill is finding-scoped, not a
+   body. The id is lens-qualified — `<lens>/<finding-id>`, the two-part form
+   2b's closure manifest and this step's own `not grillable:` line already use —
+   and is passed as the seed item's `id` so the hand-off's `ref:` field carries
+   it back. Nothing else enters the seed — the grill is finding-scoped, not a
    re-interview of the design.
 
    **Not grillable:** a report that is missing or unparseable, any synthetic
@@ -538,20 +541,46 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
 
 4. **Apply.** For each **Settled** item, edit the spec in place under the 2e
    rounds-1–3 rules (address the finding per the decision; the spec must stand on
-   its own at the end). The round-4 FROZEN/REWRITE protocol is not re-run — it
-   already ran before the halt. A Settled decision that cannot be discharged by an
-   in-place spec edit (e.g., "narrow the brief" — that is menu option 3's job) is
-   **not applied**: report it in step 5 as `deferred to option 3: <finding id>`,
-   leave the finding P0/P1, and record it in `grill.md` as Settled-but-unapplied.
-   **Open** and **not grillable** items are not touched; they remain P0/P1.
+   its own at the end). Locate the finding(s) a decision dispositions by its
+   `ref:` ids, never by title. A Settled item with `ref: none` — or with no
+   `ref:` field at all, which is what a v1-shaped return looks like — is applied
+   as a spec edit like any other but dispositions no finding. The round-4
+   FROZEN/REWRITE protocol is not re-run — it already ran before the halt. A
+   Settled decision that cannot be discharged by an in-place spec edit (e.g.,
+   "narrow the brief" — that is menu option 3's job) is **not applied**: report
+   it in step 5 as `deferred to option 3: <finding id>`, leave the finding P0/P1,
+   and record it in `grill.md` as Settled-but-unapplied. **Open** and **not
+   grillable** items are not touched; they remain P0/P1.
 
 5. **Re-render.** Print
-   `grill applied: dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids> — docs/specs/TODO/<TICKET-ID>.reviews/round-4/grill.md`,
+   `grill applied (exit: <token>): dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids>; unreferenced decisions applied: <n> — docs/specs/TODO/<TICKET-ID>.reviews/round-4/grill.md`,
    then the 2f halt block again with options 1–3 only, each dispositioned title
    suffixed ` — grilled (spec edited; not re-reviewed)` so the operator can see what
    moved without opening `grill.md`. The round counter is still 4; no reviewer is
    re-dispatched; `total_p0p1` is unchanged because no reviewer has re-verified —
    the honest path to green is option 1.
+
+   - `<token>` is the exit from the summary header; when the header carries
+     none, print `unknown` — the persisted block is the record.
+   - `dispositioned` lists every id on a Settled item that step 4 applied, each
+     id once, in seed order, however many ids one decision carried.
+   - `left open` lists every id on an Open item (Q, F, or rolled-up), each id
+     once, in seed order. An id that appears on both a Settled and an Open item
+     is listed here rather than under `dispositioned` — a finding is not
+     dispositioned while anything about it is still open. It still appears under
+     `deferred to option 3` if step 4 could not apply its Settled item. A seeded
+     id that appears on no Settled and no Open item is in none of these lists —
+     it stayed P0/P1 and is still listed in the re-rendered halt block; the
+     lists report what the grill touched, not the full red list.
+   - `deferred to option 3` lists ids on Settled items step 4 could not apply.
+   - `unreferenced decisions applied: <n>` counts Settled items with `ref: none`
+     that step 4 applied. It always prints, `0` included, like the other lists.
+   - On `fence-empty` the `dispositioned`, `left open`, and `deferred to option
+     3` lists are empty and the count is `0`; `not grillable` is unaffected —
+     those findings never entered the seed and this line is their only record.
+     The `fence-empty` token is the signal that nothing was askable and every
+     seeded finding remains P0/P1; the empty `left open` is not a claim that
+     nothing is open. The menu re-renders with options 1–3.
 
 2f-i never re-dispatches reviewers, never increments the round counter, never
 changes the gate formula, never overwrites a prior `grill.md`, never edits the
@@ -700,7 +729,9 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
   append-only). Not-grillable findings also stay P0/P1 but are **not** written to
   `grill.md` — they never enter the seed, so the summary never mentions them;
   the step 5 `not grillable <ids>` line is their only record. The menu
-  re-renders with 1–3. The grill cannot make the spec green on its own.
+  re-renders with 1–3. The grill cannot make the spec green on its own. A
+  `fence-empty` exit is the same shape: nothing moved, the empty summary is
+  persisted, the menu re-renders with 1–3.
 - **2f-i never starts, or returns nothing persistable** — the host cannot invoke
   a nested skill (step 2), every remaining finding is a dispatch failure (step 1),
   or the primitive returns `empty-seed` or no `## Grill summary` block (step 3's

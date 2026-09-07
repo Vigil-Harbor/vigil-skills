@@ -19,3 +19,4 @@ The `requires:` block above mirrors `grilling`'s: it declares what the delegate 
 
 - If this host cannot invoke a nested skill, say so and stop: `grilling is unavailable in this host`. Never improvise the interview inline — the bounds live in the primitive.
 - On `empty-seed` (no topic, or a topic with nothing to decide), report the primitive's one-line reason and stop — there is no summary to deliver.
+- On `fence-empty` (the topic has a root decision but nothing about it is askable at brief altitude), deliver the Grill summary as usual — its header's reason line is the answer.

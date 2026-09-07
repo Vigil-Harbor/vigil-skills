@@ -137,10 +137,10 @@ Two `/spec-brief` runs on the same ticket in one worktree are outside the suppor
 - In local-only mode the header fields read `**Status:** local-only · **Priority:** unset · **Assignee:** unassigned`.
 - A Settled decision the operator framed as a fence (an answer of the form "X is not in scope") is written to `## Out of scope`, not to `## Decisions carried forward`.
 - The remaining Settled items → `## Decisions carried forward`, numbered, each carrying the chosen branch and its one-line why. If Settled is empty, write `_(none settled — see Risks / decisions)_` under the header rather than leaving it blank, and print `warning: interview settled no decisions — the brief pins everything to the spec author`.
-- Open frontier items → `## Risks / decisions`, numbered, each ending "spec author pins this".
+- Open frontier items → `## Risks / decisions`, numbered, each ending "spec author pins this". An `F<n>` item is written as `<fact needed> — not established; spec author pins this`.
 - `## Scope` gets one row per path the settled decisions and grounding facts name: `Current` filled from a fact with its `path:line`, `Change` from the settled decision that touches it. A path with no read file or fact behind it gets no row and goes to `## Risks / decisions` instead. The heading date is the date grounding ran; when preflight logged `origin: behind-N`, the heading reads `## Scope (verified against current files, <date>; local tree <N> commits behind origin/<cmp>)` and a matching `## References` bullet records it.
 - Facts established → `## References`, with `path:line`.
-- The exit token and round count go in a final `## References` bullet: `Interview: <n> rounds, exit <token>`, or `Interview: skipped (--no-grill)`.
+- The exit token and round count go in a final `## References` bullet: `Interview: <n> rounds, exit <token>`, or `Interview: skipped (--no-grill)`. When the header's reason is `no candidate decision met the altitude fence`, the bullet also carries it: `Interview: 1 rounds, exit fence-empty (no candidate decision met the altitude fence)`, or `Interview: 2 rounds, exit empty-frontier (no candidate decision met the altitude fence)` for a later-round fence-out.
 
 **`## Scale` emission** — four input cases, three emitted shapes:
 
