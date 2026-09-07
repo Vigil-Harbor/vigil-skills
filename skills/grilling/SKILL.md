@@ -107,7 +107,7 @@ The exits are `empty-frontier`, `fence-empty`, `round-cap`, `stop`, `revised-aft
 
 `empty-frontier` is reachable only after at least one round was rendered; its reason line distinguishes `tree fully visited` from `no candidate decision met the altitude fence` (a later round's remaining candidates all fell below the fence). If the tree has a root but no round-1 candidate satisfies the altitude fence, nothing is rendered and the exit is `fence-empty`, with that same fence reason and `rounds: 1/<round_cap>` — the round was attempted and consumed. Both go through the hand-off block; on `fence-empty` its Settled and Open frontier sections are empty, and `### Facts established` is rendered as on any exit — empty unless the seed supplied facts or a dispatch returned one.
 
-On `stop`, every question answered in the stopping round is Settled, in-flight explorations are abandoned, and their fact needs are Open `F<n>` items with `unresolved because: stopped`, and any question that was waiting on one is Open with `unresolved because: blocked-on: F<n>`.
+On `stop`, every question answered in the stopping round is Settled (a `defer` is not a settling answer — the question is Open with `unresolved because: deferred`, per § Decisions are the operator's), in-flight explorations are abandoned, and their fact needs are Open `F<n>` items with `unresolved because: stopped`, and any question that was waiting on one is Open with `unresolved because: blocked-on: F<n>`.
 
 Every exit but `empty-seed` goes through the hand-off contract below; `empty-seed` returns the token and a one-line reason, and nothing else.
 
