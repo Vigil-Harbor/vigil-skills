@@ -20,7 +20,7 @@ Four AI-driven skills: an interview stage that produces the brief, two that spli
 
 **Phase 4 — Write.** Write `docs/specs/TODO/<TICKET-ID>.brief.md` through a dot-prefixed temp file renamed over the target, so an interrupted write never leaves a truncated brief. Settled decisions become `## Decisions carried forward`; open frontier items become `## Risks / decisions`, each ending "spec author pins this"; established facts become `## References` with their `path:line`; an optional `## Scale` section is emitted only when the operator settled scale as a factor *and* gave a target N.
 
-**Termination shapes and where each lands.** An emptied frontier means the tree was fully visited (or nothing met the altitude fence) — the brief carries no open items. A cap hit or an operator stop is a documented outcome, not a failure: the unresolved branches go to `## Risks / decisions` for the spec author. An empty seed is the one shape that writes nothing at all.
+**Termination shapes and where each lands.** An emptied frontier means the tree was fully visited, or that a later round's remaining candidates all fell below the altitude fence — either way the reason line says which, and anything the operator deferred is still in the brief's open items. A fence-empty exit means nothing met the altitude fence in round 1 — the brief is written with no decisions and the reason recorded. A cap hit or an operator stop is a documented outcome, not a failure: the unresolved branches — questions and unestablished facts alike — go to `## Risks / decisions` for the spec author. An empty seed is the one shape that writes nothing at all.
 
 ### The grilling contract
 
@@ -32,7 +32,7 @@ Facts are the agent's job; decisions are the operator's. A frontier question tha
 
 Three bounds, and nothing else, end the interview: a **round cap** (default 3), a **per-round item cap** (default 7, a hard truncation, with fact requests counting against the same cap so nothing rendered to the operator is unbounded), and an **altitude fence** — only decisions that would change a line of the brief's Scope, Decisions carried forward, or Out of scope are askable at all. Implementation detail is the spec's job.
 
-It ends by rendering a **hand-off block** — settled decisions, the open frontier with a reason for each unresolved item, and the facts established with their sources — and writes no file: every write belongs to the caller.
+It ends by rendering a **hand-off block** — settled decisions, the open frontier with a reason for each unresolved question and each unestablished fact, the facts established with their sources, and, when the caller tagged its seed items, a `ref:` on each item naming the seed items it came from — and writes no file: every write belongs to the caller.
 
 ---
 
