@@ -29,6 +29,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 SUBTREES = ("skills", "agents")  # dirs in repo that mirror to ~/.claude/
 
+# Build artifacts that live in the working tree but are never part of a skill.
+# Mirrors the bytecode rules in .gitignore: sync walks the filesystem, not git,
+# so without this a locally-run script's __pycache__ ships to the config dir.
+IGNORE_DIRS = frozenset({"__pycache__"})
+IGNORE_SUFFIXES = frozenset({".pyc"})
+
 
 def resolve_claude_dir(override):
     if override:
@@ -43,8 +49,12 @@ def iter_files(root):
     if not root.exists():
         return
     for p in root.rglob("*"):
-        if p.is_file():
-            yield p.relative_to(root)
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root)
+        if IGNORE_DIRS.intersection(rel.parts[:-1]) or p.suffix in IGNORE_SUFFIXES:
+            continue
+        yield rel
 
 
 def file_state(src, dst):
