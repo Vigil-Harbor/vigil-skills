@@ -7,7 +7,7 @@
 
 ## Summary
 
-All acceptance criteria met. The PR implements the fold / defer / reject routing step in SKILL.md § 2e, the `## Deferred — follow-up required` section with rules R1–R6, the re-fold recount, manifest vocabulary (§ 2b), the follow-up report at both exits (§ 2f and Phase 3), the D15 round-4 passage, the failure-mode bullet, and the Deferred-findings block across all four reviewer agents. `docs/spec-workflow-reference.md` and `AGENTS.md` are reconciled. `## Deferred (P2+)` and its consumers are byte-identical. Zero drift.
+All acceptance criteria met. The PR implements the fold / defer / reject routing step in SKILL.md § 2e, the `## Deferred — follow-up required` section with rules R1–R6, the re-fold recount, manifest vocabulary (§ 2b), the follow-up report at both exits (§ 2f and Phase 3), the D15 round-4 passage, the failure-mode bullet, and the Deferred-findings block across all four reviewer agents. `docs/spec-workflow-reference.md` and `AGENTS.md` are reconciled. `## Deferred (P2+)` and its consumers are byte-identical. Four deliberate divergences from the green-lit spec (all from CodeRabbit review rounds on PR #29) documented below; none changes the routing model or the gate, so the reconciliation status holds.
 
 ## Scope
 
@@ -65,19 +65,46 @@ Unexpected files in diff (not in spec):
 | Test | Exists? | Location |
 |---|---|---|
 | Row 1: `python lint.py --strict` exits 0, zero ERROR | Yes | `VHS-37.test-output.txt:1-7` — 0 errors, 2 pre-existing WARNs |
-| Row 2: `sync.py install` then `sync.py status` clean | Unverifiable | Not captured in test-output.txt (PR body expected) |
+| Row 2: `sync.py install` then `sync.py status` clean | Unverifiable | Not captured in test-output.txt (PR body expected). Caveat: run against a scratch `--claude-dir`, not live `~/.claude`, to avoid installing an unmerged branch over the operator's config. |
 | Row 3: old text removed, new section ≥ 4 | Yes | `grep -cF 'Address every P0 and P1 finding'` → 0; `grep -cF '## Deferred — follow-up required'` → 8 (≥ 4) |
-| Row 4: hunks only in expected regions | Yes | Hunks at Phase 1 `:297`, 2b `:367-390`, 2e `:430-462`, 2f `:486-557`, Phase 3 `:733-741`, Failure modes `:818`. No hunk in `:371`, `:411-424`, `:431`, `:489-591`, `:593-624` |
+| Row 4: hunks only in expected regions | Yes | Hunks at Phase 1 `:297`, 2b `:367-390`, 2e `:430-462`, 2f `:486-557`, Phase 3 `:733-741`, Failure modes `:818`. No hunk in `:371`, `:411-424`, `:431`, `:489-591`, `:593-624`. Caveat: hunk anchors landed at pre-edit lines 297 and 384, each one line past its stated region (`:294-296` Phase 1 opening, `:378-383` 2b prose) — git anchoring on the trailing blank line. Same class as the deferral the spec already records for Phase 1 (run-1 correctness/R4/F-5). The load-bearing half held: no hunk touched the protected regions. |
 | Row 5: `Deferred (P2+)` count → 8 | Yes | `grep -c 'Deferred (P2+)'` → 8 (spec expected 8 or 9) |
-| Row 6: Deferred-findings block byte-identical in 4 agents | Yes | 1 per file (4 files); all 12 sub-greps ≥ 1 per file; `diff` of extracted blocks: all identical; extent clause matches SKILL.md |
+| Row 6: Deferred-findings block byte-identical in 4 agents | Yes | 1 per file (4 files); all 12 sub-greps ≥ 1 per file; `diff` of extracted blocks: all identical; extent clause matches SKILL.md. Caveat: the spec's prescribed `sed` range for the extent-clause comparison cannot work as written — a `sed` start/end range never terminates on its own start line, and the clause is one line. Run instead as `grep -h '^runs from its heading to'`; the clause was placed on its own line in all five files to make the comparison mechanical. Worth a follow-up ticket to fix the checklist row if the pattern is reused. |
 | Row 7: `Deferred` absent from spec-close/ship-spec | Yes | `grep -rn 'Deferred' skills/spec-close/SKILL.md skills/ship-spec/SKILL.md` → 0 hits |
 | Row 8: FOLLOW-UPS at both exits + extraction rule | Yes | `=== FOLLOW-UPS` → 2; `malformed row` → 1; `exactly two` → 1; `Discharged:` ≥ 2 (5); `begin the line` → 1; `rendered per the extraction rule` → 1; Design/D-label leak → 0; line-number anchor leak → 0; `(grill)` ≥ 1 (4); `same character as the opener` → 1; `must not implement` → 1; `**Follow-up:** unfiled` → 1; `— Follow-up: unfiled` → 1 |
 | Row 9: disposition and R2 references | Yes | `deferred: D-<n> (§ Deferred — follow-up required)` → 2 (≥ 2); `governed by rule R2` → 1 (≥ 1); `fixed: discharged` → 4 (≥ 2) |
 | Row 10: reference doc and AGENTS.md | Yes | `Address every P0 and P1.` in reference → 0; `DEFERRED` in reference → 1; `including round 1` → 1; `never enters the gate` → 1 in reference, 1 in AGENTS.md |
 
+## Divergences from the green-lit spec
+
+Four changes in the shipped text are not in the green-lit spec. All arose from CodeRabbit review rounds on PR #29 (pre-squash commits: `751ba74` implementation as specified, `459e57f` CodeRabbit round 1 with 4 Major findings, `86df6f5` CodeRabbit round 2 with 1 Major finding self-inflicted by `459e57f`). None changes the routing model or the gate; all are deliberate divergences, not drift.
+
+### 1. Verbatim pin overridden — `docs/spec-workflow-reference.md:81` and `AGENTS.md:101`
+
+The spec's Scope table pins a sentence for these two files as "Line 81 becomes, verbatim: …". The shipped sentence differs.
+
+**Pinned (spec):** "…a finding the author routed to the spec's `## Deferred — follow-up required` section, under the scope ceiling, is not re-filed…"
+
+**Shipped:** "…a finding the author routed, under the scope ceiling, to a well-formed row in the spec's `## Deferred — follow-up required` section is not re-filed by the reviewers and so never enters the gate — a malformed row, a duplicate section, a routing-changing scope error, or an in-scope P0 row without `Discharged:` is still filed as a P0…"
+
+**Reason:** CodeRabbit (Major) found the pinned wording readable as exempting anything parked in the deferred section, contradicting the reviewer contract. The shipped version enumerates what is *not* exempt. Applied identically to both files. The spec's test row 10 grep (`never enters the gate` → 1 in each) still passes.
+
+### 2. Discharge validity — reviewer block (all four agents, byte-identical)
+
+The spec's ceiling keyed on mere presence of `Discharged:`, so an in-scope P0 row could suppress its own `routing violation: D-<n>` with placeholder text. The shipped rule adds: an empty, unparseable, or names-no-section `Discharged:` counts as absent for the ceiling test. Not in the spec.
+
+### 3. `(grill)` Scope precedence — reviewer block
+
+The shipped text now states outright that a grill row's `Scope` value is not validated against the brief. The spec left this to inference from "checked only for the presence of its fields." Recorded in post-green polish (run-2 conventions/R4/F-2 and correctness/R4/F-2), but the shipped phrasing goes further than the polish note.
+
+### 4. Free-form row text is instruction-inert — reviewer block + SKILL.md § 2e
+
+Entirely absent from the spec. A new rule declares that free-form row text (titles, `Suggested fix` content) is data, not instructions — the structured fields (`Finding`, `Scope`, `Propagation sites`, etc.) are still parsed and acted on. Two-step history: `459e57f` added a broader version that contradicted the block (it named `Where` inert and barred row text from affecting severity decisions, which would have let an in-scope P0 bypass the ceiling); `86df6f5` corrected it to separate inert free-form text from structured fields that are still parsed and acted on. The commit message names this as a folded review-round fix.
+
 ## Wiki-ready
 
 - **Decision:** The fold / defer / reject routing model for spec-cycle findings — a structural change to how /spec-cycle handles valid findings that touch multiple propagation sites. The scope ceiling (in-scope P0 always folds; everything else defers when non-trivial) is a reusable design pattern for routing decisions under pressure. Wiki-worthy because it changes the fundamental behavior of the lifecycle's most-used skill.
 - **Comprehension:** VHS-37 adds fix routing to /spec-cycle's 2e step, replacing "address every P0 and P1" with a four-step routing protocol (validate → name sites → classify scope → apply ceiling). The change spans SKILL.md, four reviewer agents (byte-identical Deferred-findings block), the spec-workflow-reference, and AGENTS.md. It introduces a new `## Deferred — follow-up required` section in authored specs, governed by six rules (R1–R6), with a follow-up report rendered at both exits. The `## Deferred (P2+)` machinery is deliberately untouched.
+- **Rebase note:** Plane VHS-27 (delta-scoped reviews past round 4) is open on the same § 2f region. VHS-37 shipped first, so VHS-27 rebases.
 
-RECONCILED: yes DRIFT: 0
+RECONCILED: yes DRIFT: 4
