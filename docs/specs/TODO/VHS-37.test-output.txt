@@ -1,0 +1,7 @@
+$ python lint.py --strict
+lint: 0 error(s), 2 warning(s)
+C:\Users\zioni\Documents\Vigil-Harbor\VHS-37-worktree\skills\review-pr\SKILL.md:
+  WARN [missing-requires] line 1: no requires: declaration
+C:\Users\zioni\Documents\Vigil-Harbor\VHS-37-worktree\skills\ship-spec\SKILL.md:
+  WARN [missing-requires] line 1: no requires: declaration
+exit: 0

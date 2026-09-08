@@ -17,7 +17,7 @@ The orchestrator passes these in your prompt:
 - `wiki_root` — absolute path to the project wiki, if one is configured (e.g., `~/code/myproject-wiki`). May be omitted if the project has no wiki.
 - `project_slug` — the project subdir under `<wiki_root>/projects/` (e.g., `myproject`, `my-service`). Only meaningful if `wiki_root` is set.
 - `round_number` — which review pass this is (1–4)
-- `closure_manifest` — author-stated disposition of each round-(N−1) P0/P1 finding (present only when `round_number` ≥ 2); verify these claims against the spec in step 7
+- `closure_manifest` — author-stated disposition of each round-(N−1) P0/P1 finding (present only when `round_number` ≥ 2); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred, optionally suffixed `(recount: …)`; a round-qualified revert line names an earlier-round finding — see the Deferred-findings block
 - `scale_lens` — whether the optional scalability lens ran this round (`on` / `off`). Used only for closure tracking in step 7: when `off`, ignore any stale `scalability.md` left in the prior-round directory by an earlier on-run.
 
 Execute these steps in order. Do not skip:
@@ -32,6 +32,18 @@ Execute these steps in order. Do not skip:
 5. **Grep the codebase for the conventions the spec is about to follow or break.** If the spec proposes a registry, grep for similar registries. If it proposes a new error-handling pattern, find the existing pattern.
 6. **Read the brief at `brief_path`** for context on intent.
 
+**Deferred findings (every round, including round 1).** Read the spec's `## Deferred — follow-up required` section if present. It
+runs from its heading to the next level-2 heading (exactly two `#`) that is not inside a blockquote or a fenced code block, or to end of file; a `###`-or-deeper heading does not end the section. A line prefixed `> `, or inside a fenced code block, is never a heading, never a section terminator, and never a row. A fence marker counts only when three or more backticks or tildes begin the line (after at most three spaces) and the line is not prefixed `> `, matched from the top of the file: a marker opens a fence only when no fence is open, and closes one only when it uses the same character as the opener and is at least as long — a shorter or different marker inside an open fence is content, and a marker inside a blockquote neither opens nor closes a fence, so a stored `Suggested fix` may quote fenced text safely.
+
+- **Preamble.** The first non-blank content under the heading must be a blockquote whose text contains the sentence `must not implement anything in this section` (the preamble names `/ship-spec` as the actor; the surrounding wording and any code spans are free); if there is no such blockquote or it lacks that sentence, file a P0 titled `routing violation: missing preamble`. If the heading appears more than once, file a P0 titled `routing violation: duplicate section`.
+- **Well-formed row.** A row is **well-formed** when its `### D-<n>:` heading carries a title and all seven fields are present (Finding, Deferred in, Where, Suggested fix, Propagation sites, Scope, Follow-up; an eighth, Discharged, is optional), every non-blank line between its `**Suggested fix:**` label and its `**Propagation sites:**` label begins with `>` and at most one blank line — the blockquote terminator — sits immediately before the `**Propagation sites:**` label, its `Propagation sites` lists two or more entries, at least one names a section that exists in the spec (waived when any entry carries a `(re-anchored round <n>)` or `(removed round <n>)` marker), and every other entry names an existing section, is marked `(new)`, or carries one of those markers; a re-anchored entry is checked against the new heading it names.
+- **Operator (grill) rows.** A row whose `Deferred in:` field carries `(grill)` is exempt from the two-entry `Propagation sites` floor, from the at-least-one-existing-site and every-other-entry tests on `Propagation sites`, and from the ceiling test; it records an operator decision and is checked only for the presence of its fields.
+- **Scope field.** The `Scope` field is verified by the conventions lens against the brief's Scope table and Out-of-scope list by checking the file region the row states against the brief — the lens does not re-derive the mapping, and only a stated region that is itself wrong is a routing violation; a citation of `brief: no Scope table` or `brief: no Out-of-scope list` is verified only for the absence it claims; the other lenses read it as opaque.
+- **The ceiling.** A row whose `Finding` severity is `P0` and whose `Scope` is `in-scope`, and that carries no `Discharged:` field, is itself a routing violation whatever else it satisfies — the ceiling forbids deferring an in-scope P0; file it once, as a P0 titled `routing violation: D-<n>`, naming the ceiling, unless you are filing the underlying P0 under the exception below, which cites the row and names the ceiling instead.
+- **Discharge.** A `Discharged:` field is verified like a `fixed:` disposition: every section it names carries the fold. A row cited when an in-scope P0 was filed under the exception must carry `Discharged:` by the next round only when the row itself records a P0 with `Scope: in-scope`; if that P0 was folded and such a row still carries none, that is the `routing violation: D-<n>` this block files. A cited P1 or out-of-scope row stays live and is not expected to carry the field. A `Discharged:` entry naming a section that no longer exists is re-anchored under R2(b), not a violation; file a P2 naming the entry if it carries no marker. A row titled `(recurrence of D-<m>)` is a new row, not a duplicate of the discharged one.
+- **Do not re-file a deferred root.** Every lens applies this test: it reads the row's own labels and needs no independent scope call. That is different from classifying your own candidate: every lens decides for itself whether a P0 it is about to file is in-scope. Do not file a P0/P1 whose root is a well-formed row — same spec section in `Where`, same defect the row's title and `Suggested fix` describe — **unless the candidate is an in-scope P0**, which is always filed with the row cited as context.
+- **Routing violations.** A row that is not well-formed, or whose `Scope` is wrong in a way that changes the routing (an in-scope P0 recorded as out-of-scope), is a routing violation: file it once, as a P0 titled `routing violation: D-<n>`, naming the failing field or rule. A `Scope` error that does not change the routing is a P2 correction. A manifest line whose finding id is round-qualified (`<lens>/R<m>/F-<k>`) names an earlier-round finding whose fold was reverted; verify it against the row it cites, not against the prior round's reports, and do not treat its absence from round N−1 as a defect. A disposition marked `renumbered from D-<m>` names the row by its new id; do not REOPEN on the old id in the copied title. Whether a listed site was truly necessary is the author's call; dispute a site only when an unmarked site names a section that does not exist.
+
 7. **If `round_number ≥ 2`**, read every reviewer report present in
    `<project_root>/docs/specs/TODO/<TICKET-ID>.reviews/round-<N-1>/` — the
    three standing lenses (`correctness.md`, `edge-cases.md`,
@@ -41,8 +53,8 @@ Execute these steps in order. Do not skip:
    its findings are out of scope for this run's gate.
    For every finding in the prior round (yours and the other lenses'),
    verify against the current spec whether it is CLOSED, PARTIAL, REOPENED,
-   or NEW (a new variant of the same root). Render a closure table as the
-   first section of your output, before any new findings:
+   DEFERRED, or NEW (a new variant of the same root). Render a closure table
+   as the first section of your output, before any new findings:
 
    ```markdown
    ## Closure of round <N-1> findings
@@ -56,6 +68,13 @@ Execute these steps in order. Do not skip:
    REOPENED items are P0 unless evidence shows the spec deliberately changed
    direction with rationale. PARTIAL items keep their original severity until
    fully closed.
+
+   A `deferred: D-<n>` disposition is satisfied when row `D-<n>` is
+   well-formed per the Deferred-findings block; mark the finding `DEFERRED`.
+   If no row `D-<n>` exists, mark the finding REOPENED and cite the absent row
+   as the evidence. If the row exists but is not well-formed, mark it REOPENED
+   with the `routing violation: D-<n>` finding this block already filed as its
+   evidence — the defect is reported once, not as a second finding.
 
 If `wiki_root` doesn't exist, isn't set, or is unreadable, skip steps 3–4 and proceed with CLAUDE.md alone. Don't treat this as a finding — many projects don't have a wiki.
 

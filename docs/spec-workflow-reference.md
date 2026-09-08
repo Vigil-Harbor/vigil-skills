@@ -78,14 +78,14 @@ Each round:
 
    **Scalability reviewer** *(optional — dispatched only when the brief declares scale a factor)* — Does the design hold at the brief's declared target N? Probes: per-item work that should be batched, O(N) where O(1)/O(log N) exists, unbounded accumulation, per-instance state that collides across instances, fan-out without a concurrency cap, a singular config/path where a power user needs many, plus operational scale (cost-per-op, latency, token/context budget). The differentiator from edge-cases: edge-cases asks "is it correct under one adverse input?"; scalability asks "does the design hold at N×?"
 
-3. **Each reviewer emits a severity-ranked report** with findings at P0-P4 and a machine-parseable last line: `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...`. P0/P1 block shipping; P2+ are advisory.
+3. **Each reviewer emits a severity-ranked report** with findings at P0-P4 and a machine-parseable last line: `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...`. P0/P1 block shipping — except that a finding the author routed to the spec's `## Deferred — follow-up required` section, under the scope ceiling, is not re-filed by the reviewers and so never enters the gate; P2+ are advisory.
 4. **Save each report to disk** at `docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/<lens>.md`.
 5. **Gate check:** Sum P0+P1 across all dispatched reviewers. If zero, the spec is green — break the loop.
-6. **If still red (rounds 1-3):** Edit the spec in place. Address every P0 and P1. P2+ items either get fixed or listed in a `## Deferred (P2+)` section.
+6. **If still red (rounds 1-3):** Edit the spec in place. Route every P0 and P1 finding to exactly one disposition — **fold** (edit every propagation site), **defer** (record it as a row in the spec's `## Deferred — follow-up required` section, under the scope ceiling), or **reject** (`not applicable`). P2+ items either get fixed or listed in a `## Deferred (P2+)` section.
 7. **If still red at round 4:** Targeted rewrite — classify each spec section as FROZEN (no unresolved P0/P1) or REWRITE. Build a closed-issues manifest from rounds 1-3 as regression constraints. No blank-slate rewrites.
 8. **If still red after round 4:** Halt. Present remaining P0/P1 and ask the user what to do (patch manually, ship by hand, narrow the brief, or grill the remaining findings — a bounded interview scoped to those titles, whose decisions route back through the in-place revise rules; it never re-dispatches reviewers and never increments the round counter).
 
-**Round 2+ closure tracking:** Each reviewer reads all prior-round reviewer reports present (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table showing which findings are CLOSED, PARTIAL, REOPENED, or NEW. Reopened items are P0 unless the spec deliberately changed direction with rationale.
+**Round 2+ closure tracking:** Each reviewer reads all prior-round reviewer reports present (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table showing which findings are CLOSED, PARTIAL, REOPENED, DEFERRED, or NEW. Reopened items are P0 unless the spec deliberately changed direction with rationale. In every round, including round 1, each reviewer also checks the spec's `## Deferred — follow-up required` rows for well-formedness and does not re-file a finding whose root a well-formed row already carries.
 
 ### Phase 3 — Drift-check checklist (hard stop)
 
