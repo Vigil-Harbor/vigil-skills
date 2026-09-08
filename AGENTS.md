@@ -98,7 +98,7 @@ the upstream copy before installing.
 
 - Skills use `name`, `description`, `user_invocable`; agents use `name`, `description`.
 - Reviewer agents are **read-only** — they must never edit files or mutate git state.
-- Severity scale is shared across all reviewers (the three default lenses plus the optional scalability lens): P0/P1 block shipping; P2+ do not. Reserve P0/P1 for genuinely load-bearing issues.
+- Severity scale is shared across all reviewers (the three default lenses plus the optional scalability lens): P0/P1 block shipping — except that a finding the author routed, under the scope ceiling, to a well-formed row in the spec's `## Deferred — follow-up required` section is not re-filed by the reviewers and so never enters the gate — a malformed row, a duplicate section, a routing-changing scope error, or an in-scope P0 row without `Discharged:` is still filed as a P0; P2+ do not. Reserve P0/P1 for genuinely load-bearing issues.
 - `sync.py` mirrors only the `skills/` and `agents/` subtrees (defined in `SUBTREES`). Adding a new top-level subtree requires updating that tuple.
 - Specs, briefs, and reviews live in the **target project** at `docs/specs/TODO/<TICKET-ID>.*`, not in this repo.
 - A brief may carry an optional `## Scale` section to turn on the scalability reviewer: `**Factor:** yes` plus a `**Target:**` line (the target N the design must hold at — requests/sec, records, tenants, $/op, etc.) enables the lens; `**Factor:** no` (or `none` / `n/a`) records scale as an explicit non-factor. Absent the section, the lens stays off and the loop runs the three default lenses unchanged. See `docs/spec-workflow-reference.md` § "Optional scalability lens" for the full grammar.
