@@ -20,15 +20,17 @@ Flags: `--dry-run`, `--verbose`, `--prune` (install only), `--claude-dir <path>`
 
 ### Workflow: spec lifecycle
 
-Four skills form the spec lifecycle. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
+Five skills form the spec lifecycle; the third is optional. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
 
 1. **`/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`** — Produces the brief. Resolves the ticket (tracker optional — degrades to conversation), grounds against repo + wiki, runs the bounded `grilling` interview (round cap 3, seven items per round, brief-altitude fence), confirms, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. Reads tickets; never creates or transitions them. `grilling` is the shared model-invocable primitive (also behind `/grill-me` and `/spec-cycle`'s post-round-4 option 4); it is never fired unprompted.
 
 2. **`/spec-cycle <brief-path>`** — Authors a spec from a brief, then runs a parallel review loop — three default lenses plus an optional fourth scalability lens — up to 4 rounds. Halts at a session boundary with a drift-check checklist, or — if still red after 4 rounds — a menu whose fourth option grills the remaining findings. Does not implement or commit anything.
 
-3. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
+3. **`/spec-tickets <spec-path>`** *(optional)* — Breaks a green-lit spec into verifiable pieces with blocking edges, stops for operator approval, then files each piece as a child of the spec's ticket: blocked-by relations where the tracker has them, a `Blocked by` section where it does not, one local file per piece when no tracker is connected. Never files headless. Skipping it changes nothing: `/ship-spec` does not read the children.
 
-4. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
+4. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
+
+5. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
 
 ### Parallel review agents
 
@@ -117,7 +119,7 @@ State.md edits require an evidence triple (Plane ID, date, commit hash) — the 
 
 ## External dependencies (runtime, not build)
 
-- **plane-proxy** — state updates (write) and reachability checks (preflight). Ticket reads now flow through MCP memory via `memory_search` (cached by MCP-33 webhook receiver). Skills warn-and-proceed on cache miss.
+- **plane-proxy** — state updates (write) and reachability checks (preflight). Ticket reads now flow through MCP memory via `memory_search` (cached by MCP-33 webhook receiver). Skills warn-and-proceed on cache miss. `/spec-tickets` resolves the parent on the tracker itself, because that read is a create precondition, and it does not consult shared memory. It uses the tracker when one is connected and its storage probe succeeds, writes local files only when no issue-tracker integration is connected, and halts otherwise.
 - **`gh` CLI** — PR creation, CodeRabbit thread management. Must be authenticated.
 - **CodeRabbit** — configured on target repos for `/review-pr`.
 

@@ -1,6 +1,6 @@
 # Vigil Skills
 
-Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → spec → review → ship → close workflow with a bounded design interview and parallel reviewers, plus a CodeRabbit triage handler.
+Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → spec → review → (optional tickets) → ship → close workflow with a bounded design interview and parallel reviewers, plus a CodeRabbit triage handler.
 
 ## What's here
 
@@ -8,6 +8,7 @@ Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → s
 
 - **`/spec-brief <TICKET-ID>`** *(new)* — Produce the brief `/spec-cycle` consumes. Resolves the ticket (tracker optional — degrades to conversation), grounds against your repo and wiki, runs a bounded design interview (three rounds, seven items each, fenced to decisions that change the brief), confirms, then writes `docs/specs/TODO/<TICKET-ID>.brief.md`.
 - **`/spec-cycle <brief-path>`** — Author a spec from a brief, then run a parallel review loop (correctness / edge-cases / repo-conventions, plus an optional scalability lens) until findings clean or 4 passes complete. Halts at a session boundary with a structural drift-check checklist before any implementation. Pair with `/ship-spec`.
+- **`/spec-tickets <spec-path>`** *(new, optional)* — Break a green-lit spec into verifiable pieces with blocking edges, stop for your approval, then file each piece as a child of the spec's ticket. The dependency graph lives in the tracker (blocked-by relations, or a `Blocked by` section), or in one local file per piece when no tracker is connected. `/ship-spec` runs the same with or without it.
 - **`/ship-spec <spec-path>`** — Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR.
 - **`/spec-close <spec-path> [--report-only | --partial]`** *(new)* — After the PR merges, close the spec in one pass: reconcile it against shipped code, propose wiki entries, archive artifacts from `TODO/` to `DONE/<TICKET-ID>/`, and prepend the wiki's `log.md` entry. Plane state gates full vs. partial close.
 - **`/grill-me <topic>`** *(new)* — Ad-hoc bounded interview on a plan, decision, or idea. Same design-tree interview `/spec-brief` runs, with no lifecycle artifact — the summary is the deliverable.
@@ -62,6 +63,7 @@ The engine that emits these canonical `SKILL.md` sources as per-harness packages
 - **Claude Code** — skills and subagents are Claude Code features.
 - For `/spec-cycle`, `/ship-spec`, and `/spec-close`: a Plane.so workspace with the plane-proxy MCP server, and `gh` CLI authenticated. `/spec-close`'s wiki half additionally needs a wiki checkout.
 - For `/spec-brief` and `/grill-me`: no external services required — `/spec-brief` reads the ticket through Plane / shared memory when present and degrades to conversation when not. Both need a harness that can dispatch a read-restricted subagent.
+- For `/spec-tickets`: an operator is required at approval; the tracker is optional (local files only when no issue-tracker integration is connected); `gh` is not required.
 - For `/review-pr`: `gh` CLI authenticated, CodeRabbit configured on your repo.
 
 ## License
