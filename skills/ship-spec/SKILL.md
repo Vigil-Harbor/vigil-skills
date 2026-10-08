@@ -13,6 +13,40 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 ## Phase 0 — Preflight
 
 1. Resolve `<spec-path>`. Confirm it exists and follows shape `docs/specs/TODO/<TICKET-ID>.spec.md`. Extract `ticket_id` (uppercase) from filename.
+1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. Compute the spec's fingerprint: the SHA-256 of the spec file's bytes after every carriage-return byte is removed, written as `sha256-lf:` followed by the 64 lower-case hex digits *(e.g., `tr -d '\r' < <spec-path> | sha256sum` in a POSIX shell, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host)*. The rows are tested top to bottom and the first that matches wins:
+
+   | State | When | What this skill does |
+   |-------|------|----------------------|
+   | `missing` | The file or its directory does not exist | Confirm |
+   | `unreadable` | The file has no `verdict:` line with one of the three values, or its `ticket:` line is absent or names another ticket | Confirm, naming the reason |
+   | `pending` | `verdict: pending` | Confirm: a review started and did not finish |
+   | `red` | `verdict: red` | Halt, whether or not the spec has changed |
+   | `green` | `verdict: green` and the computed fingerprint equals the marker's | Pass |
+   | `changed` | `verdict: green` and the computed fingerprint differs, or the marker's `fingerprint:` line is absent or `none`, or the fingerprint could not be computed | Confirm: the spec is not the text that was judged |
+
+   `green` carries its kind: `review, round <round>` when `source: review`, `operator-attested` when `source: operator-attested`, `source not recorded` when the `source:` line is absent or has any other value. Its date is the marker's `date:` line, or `no date` when that line is absent. Both kinds pass the same way.
+
+   - `green`: continue. Keep `- [x] Spec verdict: green (<kind>, <date>)` for the PR body.
+   - `red`: halt with
+
+     ```text
+     SPEC VERDICT: red (round <round>, gate <gate>, <date>).
+     /ship-spec does not implement a red spec.
+     Get a green verdict first: re-run /spec-cycle, or record your own review with
+       /spec-cycle <spec-path> --attest "<reason>"
+     ```
+
+   - `missing`, `unreadable`, `pending`, `changed`: print
+
+     ```text
+     SPEC VERDICT: <state> — <one line: what that means for this spec>
+     1. Proceed — I have reviewed this spec
+     2. Stop
+     ```
+
+     and wait. Any reply other than `1` is treated as 2. A host that cannot wait prints `spec verdict needs an operator — stopping` and stops. On 1, keep `- [ ] Spec verdict: <state> — proceeded on operator confirmation` for the PR body and continue. On 2, stop.
+
+   This step reads no reviewer report and recomputes no gate.
 2. Confirm sibling brief exists at `docs/specs/TODO/<TICKET-ID>.brief.md`. If missing, warn but proceed using the spec alone.
 3. Read `<project_root>/CLAUDE.md`. Note project-level conventions (build, lint, test, etc.) — used as fallback in step 4 and as reference during Phase 2 implementation.
 4. **Resolve the test command (single source of truth).**
@@ -51,7 +85,7 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 **Preflight notes:**
 - **Python tests, prefer module-form invocation.** When the resolved test command is Python-based, write it as `<interpreter> -m pytest …` (e.g., `python -m pytest`, or pin the interpreter with a full path like `<full-path-to-python> -m pytest`) rather than bare `pytest`. Bare `pytest` resolves to whichever `pytest` executable is first on `PATH`, which on multi-Python systems often points to an interpreter that doesn't have the project's deps installed. Module-form forces resolution into the same interpreter that has the deps. This is discipline at the spec/CLAUDE.md authoring layer; ship-spec passes the command through as-is.
 
-Print a one-line preflight summary, then continue.
+Print a one-line preflight summary naming the verdict state from step 1b (and, for green, its kind), then continue.
 
 ## Phase 1 — Worktree setup
 
@@ -305,6 +339,8 @@ or
 (When the resolved test command is `N/A`, replace the first bullet with `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced` and omit the test-output file link.)
 - [x] `<combined test command>` — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)
 - [x] `<build command, if separate>` — clean
+- [x] Spec verdict: green (<kind>, <date>)
+(This is the line Phase 0 step 1b kept. When the operator confirmed through a non-green state, use its unchecked line instead: `- [ ] Spec verdict: <state> — proceeded on operator confirmation`.)
 - [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (docs/specs/TODO/<TICKET-ID>.review.md)
 (Append ` — <ov> overridden by operator` to the review line when that count is above zero. When Phase 3b skipped the review, use its unchecked skip line instead: `- [ ] Review gate: skipped — <reason>`.)
 - [x] [smoke check on real data, if applicable]
@@ -375,13 +411,14 @@ Do not auto-update any project wiki — that happens post-merge once the merge S
 - Bash for git, gh, package-manager commands — fully scripted, no interactive prompts.
 - plane-proxy tools (project listing, work-item state update, work-item comment) — or the equivalent capabilities in your host's Plane integration.
 - The Phase 3b review runs in a read-only subagent when the host has one, inline otherwise. The review command itself is whatever the project declared; this skill supplies none.
+- A shell hash command to check the spec's fingerprint in Phase 0 step 1b (`tr -d '\r' < <spec-path> | sha256sum`, or your host's equivalent). This skill reads the verdict marker and never writes it.
 - Do not run `git rebase -i`, `git add -i`, or any interactive command.
 - Do not push to `<default-branch>`. Do not force-push the feature branch unless the user explicitly asks.
 - Do not skip pre-commit hooks (`--no-verify`). If a hook fails, fix the underlying issue.
 
 ## Failure modes to watch for
 
-- **Spec not green.** If the spec doesn't have `## Done when` / `## Test plan` / `## Test command` / etc., it likely hasn't been through `/spec-cycle`. Halt and ask the user.
+- **Spec not green.** Phase 0 step 1b reads the verdict marker `/spec-cycle` left at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`: a red verdict halts with the `SPEC VERDICT: red` block, and a missing, unreadable, pending, or changed marker asks the operator to confirm before anything is cut. A spec that doesn't have `## Done when` / `## Test plan` / `## Test command` / etc. still cannot be implemented whatever the marker says — it likely hasn't been through `/spec-cycle`; halt and ask the user.
 - **Worktree path conflict.** The sibling `<worktree-path>` already exists. Could be a leftover from a previous ship-spec run, or unrelated. Halt with the manual cleanup command (`git worktree remove …` or rename). Don't auto-remove — the dir might hold work in progress.
 - **Branch conflict.** The target branch already exists locally or on origin. Halt and ask the user how to resolve. Don't auto-delete branches.
 - **Push rejected.** Should be rare in worktree mode (branch is freshly cut from the remote tip), but possible if the user pushed manually during Phase 2/3. Halt; do not force-push.

@@ -40,7 +40,7 @@ It ends by rendering a **hand-off block** — settled decisions, the open fronti
 
 **Purpose:** Take a short brief (a half-page problem statement with acceptance criteria) and produce a converged engineering spec, reviewed by independent AI agents (three by default, plus an optional fourth scalability lens when scale is declared).
 
-**Invocation:** `/spec-cycle <path-to-brief>`
+**Invocation:** `/spec-cycle <path-to-brief> [--attest "<reason>"]`
 
 ### Phase 0 — Preflight
 
@@ -97,6 +97,10 @@ When the spec goes green, render a structured checklist comparing the spec back 
 
 Then stop. The user reviews the checklist and invokes the implementation skill separately.
 
+### Verdict marker
+
+spec-cycle records its verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`: green or red, the round and gate count, the date, and a fingerprint of the spec text that was judged (SHA-256 over the file with carriage returns removed). It is written at three points — pending before round 1's reviewers are dispatched, red at the round-4 halt, green after post-green polish — and the downstream skills read it instead of parsing review reports. Attest mode, `/spec-cycle <path> --attest "<reason>"`, records a green verdict by hand when the review happened outside the loop: it checks the spec's headings, shows the current verdict, and writes an operator-attested marker only on confirmation. It dispatches no reviewer and edits no spec.
+
 ### Optional scalability lens
 
 By default the loop runs the three standing lenses. A brief can turn on a **fourth, scalability lens** — the "case of N" advocate — by declaring scale a factor. The lens is **opt-in per brief**: absent the declaration the loop is unchanged (three standing lenses, identical gate arithmetic and closure-table output). There is no auto-detection — spec-cycle never guesses scale relevance from the spec body.
@@ -133,6 +137,7 @@ When on, the scalability reviewer is dispatched in the same parallel message as 
 **Invocation:** `/spec-tickets <path-to-spec>`
 
 - **Input** — the green-lit spec file and nothing else. No brief, no ticket id, no conversation.
+- **Verdict read** — preflight reads the spec's verdict marker. A red verdict halts before any draft; every other state is printed as a `Verdict:` line in the approval block, which approval confirms. No fingerprint is checked here.
 - **Approval gate** — the skill prints the breakdown (pieces, acceptance criteria, blocking edges, the unblocked pieces) and waits. It files only on an explicit approval and never runs headless.
 - **Three storage modes** — blocked-by relations when the tracker can write them; a `Blocked by` section on each child when it cannot; one local file per piece (`docs/specs/TODO/<TICKET-ID>.ticket-<slug>.md`) when no tracker is connected. A connected tracker that fails halts the run; it does not fall back to local files.
 - **Filing** — blockers first, create-only. The first failed write stops the run with a report of what was and was not filed. There is no resume: a second run on a tracker files the pieces again.
@@ -150,7 +155,7 @@ The steps are in `skills/spec-tickets/SKILL.md`.
 
 ### Phase 0 — Preflight
 
-1. **Read the spec.** Confirm it has the expected sections (Goal, Scope, Design, Test plan, Test command, Done when). If it doesn't, it probably hasn't been through spec-cycle — halt and tell the user.
+1. **Read the spec.** Confirm it has the expected sections (Goal, Scope, Design, Test plan, Test command, Done when). If it doesn't, it probably hasn't been through spec-cycle — halt and tell the user. Then read the verdict marker spec-cycle left beside the reviews: a green verdict whose fingerprint matches the spec passes, red halts, and anything else (missing, pending, unreadable, or a spec edited since) asks the operator to confirm.
 2. **Resolve the test command.** Priority: spec's `## Test command` section (authoritative for this change) > project's CLAUDE.md Build & Run section (fallback). If neither yields a runnable command, halt. If the test command is `N/A`, the automated test gate is skipped entirely.
 3. **Discover the default branch** via `git symbolic-ref refs/remotes/origin/HEAD` (fallback: `git remote show origin`). Works for main, master, trunk, etc.
 4. **Confirm GitHub CLI is authenticated** (`gh auth status`).

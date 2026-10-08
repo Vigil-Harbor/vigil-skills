@@ -31,11 +31,38 @@ The stage is optional. Not invoking it is the skip: a spec with no child tickets
 ## Phase 0 — Preflight
 
 1. Resolve the repo root and the spec path as above.
-2. Read the spec. It is the only source for the breakdown. Do not read the sibling brief, the reviews directory, or the conversation for pieces.
-3. **Green-lit check.** Each of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, and `## Out of scope` must occur exactly once as a level-2 heading outside a fenced block. A missing heading, or a second heading of the same name, halts with the heading named. This skill does not re-run reviewers.
-4. If `docs/specs/TODO/<PARENT-ID>.reviews/` is absent, warn once and continue.
+2. Read the spec. It is the only source for the breakdown. Do not read the sibling brief, the reviews directory, or the conversation for pieces. The verdict marker inside the reviews directory is read in step 4 for the verdict and for nothing else.
+3. **Heading check.** Each of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, and `## Out of scope` must occur exactly once as a level-2 heading outside a fenced block. A missing heading, or a second heading of the same name, halts with the heading named. This skill does not re-run reviewers.
+4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. This skill computes no fingerprint, so a `verdict: green` marker is always `green` here, including one whose `fingerprint:` is `none`. The rows are tested top to bottom and the first that matches wins:
+
+   | State | When | What this skill does |
+   |-------|------|----------------------|
+   | `missing` | The file or its directory does not exist | Shown in the approval block |
+   | `unreadable` | The file has no `verdict:` line with one of the three values, or its `ticket:` line is absent or names another ticket | Shown in the approval block, naming the reason |
+   | `pending` | `verdict: pending` | Shown in the approval block |
+   | `red` | `verdict: red` | Halt |
+   | `green` | `verdict: green` | Shown in the approval block |
+
+   `green` carries its kind: `review, round <round>` when `source: review`, `operator-attested` when `source: operator-attested`, `source not recorded` when the `source:` line is absent or has any other value. Its date is the marker's `date:` line, or `no date` when that line is absent.
+
+   - `red`: halt here, before any draft, with
+
+     ```text
+     SPEC VERDICT: red (round <round>, gate <gate>, <date>).
+     /spec-tickets does not file tickets for a red spec.
+     Get a green verdict first: re-run /spec-cycle, or record your own review with
+       /spec-cycle <spec-path> --attest "<reason>"
+     ```
+
+   - Anything else: keep one verdict line and continue. There is no separate prompt; `Approve and file` in Phase 3 is the operator's confirmation of that line.
+     - `Verdict: green (<kind>, <date>) — fingerprint not checked on this host`
+     - `Verdict: missing — no recorded review for this spec`
+     - `Verdict: pending — a review started and did not finish`
+     - `Verdict: unreadable (<reason>) — treated as no recorded review`
+
+   This step reads no reviewer report and recomputes no gate.
 5. **Deferred rows.** If the spec has a `## Deferred — follow-up required` section, count its `### D-<n>:` headings outside fenced blocks. Those rows are never filed as pieces. If the section exists and the count is zero, the count line later reads `Deferred rows not filed: 0 (no D-<n> headings)`.
-6. Print one line: `ticket: <PARENT-ID> · headings: ok · reviews: present | absent`.
+6. Print `ticket: <PARENT-ID> · headings: ok`, then the verdict line from step 4 on its own line.
 
 ## Phase 1 — Storage probe
 
@@ -88,6 +115,7 @@ Print the breakdown and wait. There is no bypass flag and no environment-variabl
 SPEC TICKETS: <PARENT-ID>
 Spec: <path>
 Storage: <storage line from Phase 1>
+Verdict: <verdict line from Phase 0 step 4>
 Deferred rows not filed: <n>
 Existing under parent: <n children or unknown>, <n local ticket files>
 <when either count is above zero: Approving files these pieces in addition to what exists.>
@@ -128,7 +156,7 @@ The block that was printed is what approval freezes — its pieces, edges, crite
 
 ## Phase 4 — File
 
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval.
+1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here.
 2. Work only from the frozen draft. Do not redraft from the spec.
 3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
 4. **Per piece.**
@@ -167,18 +195,21 @@ Edits the spec. Edits or changes the behaviour of `/ship-spec`, `/spec-cycle`, o
 - File reading and writing for the spec and, in `local` mode, the ticket files.
 - The issue tracker's capabilities, all optional: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, and create a blocked-by relation on the dependent. Use whatever the connected integration offers for each, or the equivalent in your host. This skill names no tracker response field; read what the integration returns the way that integration documents it.
 - A host whose tracker integration sets a parent and nothing else takes the `text` mode.
+- Reads the verdict marker at `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` for the verdict only. Computes no hash; the fingerprint is not checked here.
 - No shell, no network beyond the tracker integration, no subagents, no shared-memory lookup.
 - `local` file names fit `/spec-close`'s companion rule (`<TICKET-ID>.<rest>`), so a later close archives `ticket-<slug>.md` with the rest of the spec's artifacts.
 
 ## Failure modes
 
 - **Wrong argument** → the usage line; nothing written.
-- **Spec not green-lit** (a required heading missing or duplicated) → halt naming the heading.
+- **Spec incomplete** (a required heading missing or duplicated) → halt naming the heading.
+- **Red verdict** → halt in preflight with the `SPEC VERDICT: red` block; no draft, no writes.
 - **Tracker connected but failing, or unable to create with a parent** → `halt`; the draft is shown, filing is not offered, no local files are written.
 - **Parent does not resolve** → `halt`.
 - **Two capable integrations and no name given** → halt with no writes.
 - **Draft not approvable** (cycle, bad slug, unassigned unit) → option 1 omitted until a revision fixes it.
 - **No operator** → `approval required — this skill does not file headless`.
 - **Spec changed after approval** → halt; ask for a new approval.
+- **Verdict changed while approval waited** → halt in Phase 4 with no writes; ask for a new approval.
 - **A write fails mid-run** → stop report; no `FILED`; no retry.
 - **Run twice on a tracker** → duplicates. The approval block's existing-work line is the only guard.
