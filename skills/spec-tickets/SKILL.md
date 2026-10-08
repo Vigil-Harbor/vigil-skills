@@ -156,7 +156,7 @@ The block that was printed is what approval freezes — its pieces, edges, crite
 
 ## Phase 4 — File
 
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. Then read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here.
+1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here.
 2. Work only from the frozen draft. Do not redraft from the spec.
 3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
 4. **Per piece.**

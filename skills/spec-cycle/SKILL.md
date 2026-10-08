@@ -368,7 +368,7 @@ Save and continue.
 
 ## Phase 2 — Review loop (≤4 passes)
 
-**Pending write.** Once per invocation, before round 1's reviewers are dispatched: create `docs/specs/TODO/<TICKET-ID>.reviews/` if it is absent and write a pending marker (see `## The verdict marker`: `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, today's date, `fingerprint: none`). This runs on a first run and on a re-run over an existing spec alike, and replaces whatever marker was there. If the write fails, print the failed-write line and continue.
+**Pending write.** Once per invocation, before round 1's reviewers are dispatched: create `docs/specs/TODO/<TICKET-ID>.reviews/` if it is absent and write a pending marker (see `## The verdict marker`: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, today's date, `fingerprint: none`). This runs on a first run and on a re-run over an existing spec alike, and replaces whatever marker was there. If the write fails, print the failed-write line and continue.
 
 For each round 1..4:
 
@@ -584,7 +584,7 @@ If still red and `round == 4`:
 
 ### 2f. Halt condition
 
-If after round 4 the spec is still red, do **not** auto-proceed. After round 4's 2e edits and before the halt block prints, write a red marker (see `## The verdict marker`): `verdict: red`, `source: review`, `round: 4`, `gate: <round-4 total_p0p1>`, today's date, and the fingerprint of the spec as it stands at the halt. If that write fails, print the failed-write line above the block. Options 1 to 3 end the skill with the red marker in place; option 4 edits the spec and leaves the marker untouched, so it stays red. Print:
+If after round 4 the spec is still red, do **not** auto-proceed. After round 4's 2e edits and before the halt block prints, write a red marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: red`, `source: review`, `round: 4`, `gate: <round-4 total_p0p1>`, today's date, and the fingerprint of the spec as it stands at the halt. If that write fails, print the failed-write line above the block. Options 1 to 3 end the skill with the red marker in place; option 4 edits the spec and leaves the marker untouched, so it stays red. Print:
 ```
 SPEC NOT GREEN AFTER 4 ROUNDS.
 Remaining P0/P1:
@@ -754,7 +754,7 @@ already-run: reconcile (merge/dedup) rather than append.
 
 ## Phase 3 — Drift-check checklist (HARD STOP)
 
-When the spec is green, first write the green marker (see `## The verdict marker`): `verdict: green`, `source: review`, the round that went green, `gate: 0`, today's date, and the fingerprint of the spec as 2g left it. Every green run reaches this point, whether 2g folded candidates or left by its no-candidate exit, so the write lives here and not in 2g. If the write fails, print the failed-write line directly under the SPEC READY header, above the `Path:` line.
+When the spec is green, first write the green marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: green`, `source: review`, the round that went green, `gate: 0`, today's date, and the fingerprint of the spec as 2g left it. Every green run reaches this point, whether 2g folded candidates or left by its no-candidate exit, so the write lives here and not in 2g. If the write fails, print the failed-write line directly under the SPEC READY header, above the `Path:` line.
 
 Then render this output verbatim, with sections populated from the brief:
 
@@ -836,7 +836,7 @@ Attest mode runs none of Phase 0 steps 2 to 8, Phase 1, Phase 2, or Phase 3. It 
    ```
 
    Wait for the operator. Any reply other than `1` is treated as 2. A host that cannot wait prints `attestation requires an operator — nothing written` and stops.
-6. On 1, write an attested marker: `verdict: green`, `source: operator-attested`, `round: not reviewed`, `gate: not reviewed`, today's date, the spec's fingerprint, `reason: <reason>`, and `replaces:` set from the old marker's `verdict`, `source`, `round`, `gate` and `date` — `replaces: none` when there was no marker, `replaces: unreadable` when it could not be parsed. Create the reviews directory if it is absent. Print the marker path. If the write fails, print `attestation NOT written: <error>` and stop; the spec's verdict is unchanged.
+6. On 1, write an attested marker: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: green`, `source: operator-attested`, `round: not reviewed`, `gate: not reviewed`, today's date, the spec's fingerprint, `reason: <reason>`, and `replaces:` set from the old marker's `verdict`, `source`, `round`, `gate` and `date` — `replaces: none` when there was no marker, `replaces: unreadable` when it could not be parsed. Create the reviews directory if it is absent. Print the marker path. If the write fails, print `attestation NOT written: <error>` and stop; the spec's verdict is unchanged.
 
 Attestation is allowed over no marker, a pending marker, a red marker, a green marker whose spec changed, and an unreadable marker.
 
