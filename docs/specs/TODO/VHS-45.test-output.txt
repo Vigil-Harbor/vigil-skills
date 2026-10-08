@@ -1,0 +1,14 @@
+test_bad_skill_fires (__main__.TestLint.test_bad_skill_fires) ... ok
+test_good_skill_clean (__main__.TestLint.test_good_skill_clean) ... ok
+test_lint_paths_empty (__main__.TestLint.test_lint_paths_empty) ... ok
+test_robustness_error_fixtures (__main__.TestLint.test_robustness_error_fixtures) ... ok
+test_robustness_no_error_fixtures (__main__.TestLint.test_robustness_no_error_fixtures) ... ok
+test_shipped_skills_clean (__main__.TestLint.test_shipped_skills_clean) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.090s
+
+OK
+exit=0
+exit=0
+exit=0

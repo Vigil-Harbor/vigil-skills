@@ -1,6 +1,6 @@
 # Spec Workflow — Clean-Room Reference
 
-Four AI-driven skills: an interview stage that produces the brief, two that split spec authoring from implementation into separate sessions, and a post-merge close. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
+Four AI-driven skills, plus one optional stage: an interview stage that produces the brief, two that split spec authoring from implementation into separate sessions, and a post-merge close. The optional stage, spec-tickets, sits between authoring and implementation and breaks a green-lit spec into dependency-linked tickets. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
 
 ---
 
@@ -123,6 +123,22 @@ How it is read (Phase 0):
 - **Dimensions** *(optional)* — `**Dimensions:** <free text>` names the scaling axes.
 
 When on, the scalability reviewer is dispatched in the same parallel message as the standing lenses, saves to `round-<N>/scalability.md`, emits the same `STATUS:` contract, and folds its P0/P1 into the same gate and round-2+ closure tracking. A design architecturally unable to reach the declared target N is P1 (the scaling analogue of non-functional code); a self-contradiction against a declared scale "Done when" is P0; a concern that only bites *beyond* the declared target stays P2+. A declared non-factor is surfaced in the Phase 3 drift-check for human confirmation.
+
+---
+
+## Optional stage: spec-tickets
+
+**Purpose:** Break one green-lit spec into pieces that can each be verified alone, record which pieces block which, and file them as children of the spec's ticket — so the dependency graph, not a build order, says what can run in parallel.
+
+**Invocation:** `/spec-tickets <path-to-spec>`
+
+- **Input** — the green-lit spec file and nothing else. No brief, no ticket id, no conversation.
+- **Approval gate** — the skill prints the breakdown (pieces, acceptance criteria, blocking edges, the unblocked pieces) and waits. It files only on an explicit approval and never runs headless.
+- **Three storage modes** — blocked-by relations when the tracker can write them; a `Blocked by` section on each child when it cannot; one local file per piece (`docs/specs/TODO/<TICKET-ID>.ticket-<slug>.md`) when no tracker is connected. A connected tracker that fails halts the run; it does not fall back to local files.
+- **Filing** — blockers first, create-only. The first failed write stops the run with a report of what was and was not filed. There is no resume: a second run on a tracker files the pieces again.
+- **ship-spec unchanged** — every piece lands on the spec's one branch and one PR. Skipping this stage changes nothing downstream.
+
+The steps are in `skills/spec-tickets/SKILL.md`.
 
 ---
 
