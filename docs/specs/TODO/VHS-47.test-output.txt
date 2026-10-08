@@ -1,0 +1,82 @@
+test_bad_skill_fires (__main__.TestLint.test_bad_skill_fires) ... ok
+test_good_skill_clean (__main__.TestLint.test_good_skill_clean) ... ok
+test_lint_paths_empty (__main__.TestLint.test_lint_paths_empty) ... ok
+test_robustness_error_fixtures (__main__.TestLint.test_robustness_error_fixtures) ... ok
+test_robustness_no_error_fixtures (__main__.TestLint.test_robustness_no_error_fixtures) ... ok
+test_shipped_skills_clean (__main__.TestLint.test_shipped_skills_clean) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.009s
+
+OK
+test_entry_re_ignores_the_format_sentence (__main__.TestAnchor.test_entry_re_ignores_the_format_sentence) ... ok
+test_entry_re_rejects_each_narrowing (__main__.TestAnchor.test_entry_re_rejects_each_narrowing) ... ok
+test_mid_write_failure_leaves_the_original_and_no_temp (__main__.TestAtomicWrite.test_mid_write_failure_leaves_the_original_and_no_temp) ... ok
+test_no_temp_survives_a_successful_run (__main__.TestAtomicWrite.test_no_temp_survives_a_successful_run) ... ok
+test_bom_before_a_header_survives_and_the_entry_lands_first (__main__.TestBom.test_bom_before_a_header_survives_and_the_entry_lands_first) ... ok
+test_bom_immediately_before_an_entry_heading (__main__.TestBom.test_bom_immediately_before_an_entry_heading) ... ok
+test_bom_with_two_headerless_entries (__main__.TestBom.test_bom_with_two_headerless_entries) ... ok
+test_change_between_read_and_replace_is_refused (__main__.TestConcurrentChange.test_change_between_read_and_replace_is_refused) ... ok
+test_file_appearing_under_a_missing_file_run_is_refused (__main__.TestConcurrentChange.test_file_appearing_under_a_missing_file_run_is_refused) ... ok
+test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry (__main__.TestDateOrdering.test_a_pre_existing_inversion_does_not_block_a_genuinely_newer_entry) ... ok
+test_an_unparseable_date_away_from_the_anchor_is_skipped (__main__.TestDateOrdering.test_an_unparseable_date_away_from_the_anchor_is_skipped) ... ok
+test_entry_older_than_a_newer_entry_further_down_refuses (__main__.TestDateOrdering.test_entry_older_than_a_newer_entry_further_down_refuses) ... ok
+test_impossible_anchor_date_is_refused (__main__.TestDateOrdering.test_impossible_anchor_date_is_refused) ... ok
+test_impossible_entry_date_is_refused (__main__.TestDateOrdering.test_impossible_entry_date_is_refused) ... ok
+test_older_entry_above_a_newer_one_refuses (__main__.TestDateOrdering.test_older_entry_above_a_newer_one_refuses) ... ok
+test_same_day_entry_still_prepends (__main__.TestDateOrdering.test_same_day_entry_still_prepends) ... ok
+test_the_ordering_refusals_report_distinct_reasons (__main__.TestDateOrdering.test_the_ordering_refusals_report_distinct_reasons) ... ok
+test_em_dash_survives_and_the_guard_still_matches (__main__.TestEmDashRoundTrip.test_em_dash_survives_and_the_guard_still_matches) ... ok
+test_directory_target_exits_two (__main__.TestExitOneIsReserved.test_directory_target_exits_two) ... ok
+test_read_only_parent_directory_exits_two (__main__.TestExitOneIsReserved.test_read_only_parent_directory_exits_two) ... skipped 'POSIX directory permissions'
+test_entry_lands_after_the_header (__main__.TestFreshWiki.test_entry_lands_after_the_header) ... ok
+test_exact_match_does_suppress (__main__.TestGuardPrecision.test_exact_match_does_suppress) ... ok
+test_ticket_11_does_not_suppress_ticket_1 (__main__.TestGuardPrecision.test_ticket_11_does_not_suppress_ticket_1) ... ok
+test_guard_present_only_in_the_body (__main__.TestGuardShape.test_guard_present_only_in_the_body) ... ok
+test_guard_without_trailing_colon (__main__.TestGuardShape.test_guard_without_trailing_colon) ... ok
+test_wholly_unsubstituted_guard_names_the_placeholder (__main__.TestGuardShape.test_wholly_unsubstituted_guard_names_the_placeholder) ... ok
+test_naive_index_would_split_the_header (__main__.TestHeaderCorruption.test_naive_index_would_split_the_header) ... ok
+test_prepends_above_the_newest_entry_and_leaves_the_header_intact (__main__.TestHeaderCorruption.test_prepends_above_the_newest_entry_and_leaves_the_header_intact) ... ok
+test_second_run_skips_and_changes_nothing (__main__.TestIdempotency.test_second_run_skips_and_changes_nothing) ... ok
+test_documented_form_lands_the_entry (__main__.TestInvocationString.test_documented_form_lands_the_entry) ... ok
+test_failing_run_reports_a_nonzero_exit_token (__main__.TestInvocationString.test_failing_run_reports_a_nonzero_exit_token) ... ok
+test_file_is_created_with_the_entry_alone (__main__.TestMissingFile.test_file_is_created_with_the_entry_alone) ... ok
+test_created_mode_matches_a_plain_open (__main__.TestMode.test_created_mode_matches_a_plain_open) ... skipped 'POSIX mode bits'
+test_existing_mode_is_preserved (__main__.TestMode.test_existing_mode_is_preserved) ... skipped 'POSIX mode bits'
+test_crlf_entry_on_stdin_produces_no_cr (__main__.TestNewlines.test_crlf_entry_on_stdin_produces_no_cr) ... ok
+test_crlf_target_keeps_crlf_except_the_boundary_line (__main__.TestNewlines.test_crlf_target_keeps_crlf_except_the_boundary_line) ... ok
+test_lf_file_stays_lf (__main__.TestNewlines.test_lf_file_stays_lf) ... ok
+test_stderr_comes_back_as_utf8_with_lf (__main__.TestNewlines.test_stderr_comes_back_as_utf8_with_lf) ... ok
+test_agents_md_bullets_read_correctly (__main__.TestNoStaleWording.test_agents_md_bullets_read_correctly) ... ok
+test_missing_requires_backlog_no_longer_names_spec_close (__main__.TestNoStaleWording.test_missing_requires_backlog_no_longer_names_spec_close) ... ok
+test_skill_md_has_no_append_or_grep_f (__main__.TestNoStaleWording.test_skill_md_has_no_append_or_grep_f) ... ok
+test_h3_entries_refuse (__main__.TestReadSideRefusal.test_h3_entries_refuse) ... ok
+test_heading_like_line_above_the_anchor_refuses (__main__.TestReadSideRefusal.test_heading_like_line_above_the_anchor_refuses) ... ok
+test_normal_shape_still_prepends (__main__.TestReadSideRefusal.test_normal_shape_still_prepends) ... ok
+test_short_date_entries_refuse (__main__.TestReadSideRefusal.test_short_date_entries_refuse) ... ok
+test_the_two_refusals_report_distinct_reasons (__main__.TestReadSideRefusal.test_the_two_refusals_report_distinct_reasons) ... ok
+test_lint_is_clean_including_warns (__main__.TestSkillDeclaration.test_lint_is_clean_including_warns) ... ok
+test_requires_block_matches_the_tool_use_notes (__main__.TestSkillDeclaration.test_requires_block_matches_the_tool_use_notes) ... ok
+test_devnull_is_refused (__main__.TestStdin.test_devnull_is_refused) ... ok
+test_tty_stdin_names_the_heredoc (__main__.TestStdin.test_tty_stdin_names_the_heredoc) ... ok
+test_whitespace_only_entry_is_refused (__main__.TestStdin.test_whitespace_only_entry_is_refused) ... ok
+test_fresh_and_created_end_in_exactly_one_newline (__main__.TestWhitespaceDiscipline.test_fresh_and_created_end_in_exactly_one_newline) ... ok
+test_no_leading_separator_on_an_empty_file (__main__.TestWhitespaceDiscipline.test_no_leading_separator_on_an_empty_file) ... ok
+test_no_leading_separator_when_nothing_precedes_the_anchor (__main__.TestWhitespaceDiscipline.test_no_leading_separator_when_nothing_precedes_the_anchor) ... ok
+test_normal_outcome_leaves_a_missing_trailing_newline_alone (__main__.TestWhitespaceDiscipline.test_normal_outcome_leaves_a_missing_trailing_newline_alone) ... ok
+test_one_blank_line_on_each_side_in_the_normal_outcome (__main__.TestWhitespaceDiscipline.test_one_blank_line_on_each_side_in_the_normal_outcome) ... ok
+test_second_close_against_a_bom_prefixed_created_file (__main__.TestWhitespaceDiscipline.test_second_close_against_a_bom_prefixed_created_file) ... ok
+test_second_close_against_a_created_file (__main__.TestWhitespaceDiscipline.test_second_close_against_a_created_file) ... ok
+test_malformed_entry_headings_are_refused (__main__.TestWriteSideHeadingValidation.test_malformed_entry_headings_are_refused) ... ok
+test_well_formed_entry_passes (__main__.TestWriteSideHeadingValidation.test_well_formed_entry_passes) ... ok
+
+----------------------------------------------------------------------
+Ran 60 tests in 4.805s
+
+OK (skipped=3)
+lint: 0 error(s), 2 warning(s)
+C:\Users\zioni\Documents\Vigil-Harbor\VHS-47-worktree\skills\review-pr\SKILL.md:
+  WARN [missing-requires] line 1: no requires: declaration
+C:\Users\zioni\Documents\Vigil-Harbor\VHS-47-worktree\skills\ship-spec\SKILL.md:
+  WARN [missing-requires] line 1: no requires: declaration
+warning: in the working copy of 'skills/spec-cycle/SKILL.md', CRLF will be replaced by LF the next time Git touches it
