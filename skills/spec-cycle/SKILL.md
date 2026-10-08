@@ -12,7 +12,7 @@ requires:
 
 # /spec-cycle — author and converge a spec
 
-Invoked as: `/spec-cycle <brief-path>` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`).
+Invoked as: `/spec-cycle <brief-path> [--attest "<reason>"]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
 This skill does two things: author a v1 spec from a brief, then loop a parallel review (three default lenses, plus an optional fourth when the brief declares scale) until the spec is clean or 4 passes complete. It does **not** implement anything. It halts at a session boundary so the user can review the spec on disk and invoke `/ship-spec` separately.
 
@@ -22,9 +22,59 @@ This skill does two things: author a v1 spec from a brief, then loop a parallel 
 - HARD STOP at a session boundary is robust: the user just runs the next command. No idle-context bloat, no auto-proceed footgun.
 - Re-runnable: if `/ship-spec` aborts mid-flight, the green-lit spec on disk is unchanged.
 
+## The verdict marker
+
+This skill records its verdict on disk so that `/ship-spec` and `/spec-tickets` can read it without parsing review reports or recomputing the gate. The marker is one file per spec at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`. Each write replaces the whole file.
+
+```markdown
+# Spec verdict: <TICKET-ID>
+
+verdict: green | red | pending
+source: review | operator-attested
+ticket: <TICKET-ID>
+spec: docs/specs/TODO/<TICKET-ID>.spec.md
+round: <1-4> | not reviewed | in progress
+gate: <P0+P1 count> | not reviewed | in progress
+date: <YYYY-MM-DD>
+fingerprint: sha256-lf:<64 hex digits> | none
+reason: <one line>
+replaces: <verdict>, <source>, round <round>, gate <gate>, <date> | none | unreadable
+```
+
+Field rules:
+
+- Fields are `key: value` lines, lower-case keys, one per line, with the key at the start of the line. The `# Spec verdict:` heading is not a field. A reader takes the first line for each key and ignores anything else in the file.
+- `reason` and `replaces` appear only on an operator-attested marker.
+- A review-produced marker has `source: review` and real numbers in `round` and `gate`. A green one always has `gate: 0`.
+- A pending marker has `source: review`, `round: in progress`, `gate: in progress`, `fingerprint: none`.
+- An attested marker has `verdict: green`, `source: operator-attested`, `round: not reviewed`, `gate: not reviewed`.
+
+**The fingerprint.** The fingerprint is the SHA-256 of the spec file's bytes after every carriage-return byte is removed, written as `sha256-lf:` followed by the 64 lower-case hex digits. Removing carriage returns makes the value the same for a CRLF and an LF checkout. Compute it with the host's shell *(e.g., `tr -d '\r' < <spec-path> | sha256sum` in a POSIX shell, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host)*. This skill computes it when it writes a green or red marker; `/ship-spec` computes it again to compare; `/spec-tickets` does not compute it. If the fingerprint cannot be computed, write `fingerprint: none` and print `verdict marker: fingerprint not computed (<reason>)`. A green marker with `fingerprint: none` reads as the changed-spec case in `/ship-spec`; `/spec-tickets` does not look at the fingerprint.
+
+**Write points.** The marker is written at three points, each described where it happens: pending at the start of Phase 2, red in 2f, green at the top of Phase 3. Attest mode (`## Attest mode`) is the one other writer. 2f-i never rewrites it. An interrupted run writes nothing more, so a pending marker stays.
+
+**A failed write does not change the run's outcome.** Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` at once, where the write was attempted: before round 1 for the pending write, under the SPEC READY header for the green write, above the halt block for the red write. The marker on disk is then whatever the last successful write left.
+
+### Reading the marker
+
+A reader looks at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` and lands on exactly one state. The rows are tested top to bottom and the first that matches wins. This table is the canonical copy; `/ship-spec` and `/spec-tickets` each carry their own, because a skill is read alone.
+
+| State | When | What the reader does |
+|-------|------|----------------------|
+| `missing` | The file or its directory does not exist | Confirm |
+| `unreadable` | The file has no `verdict:` line with one of the three values, or its `ticket:` line is absent or names another ticket | Confirm, naming the reason |
+| `pending` | `verdict: pending` | Confirm: a review started and did not finish |
+| `red` | `verdict: red` | Halt, whether or not the spec has changed |
+| `green` | `verdict: green` and the reader computed a fingerprint equal to the marker's | Pass |
+| `changed` | `verdict: green` and the computed fingerprint differs, or the marker's `fingerprint:` line is absent or `none`, or the reader could not compute one | Confirm: the spec is not the text that was judged |
+
+`green` carries its kind: `review, round <n>` or `operator-attested`. Both pass the same way. Every confirm stops on a host that cannot wait.
+
 ## Phase 0 — Preflight
 
 Before anything else:
+
+If `--attest` is present, do step 1 only (the ticket id from the path), then go to `## Attest mode`; nothing else in this skill runs.
 
 1. Resolve `<brief-path>` from the user's invocation and normalize it to a
    project_root-relative path with forward slashes (this normalized form is
@@ -318,6 +368,8 @@ Save and continue.
 
 ## Phase 2 — Review loop (≤4 passes)
 
+**Pending write.** Once per invocation, before round 1's reviewers are dispatched: create `docs/specs/TODO/<TICKET-ID>.reviews/` if it is absent and write a pending marker (see `## The verdict marker`: `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, today's date, `fingerprint: none`). This runs on a first run and on a re-run over an existing spec alike, and replaces whatever marker was there. If the write fails, print the failed-write line and continue.
+
 For each round 1..4:
 
 ### 2a. Cold-read the spec
@@ -436,7 +488,7 @@ total_p0p1 = sum of P0+P1 from RED status lines (GREEN contributes 0)
 
 The gate **formula is unchanged** — only the count of summands varies, and only when scale is on. With the lens off there is no fourth summand and the arithmetic is identical to today.
 
-If `total_p0p1 == 0`: break the loop. Spec is green at round N. Run the post-green polish step (2g) before Phase 3.
+If `total_p0p1 == 0`: break the loop. Spec is green at round N. Run the post-green polish step (2g) before Phase 3. The green marker is written at the top of Phase 3, after 2g, not here.
 
 A reviewer may return `STATUS: RED` with only P2+ findings (P0=0 P1=0). This does not block the loop since the gate checks `total_p0p1 == 0`. P2+ items are advisory — they are carried forward as spec notes in the `## Deferred (P2+)` section but do not prevent the spec from going green. On the green round, the carry into `## Deferred (P2+)` is performed by the post-green polish step (2g); P2s tagged `Pre-ship recommended` by a reviewer are 2g candidates.
 
@@ -532,7 +584,7 @@ If still red and `round == 4`:
 
 ### 2f. Halt condition
 
-If after round 4 the spec is still red, do **not** auto-proceed. Print:
+If after round 4 the spec is still red, do **not** auto-proceed. After round 4's 2e edits and before the halt block prints, write a red marker (see `## The verdict marker`): `verdict: red`, `source: review`, `round: 4`, `gate: <round-4 total_p0p1>`, today's date, and the fingerprint of the spec as it stands at the halt. If that write fails, print the failed-write line above the block. Options 1 to 3 end the skill with the red marker in place; option 4 edits the spec and leaves the marker untouched, so it stays red. Print:
 ```
 SPEC NOT GREEN AFTER 4 ROUNDS.
 Remaining P0/P1:
@@ -662,7 +714,7 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
 
 2f-i never re-dispatches reviewers, never increments the round counter, never
 changes the gate formula, never overwrites a prior `grill.md`, never edits the
-brief, and runs at most once per invocation. That last bound is held in context:
+brief, never rewrites the verdict marker, and runs at most once per invocation. That last bound is held in context:
 this skill records no preflight timestamp, so no on-disk signal distinguishes this
 invocation's grill from a prior one, and an existing `# Grill` header this session
 did not write does not withhold option 4.
@@ -702,12 +754,15 @@ already-run: reconcile (merge/dedup) rather than append.
 
 ## Phase 3 — Drift-check checklist (HARD STOP)
 
-When the spec is green, render this output verbatim, with sections populated from the brief:
+When the spec is green, first write the green marker (see `## The verdict marker`): `verdict: green`, `source: review`, the round that went green, `gate: 0`, today's date, and the fingerprint of the spec as 2g left it. Every green run reaches this point, whether 2g folded candidates or left by its no-candidate exit, so the write lives here and not in 2g. If the write fails, print the failed-write line directly under the SPEC READY header, above the `Path:` line.
+
+Then render this output verbatim, with sections populated from the brief:
 
 ```
 === SPEC READY: <TICKET-ID> ===
 Path: docs/specs/TODO/<TICKET-ID>.spec.md
 Rounds: <N> (green at round <N>)
+Verdict: green — docs/specs/TODO/<TICKET-ID>.reviews/verdict.md
 
 === DRIFT CHECK against brief ===
 
@@ -738,6 +793,8 @@ When ready, run:
   /ship-spec docs/specs/TODO/<TICKET-ID>.spec.md
 ```
 
+The `Verdict:` line takes one of three forms: `Verdict: green — docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`; the same with ` (fingerprint not computed)` appended when the marker was written with `fingerprint: none`; `Verdict: green — marker NOT written` when the write failed.
+
 The FOLLOW-UPS block is rendered per the extraction rule in § 2f.
 
 The Scale-declaration block consumes the `scale_lens` / `scale_target` already resolved in Phase 0 step 8 — **no re-parse of the brief.** The "Brief-section parsing rules" below are **not** extended to re-read `## Scale`; the drift-check renders the already-carried value, keeping a single source of truth for the parse (step 8).
@@ -755,9 +812,38 @@ Use the **first paragraph** or **bolded clause** of each numbered item as its ch
 
 After printing the checklist, **do not auto-proceed**. The user invokes `/ship-spec` separately when ready.
 
+## Attest mode
+
+`/spec-cycle <brief-path> --attest "<reason>"` records a spec as green when the verdict was reached by hand, without a review round. The path may be the brief path or the spec path; only the ticket id is taken from it, by Phase 0 step 1's prefix match, and the brief need not exist. `--attest` with no reason, an empty reason, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>"]`. The reason is stored as one line; line breaks in it become spaces.
+
+Attest mode runs none of Phase 0 steps 2 to 8, Phase 1, Phase 2, or Phase 3. It dispatches no reviewer and edits no spec. Its steps:
+
+1. Resolve the ticket id and the spec at `docs/specs/TODO/<TICKET-ID>.spec.md`. If the spec does not exist, halt.
+2. If the spec lacks any of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, `## Out of scope`, halt: `cannot attest: <heading> is missing`.
+3. Read the current marker and classify it by `### Reading the marker`, computing the fingerprint.
+4. If it is `green` — the fingerprint matches — print `already green and unchanged — nothing to attest` and stop. Nothing is written.
+5. Otherwise print:
+
+   ```text
+   ATTEST: <TICKET-ID>
+   Current verdict: <state line, or none>
+   Spec: docs/specs/TODO/<TICKET-ID>.spec.md
+   Reason: <reason>
+
+   This records the spec as green without a review round.
+   1. Attest green
+   2. Abort — nothing written
+   ```
+
+   Wait for the operator. Any reply other than `1` is treated as 2. A host that cannot wait prints `attestation requires an operator — nothing written` and stops.
+6. On 1, write an attested marker: `verdict: green`, `source: operator-attested`, `round: not reviewed`, `gate: not reviewed`, today's date, the spec's fingerprint, `reason: <reason>`, and `replaces:` set from the old marker's `verdict`, `source`, `round`, `gate` and `date` — `replaces: none` when there was no marker, `replaces: unreadable` when it could not be parsed. Create the reviews directory if it is absent. Print the marker path. If the write fails, print `attestation NOT written: <error>` and stop; the spec's verdict is unchanged.
+
+Attestation is allowed over no marker, a pending marker, a red marker, a green marker whose spec changed, and an unreadable marker.
+
 ## Tool-use notes
 
 - Read, Edit, Write for spec authorship and revision.
+- A shell hash command for the fingerprint (`tr -d '\r' < <spec-path> | sha256sum`, or your host's equivalent); Write for the verdict marker at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`.
 - Bash for `git fetch upstream` / `git fetch origin` (ref updates only, bounded by timeout), `git log` / `git remote` / `git rev-list` / `git rev-parse` / `git symbolic-ref` / `git merge-base --is-ancestor` / `sed` (read-only), `mkdir` for review subdirs, and — the lone git-level mutation of existing tracked files in this skill — `git merge --ff-only origin/<branch>`, run only after explicit user confirmation in Phase 0 step 5e.
 - Agent calls (parallel) for the reviewers (three, or four when scale is declared).
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup (tags: [plane_work_item, <TICKET-ID>], namespace from states.json). Falls back to brief alone on zero results or error response.
@@ -767,6 +853,9 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
 ## Failure modes to watch for
 
 - **Stale spec read.** Always re-read from disk at the start of each round. Do not trust the spec content from your own prior write.
+- **Verdict marker write fails.** The run's outcome is unchanged. Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` where the write was attempted; the marker on disk is whatever the last successful write left, and a downstream reader meets it as it is.
+- **Fingerprint cannot be computed.** Write the marker with `fingerprint: none` and print `verdict marker: fingerprint not computed (<reason>)`. `/ship-spec` then reads a green marker as `changed` and asks the operator to confirm.
+- **Interrupted run.** Nothing after the pending write is written. The marker stays `pending`, and `/ship-spec` and `/spec-tickets` report a review that started and did not finish. Re-run `/spec-cycle`, or attest.
 - **Reviewer status drift.** If a reviewer doesn't end with a parseable `STATUS:` line, treat its report as `STATUS: RED P0=1 P1=0` (count one P0 for "missing status") and surface it as an issue.
 - **Severity inflation.** If a single reviewer is producing >5 P1 findings consistently, that's a signal to re-check whether the reviewer is following the severity definitions. The fix is to push back through the prompt — but in v1 just trust the loop.
 - **Ticket not in MCP memory cache.** When `memory_search` returns zero results or an error for the ticket, warn-and-proceed using only the brief. The brief is the local source of truth. This covers cold-cache (ticket untouched since MCP-33 shipped) and MCP memory outage.
