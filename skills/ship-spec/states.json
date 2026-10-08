@@ -346,5 +346,24 @@
       "Done": "completed",
       "Cancelled": "cancelled"
     }
+  },
+  "WEBSITE": {
+    "project_id": "a8cf6522-c785-4603-842e-f79f557d3ef8",
+    "namespace": "plane",
+    "review_state_id": "d33838e1-7294-4478-a857-85894967188f",
+    "states": {
+      "Backlog": "270d73f9-415d-4222-9d55-6fa9da24dfb9",
+      "Todo": "4670ad02-5b1a-4a21-b464-b6e6e4cbf4e9",
+      "In Progress": "d33838e1-7294-4478-a857-85894967188f",
+      "Done": "be568a95-6e50-4546-b160-9283581284ac",
+      "Cancelled": "df8098e1-2f05-4f13-b726-e9b3a90d51f3"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "In Progress": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
   }
 }
