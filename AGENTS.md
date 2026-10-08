@@ -28,7 +28,7 @@ Five skills form the spec lifecycle; the third is optional. The interview stage 
 
 3. **`/spec-tickets <spec-path>`** *(optional)* — Breaks a green-lit spec into verifiable pieces with blocking edges, stops for operator approval, then files each piece as a child of the spec's ticket: blocked-by relations where the tracker has them, a `Blocked by` section where it does not, one local file per piece when no tracker is connected. Never files headless. Skipping it changes nothing: `/ship-spec` does not read the children.
 
-4. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
+4. **`/ship-spec <spec-path>`** — Takes the green-lit spec through implementation in an isolated git worktree, test gate (up to 5 iterations), an optional pre-commit review gate that runs when the project declares a review command, commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched.
 
 5. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
 
@@ -89,6 +89,8 @@ separately-installed upstream copy at those paths. Intended — the clean-room
 rewrite supersedes it, and because the install overwrites in place there is no
 operator removal step and no two-copies routing ambiguity. To keep both, rename
 the upstream copy before installing.
+
+**`bloat-check` (VHS-46) — retired, not replaced.** The skill is deleted from this repo; `/ship-spec`'s review gate carries its invariant veto. `sync.py install` does not remove a copy it installed earlier, so remove it by hand — for Claude Code, `rm -rf ~/.claude/skills/bloat-check/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/bloat-check/`). Targeted removal only; do not use `--prune`.
 
 ## Plan & Spec Reviews
 

@@ -177,6 +177,10 @@ Run the resolved test command. On failure: identify the smallest blocking issue,
 
 If still red after 5 iterations, halt and ask the user: continue with more iterations, drop into manual debug, or roll back and re-spec.
 
+### Phase 3b — Review gate
+
+One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file. A declared command that is unavailable or fails is also skipped, and recorded. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change. With an `N/A` test command the gate still runs, and there is no test re-run.
+
 ### Phase 4 — Commit
 
 Stage files explicitly (no `git add -A`). Commit with a conventional-commits message:

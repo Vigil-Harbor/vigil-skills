@@ -21,6 +21,24 @@ npm run lint        # eslint
 
 `/ship-spec` will form a combined command like `npm run build && npm test && npm run lint` as its test-gate fallback. Per-spec overrides go in the spec's `## Test command` section, which takes precedence.
 
+### Review command section
+
+`/ship-spec` has a review gate between its test gate and the commit: it runs one review of the change, fixes what blocks, and fixes or records the rest. The skill ships no reviewer of its own — you declare the command, and it is read from `CLAUDE.md` first and then `AGENTS.md`.
+
+Add a `## Review command` heading whose content is one line: how to run a review of uncommitted changes on your host. It is either a skill invocation (a line beginning `/`) or a shell command:
+
+```markdown
+## Review command
+
+<one line: your review command>
+```
+
+Example value: `/ponytail-review` *(e.g., the review skill of the ponytail plugin in Claude Code, or the equivalent in your host)*.
+
+A section that is empty, or has more than one non-blank line, is ignored with a warning. A spec can override the project's command with its own `## Review command` section, which takes precedence; the section is optional in a spec.
+
+If no review command is declared anywhere, the gate is skipped: `/ship-spec` prints a one-line note, puts `Review gate: skipped — no review command declared` in the PR body, and commits as before. A declared command that is not available on the host, or that fails, is also skipped and never blocks the commit.
+
 ### Project guardrails
 
 If your project has load-bearing rules — async handling, error patterns, ordering constraints — list them here. The reviewers and `/ship-spec` will respect them. Example:
@@ -56,6 +74,7 @@ Skills assume:
 - Specs at `docs/specs/TODO/<TICKET-ID>.spec.md` (`/spec-cycle` writes here)
 - Reviews at `docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/<lens>.md`
 - Test output captured to `docs/specs/TODO/<TICKET-ID>.test-output.txt`
+- The review gate's record at `docs/specs/TODO/<TICKET-ID>.review.md` (one file, written by `/ship-spec`; distinct from the `<TICKET-ID>.reviews/` directory `/spec-cycle` writes)
 
 Adjust the layout in your fork if needed; the skills hardcode the spec/reviews/test-output paths today (brief location is tolerant on input per the bullet above).
 
