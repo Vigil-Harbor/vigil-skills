@@ -46,7 +46,7 @@ class TestLint(unittest.TestCase):
         self.assertNotIn("missing-requires", rule_names(f))
 
     def test_shipped_skills_clean(self):
-        # Regression for VHS-18: lint runs clean (zero ERRORs) against the shipped skills.
+        # Regression for VHS-18: lint runs clean (zero ERRORs) against the shipped skills; VHS-51: and zero WARNs
         skills = sorted((REPO_ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual(
             len(skills), 11,
@@ -57,6 +57,20 @@ class TestLint(unittest.TestCase):
         for s in skills:
             errs = errors(lint.lint_path(s))
             self.assertEqual(errs, [], f"unexpected ERROR(s) in {s}: {errs}")
+            skill_warns = warns(lint.lint_path(s))
+            self.assertEqual(skill_warns, [], f"unexpected WARN(s) in {s}: {skill_warns}")
+
+    def test_optional_boolean_accepted(self):
+        # Regression for VHS-51: optional is accepted on shell, network, and subagents
+        f = lint.lint_path(FIX / "optional-bool" / "SKILL.md")
+        self.assertEqual(errors(f), [], f"optional booleans should have zero ERRORs, got {errors(f)}")
+        self.assertNotIn("missing-requires", rule_names(f))
+
+    def test_unknown_boolean_value_rejected(self):
+        # Regression for VHS-51: true? is rejected as a boolean value
+        errs = errors(lint.lint_path(FIX / "bad-bool.md"))
+        self.assertIn("requires-malformed", {x[1] for x in errs},
+                      f"expected a requires-malformed ERROR, got {errs}")
 
     def test_robustness_error_fixtures(self):
         # Regression for VHS-18: malformed requires -> deterministic ERROR, no exception
