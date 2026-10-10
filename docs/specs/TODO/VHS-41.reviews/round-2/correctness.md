@@ -1,0 +1,116 @@
+# Correctness Review — round 2
+
+## Closure of round 1 findings
+
+Grounding notes: spec re-read fresh from disk (1703 lines); brief; `AGENTS.md`; global + project `CLAUDE.md`; all three round-1 reports; `skills/review-pr/SKILL.md` (406 lines, **every** cited anchor re-verified against `main` — `:11 :61-83 :68 :69 :75 :76 :79 :81 :83 :85-115 :96-107 :99 :109-114 :120 :125-161 :127 :140-144 :152-158 :162-215 :172 :174-175 :180 :186 :194-195 :198 :200 :209 :215 :217-241 :224-226 :233 :234 :241 :245 :252 :262 :273 :277 :279 :281-345 :283 :290 :316 :331 :341-342 :345 :351-368 :362 :370-377 :379-406 :381 :382 :397 :404` all accurate). Ticket VHS-41 retrieved from `namespace: skills` (record `bd1504df-8bbb-4675-9f03-6dc5027b6637`, tag_exact 1.00); its PROBLEM/DONE WHEN match the brief — no conflict. `git log -10` on the touched files: `AGENTS.md` last changed 2026-09-06 (`d381f88`, within 7 days) — re-verified `:7` still reads `no test suite` and `:46`/`:48` are the `### /review-pr` heading / paragraph; `skills/review-pr/SKILL.md` last changed 2026-08-18, no drift.
+
+**All 20 test-plan `Pre` values re-measured on the unmodified tree and every one matches** (r4 `0`, r5 `7`, r6 `3`, r7 `0`, r8 `0`, r9 `1`/`2`, r10 `0`, r11 `1`, r12 no match, r13 `0`, r14 `0`, r15 `0`/`1`, r17 `0`, r18 `0`, r19 `0`/`0`, r20 `0`/`0`, r21 `0`, r22 `0`).
+
+Empirically verified this round (gh 2.87.3 / gojq, jq 1.8.1, Git Bash):
+- The new resume filter and guard filter compile and behave correctly under **both** gojq (via `gh api --jq`) and jq 1.8.1: a CRLF body with a trailing whitespace-only line yields `5135914911`; `test("\\S")` drops the blank; `capture(…) | .r | tonumber` returns a **number**; a null body and a marker-less body emit nothing with `rc=0`; `capture` matches the `r<R>` prefix with `:h100,200` following it.
+- `d="${TMPDIR:-/tmp}/review-pr-<N>-$(date +%s)"; mkdir -p "$d" && echo "SCRATCH=$d"` prints `SCRATCH=/tmp/review-pr-41-…` both with `TMPDIR` set and with `env -u TMPDIR`. `grep -cF '$TMPDIR/'` over a file containing that line is `0` (row 20's guard is not self-tripped).
+- Live specimens: `5135878266` is 80 lines, contains **zero** case-insensitive hits for `outside diff`/`nitpick`, line 12 is `Inline comments:` — row 25's corrected attribution is right. `5135914911` is 127 lines, `<details>` at line 8 / `<summary>` at line 9, fence 51–77, `Outside diff comments:` at line 67, section closes at line 46 by the step-7 depth walk.
+
+| Lens | ID | Title | Status | Evidence |
+|---|---|---|---|---|
+| correctness | F-1 (P0) | Decision 2 / D1 state a different advance rule than D6 | CLOSED | spec:77-84 and spec:735-743 now say *"per D6's advance rule and no other"* + name the contiguous-prefix form; D6 spec:1123-1141 holds the sole worked example `[100 ok, 200 failed, 300 ok] → 100` |
+| correctness | F-2 (P1) | Findings-free 6f post has no call site on the Step 2 exits | CLOSED | Decision 3 spec:117-122 adds `:81`/`:381`; D1 spec:723-733 (`:83` exempt, reason given); D7 spec:1160-1175 "Three edits make it reachable"; D9 spec:1338-1345; row 22 |
+| correctness | F-3 (P2) | Decision 2 carries the pre-digest marker literal | CLOSED | spec:56-58 now *"the highest `r<R>` value named by a `review-pr:body-dispositions` marker (Decision 12 gives the full shape)"* |
+| correctness | F-4 (P2) | Row 14's guard regex cannot match the multi-line fetch shape | **PARTIAL** | `-A2` catches the 2- and 3-line shapes (verified: `1`, `1`) but **not** the 4+-line shape the spec's own two comment queries use (verified: `0`) — see F-5 below |
+| correctness | F-5 (P2) | Test row attributes body content to the wrong review id | CLOSED (defect migrated) | Row 25 spec:1574-1582 now correct and row 27(ii) adds the positive discriminator — but the same over-claim now sits in row 23, see F-2 below |
+| correctness | F-6 (P3) | `$TMPDIR` used but never established | CLOSED | D1 spec:635-653 resolves `<SCRATCH>` once; every fenced block writes under it; row 20 |
+| correctness | F-7 (P3) | Guard byte-exact on the marker line; CRLF/whitespace breaks it | CLOSED | `gsub("\r"; "")` + `map(select(test("\\S")))` in both queries (spec:774, spec:1200); Decision 12 spec:485-489; D9 spec:1459-1463. Verified under gojq and jq |
+| correctness | F-8 (P4) | Quoted `--arg` error string wrong | CLOSED | spec:753-757 now `received 3` |
+| edge-cases | F-1 (P1) | `$TMPDIR` never established — aborts the fetch | CLOSED | as correctness F-6; D1 spec:643 block verified to run with `TMPDIR` unset |
+| edge-cases | F-2 (P1) | Harvest digest interpolates title text into a shell string | CLOSED | Digest removed entirely — Decision 12 spec:388-398 (`h<IDS>` = literal ascending id list, no `sha1sum`); Decision 9 spec:303-306 (tuple never serialized); D7 spec:1218-1224. `grep -c sha1sum` over the spec: 0 in any shipped block |
+| edge-cases | F-3 (P1) | 6f unreachable on the three Step 2 exits | CLOSED | same edits as correctness F-2 |
+| edge-cases | F-4 (P1) | Persistently failing body pins the floor; "failed parse" undefined | CLOSED | Decision 12 spec:405-425 (retryable vs `403/404/410/451` → unfetchable; failed parse defined; size ceiling = unfetchable); Decision 14 spec:590-594; D2 step 3 spec:809-812; D8 spec:1316; D9 spec:1394-1402; row 29(ii) |
+| edge-cases | F-5 (P1) | Token protocol covers 2 of ~13 governed fetches | CLOSED | Decision 7 spec:240-243; Decision 14 spec:557-570; eleven capture-and-token blocks now in the spec (D1 ×4, D2 ×2, D5 ×3, D8, D7) + D6 in prose; row 17 `≥ 10` with twelve sites enumerated |
+| edge-cases | F-6 (P1) | Prescribed blocks carry spec-side annotations row 26 forbids | CLOSED | Design preamble spec:623-631; every fenced block re-read — no `r<n>-F-<n>`, no `Decision <n>`, no `env.SELF`/`export SELF`, no draft history; rows 19 and 21 |
+| edge-cases | F-7 (P2) | CRLF / whitespace defeats the exact-match guard | CLOSED | as correctness F-7 |
+| edge-cases | F-8 (P2) | Fixed-name temp files collide under tolerated concurrency | CLOSED | `<SCRATCH>` carries PR number + `date +%s` (spec:643, 651-653) |
+| edge-cases | F-9 (P2) | `sha1sum` absent on macOS | CLOSED | digest removed (edge-cases F-2) |
+| edge-cases | F-10 (P2) | No rule for a body item whose path/line no longer exists | CLOSED | D3 spec:1008-1014 (`already-fixed`, reason `file/line no longer present`); D9 spec:1375-1378 |
+| edge-cases | F-11 (P2) | 64 KB rule reports but does not bound; slicing undefined | PARTIAL | 256 KB ceiling + slice procedure now in 2b step 3 (spec:812-825) — but the slice's start line contradicts step 7, see F-1 below |
+| edge-cases | F-12 (P2) | Within-round dedup specified two ways | CLOSED | 2b step 10 spec:935-939 now *"an earlier round, or earlier in this round's own harvest set"*, matching Decision 9 spec:306-307 |
+| edge-cases | F-13 (P2) | Row 14 cannot see the multi-line antipattern | **PARTIAL** | same as correctness F-4 → F-5 below |
+| edge-cases | F-14 (P2) | Decision 14 misses `fast-path` / `pre-existing-approval` | CLOSED | Decision 14 spec:586-589 now names all three affirmative signals |
+| edge-cases | F-15 (P3) | Resume mark compared as a string | CLOSED | `| tonumber` at spec:775; verified to return a number under gojq and jq |
+| edge-cases | F-16 (P3) | Phrase tripwire fires on an unfenced blockquoted quotation | DEFERRED (accepted) | spec:1694-1701 — recorded as a design change, not a clarification |
+| conventions | F-1 (P1) | Decision 2 / D1 state the superseded advance rule | CLOSED | as correctness F-1 |
+| conventions | F-2 (P2) | `sha1sum` prescribed as a literal binary | CLOSED | digest removed |
+| conventions | F-3 (P2) | `$TMPDIR` hardcoded with no definition | CLOSED | as correctness F-6 |
+| conventions | F-4 (P2) | § Deferred routes the VHS-42 edit to `/ship-spec` | CLOSED | spec:1687-1693 now an explicit operator step, with the plane-proxy plain-text constraint named |
+| conventions | F-5 (P2) | Row 24 pins `≥ 3` but names two sites | CLOSED | now row 17, `≥ 10` with twelve sites enumerated (spec:1552) |
+| conventions | F-6 (P3) | Decision 3 one-armed; 6e block has no size row | CLOSED | Decision 3 spec:111-114 two-armed; D8 6e block spec:1317 gains the size row |
+| conventions | F-7 (P3) | Decision 2 still tagged *(carried from brief)* | CLOSED | spec:53 retagged |
+| conventions | F-8 (P3) | Bare-tool fence omits `:99` | CLOSED | Design preamble spec:616-621 lists `:99` in D3's region; D3 spec:1006 carries it through |
+| conventions | F-9 (P3) | No stated spec-only fence for review archaeology | CLOSED | spec:623-631 + rows 19 and 21 |
+| conventions | F-10 (P3) | Gate rows non-contiguous | CLOSED | automated 3–22, manual 23–29 |
+
+## Findings
+
+### F-1: 2b step 3's slice range starts at `<summary>`, which is exactly the start point step 7 forbids
+**Severity:** P1
+**Where:** spec.md:820-824 (§ D2, 2b step 3) vs spec.md:897-906 (§ D2, 2b step 7) and spec.md:844-846 (2b step 5)
+**Claim:** step 3, for a body between 64 KB and the 256 KB ceiling: *"parse **by slices**: first search the file for the section-announcing lines (step 5's two `<summary>` patterns) with a line-numbered search … then read only the line ranges **from each `<summary>` to its section close (step 7)**."*
+**Why this is wrong:** step 7 states the opposite start point, and states it as load-bearing — spec.md:900-906: *"The section's own `<details>` sits on the line **immediately preceding** its summary … Begin the depth walk at **that preceding `<details>` line** … **Starting at the summary line instead seeds depth at 0 and terminates the section at the end of its first file group, silently losing every later group** (correctness r1-F-2) — and multi-file is the common case this ticket exists to cover."* Step 5 agrees with step 7 (spec.md:844: the provisional span *"runs from the `<details>` line immediately preceding its summary"*). Only step 3 disagrees, and it disagrees on the one path where the parser sees a *slice* rather than the whole file: the preceding `<details>` line is not in the slice at all, so an implementer following step 3 literally cannot execute step 7 and lands on the seeded-at-0 walk. Verified against the live specimen: on PR #28 review `5135914911` the section opens `<details>` at body line 8 and `<summary>` at line 9; a walk seeded at line 9 hits `</details>` at line 38 (the nested AI-prompt block) and closes the section there, before the item's `cr-comment` marker at line 42 and before both `</blockquote></details>` closes at lines 44/46. On a two-group section it drops every group after the first — the round-1 F-2 defect, reintroduced on the large-body path only, and silently (neither Decision 11 tripwire detects a short section: the count tripwire only fires when the *declared* count is known and parsed items fall short, which is true here only if the lost groups' items were declared in the same summary — and the phrase tripwire requires the section not to have matched at all).
+**Suggested fix:** at spec.md:823-824 change the slice range to start one line earlier and say why: *"…then read only the line ranges **from the `<details>` line preceding each `<summary>`** to its section close (step 7) — step 7's depth walk must begin on that `<details>` line, so the slice has to include it."*
+
+### F-2: Row 23's phrase-tripwire rationale rests on a phrase the specimen does not contain, so no test row exercises the phrase-scan view's fence mask
+**Severity:** P2
+**Pre-ship recommended:** yes
+**Where:** spec.md:1561-1569 (manual row 23) vs spec.md:344-350 (§ Decision 11, phrase tripwire) and spec.md:891-895 (2b step 6, phrase-scan view)
+**Claim:** row 23: *"**Neither tripwire fires** — including the phrase tripwire, although body line 67 reads `Outside diff comments:`: it sits inside the fence that opens at line 51, and the phrase-scan view masks fences (Decision 11). **A phrase tripwire firing here means the mask was not implemented.**"*
+**Why this is wrong:** Decision 11 defines the trigger phrases as the literals `outside diff range` and `nitpick comments` (spec.md:346-347). Verified against the live body: `gh api repos/Vigil-Harbor/vigil-skills/pulls/28/reviews/5135914911 --jq .body` → `grep -in 'outside diff range'` returns **one** hit, body line 9 (the section summary itself, which *did* match); `grep -in 'nitpick'` returns **zero**. Line 67's `Outside diff comments:` does not contain `outside diff range`, so it cannot trigger the detector with or without masking. The row's claimed discriminator is therefore vacuous in both directions: a mask-less implementation also fires nothing here, and the outside-diff phrase is additionally suppressed because its own section matched (Decision 11's per-phrase trigger condition, spec.md:347-349). This is the same class as round-1 correctness F-5 — a specimen row credited with a property it does not have — relocated from row 25 to row 23 rather than closed. Net effect: **no row in the plan tests that the phrase-scan view masks fences.** Row 27(i) tests the *structural* mask of 2b step 6b (a quoted `<details><summary>x (1)</summary>` and a `` `12-30`: `` line) and its synthetic body carries neither trigger phrase; row 27(ii) tests the detector's positive firing on an unfenced, unmatched `<summary>`.
+**Suggested fix:** strike the mask claim from row 23 (it should read simply "neither tripwire fires: the section matched and `nitpick comments` is absent — verified, `outside diff range` occurs only on the matched summary at line 9"), and add a negative-mask specimen to row 27: *"(iii) a body whose only occurrence of `outside diff range` sits inside a fenced block, with no matching Outside-diff section. The phrase tripwire must **not** fire; an implementation that omits the fence mask on the phrase-scan view fires here."*
+
+### F-3: Decision 12's justification for omitting dispositions from the guard key is false, and `HARVEST_FLOOR` is defined both as a recomputable predicate and as a latch
+**Severity:** P2
+**Pre-ship recommended:** yes
+**Where:** spec.md:394-398 (§ Decision 12, harvest-identity rationale), spec.md:405-412 (`HARVEST_FLOOR` definition) vs spec.md:449-453 and spec.md:467-468 (the latch statements)
+**Claim:** spec.md:395-398: *"Dispositioned keys are not part of the identity and do not need to be: **two rounds of one run never share a harvest set** (each harvests ids above the mark, plus retries of what failed), and a re-run over the identical set is exactly the duplicate the guard exists to suppress."*
+**Why this is wrong:** two rounds of one run **can** share a harvest set, and the spec's own rules produce the case. Round 1 harvests `[100, 200]`; 100's body fetch fails with a retryable status; D6's advance rule (spec.md:1123-1130) leaves `LAST_BODY_REVIEW_ID` unchanged *"if the lowest id in the set failed"*; `HARVEST_FLOOR` is set at 100, so `R` is capped strictly below 100 and computes to the sentinel `0` (spec.md:427-430). Round 1 posts `r0:h100,200`. Round 2 (reached on `NEW_INLINE > 0`) harvests `id > LAST_BODY_REVIEW_ID` — the same `[100, 200]` (D6 spec.md:1121-1122) — and 100's retry now succeeds and yields findings. Whether round 2's dispositions reach the PR then depends on an unresolved ambiguity: spec.md:405 defines `HARVEST_FLOOR` as *"the **lowest** review id this run left unhandled"* (a predicate that stops holding once 100 is handled), while spec.md:452-453 states it as a latch — *"once 300 fails, no marker in that run may name anything ≥ 300"* — and spec.md:467-468 restates the latch for a failed 6f post. Under the latch reading `R` stays `0`, `h` is again `100,200`, the guard's exact-match hits round 1's comment, and round 2's disposition list is dropped — the constant-key defect `h<IDS>` was introduced to prevent (spec.md:477-483), reached through a route the harvest identity does not cover. It is recoverable (6e prints `dispositions not posted — guard-skipped`, and the next run re-harvests because `PRIOR_MARK` is still `0`), which is why this is P2 rather than higher.
+**Suggested fix:** (a) delete the false clause and replace the rationale with the real one — *"a round whose harvest set repeats an earlier round's has, by Decision 9's dedup, no new items to disposition unless a retry succeeded; see the clearing rule below"*; and (b) make `HARVEST_FLOOR` unambiguous in one sentence at spec.md:405 — either *"the floor is recomputed each round from the set of ids still unhandled, so a successful retry clears it"* (and then reword spec.md:452-453 to *"while 300 remains unhandled, no marker in that run may name anything ≥ 300"*), or, if the latch is intended, add the harvest **outcome** to the guard key so a retry round is not suppressed.
+
+### F-4: D6 says its inline fetch is "the same block as D5's inline poll" — they emit different records — and row 17's rationale built on that would drive row 4 below its own floor
+**Severity:** P2
+**Where:** spec.md:1117-1120 (§ D6) and spec.md:1552 (row 17 rationale) vs spec.md:1056-1057 (D5's inline poll `--jq`), `skills/review-pr/SKILL.md:225` (6b's existing `--jq`), spec.md:1539 (row 4 expectation)
+**Claim:** D6: *"The inline fetch (`:224-226`) gains `--paginate`; **its `--jq` is already the streaming per-item form.** It is issued in Decision 7's capture-and-token shape to `<SCRATCH>/cycle-inline` — **the same block as D5's inline poll**, with `PREV_REVIEW_ID` as the bound."* Row 17: *"`≥ 10` rather than `= 12` because D5's verdict stream and the `:174` pre-existing-approval conversion are textually identical **and D6's inline fetch is the same block as D5's**, so an implementer may legitimately write one block for each pair."*
+**Why this is wrong:** the two `--jq` programs are not the same and cannot be merged. D5's poll emits `… | .id` (spec.md:1057) — one id per line, so `wc -l` is a finding count and `COUNT` is `NEW_INLINE`. 6b's fetch emits `… | "=== ID:\(.id) \(.path):\(.line // .original_line)\n\(.body)"` (SKILL.md:225, which D6 explicitly preserves) — multi-line finding bodies, which 6b needs for triage and for which `wc -l` is only a completion token. An implementer told they are "the same block" writes the `.id`-only form in 6b and loses every finding body. Second-order: row 17's rationale licenses **two** merges among the eleven paginated sites, while row 4's `≥ 10` (spec.md:1539) budgets for only one (*"`≥` rather than `= 11` because D5's verdict-stream and pre-existing-approval queries are textually identical"*). Under row 17's stated allowance a "legitimate" implementation writes 9 `gh api --paginate repos` lines and fails row 4 — the self-defeating-gate shape the spec elsewhere works hard to avoid.
+**Suggested fix:** at spec.md:1119-1120 change "the same block as D5's inline poll" to "**Decision 7's shape**, with its existing per-item `--jq` unchanged and `PREV_REVIEW_ID` as the bound — not D5's `.id`-only program, which 6b cannot triage from"; and at spec.md:1552 drop "and D6's inline fetch is the same block as D5's" so row 17's merge allowance matches row 4's.
+
+### F-5: Row 14's `-A2` guard still cannot see the antipattern in the 4+-line fetch shape the spec's own two comment queries use (PARTIAL of round-1 correctness F-4 / edge-cases F-13)
+**Severity:** P2
+**Pre-ship recommended:** yes
+**Where:** spec.md:1525 (row 14 command), spec.md:1549 (row 14 expectation) vs spec.md:772-776 (2b step 1 resume query) and spec.md:1198-1202 (D7 idempotency guard)
+**Claim:** row 14: `grep -A2 -E 'gh api --paginate' $S | grep -cE '\| *(wc|jq|head|tail|sed|cut)\b'` → `[guard] 0`, justified as *"`-A2` because every fetch in this file is written as `gh api --paginate … \` with `--jq` on the next line and the redirect on the third, so a line-scoped regex can never see the antipattern."*
+**Why this is wrong:** the premise is false for two of the design's own blocks. The 2b resume query is **5 lines** (`gh api` / `--jq '…` / `| ((.body…` / `| capture(…)' \` / `> "<SCRATCH>/resume-marks"`) and the D7 guard is **5 lines**; `-A2` reaches only the third line of each, so an implementer who ends either with `| wc -l` escapes the guard entirely. Measured on synthetic specimens:
+
+```
+2-line antipattern  (--jq '…' | wc -l on line 2)         → 1   (caught)
+3-line antipattern  (redirect line replaced by | wc -l)  → 1   (caught)
+4-line antipattern  (2-line --jq program, | wc -l last)  → 0   (MISSED)
+correct 5-line capture-and-token block                   → 0   (no false positive)
+```
+
+The 4-line specimen is the D7/2b shape exactly. So the guard is still un-failable against the shape this change newly introduces — the same half-fix round 1 flagged, moved one line further out. (The rest of row 14 checks out: I confirmed no false positive from the `COUNT=$(wc -l < …)` line, which is 4 lines below the `gh api` line and has no `|` before `wc`, and none from the jq programs' own pipes, which are followed only by `select`, `{`, `map`, `last`, `capture`, `tonumber`, `gsub`, `split`.)
+**Suggested fix:** raise the context to cover the longest prescribed block — `grep -A5 -E 'gh api --paginate' $S | grep -cE '\| *(wc|jq|head|tail|sed|cut)\b'` (verified: still `0` on the correct block, `1` on the 4-line antipattern) — and update the row's rationale to name the 5-line resume/guard shape as the reason for `-A5`, keeping the existing caution that the D9 antipattern bullet must not write `gh api --paginate` within five lines of a `| wc`.
+
+### F-6: The scratch directory is claimed to be removed "at the end of the run", but 6e is unreachable from every early exit the design itself adds
+**Severity:** P3
+**Where:** spec.md:653, spec.md:1235, spec.md:1327 (§ D8)
+**Claim:** spec.md:653: *"6e removes the directory at the end of the run."* spec.md:1327: *"6e's last act is `rm -rf "<SCRATCH>"`."*
+**Why this is wrong:** `<SCRATCH>` is created at the top of Step 2 (spec.md:643), but several stops never reach 6e: the `:79` infrastructure-error stop (`SKILL.md:79`, "report … and stop"), the `:81` `APPROVED` short-circuit, the `:83` no-reviews stop, and `:381`'s "Nothing to review" exit — the last three being precisely the paths D1/D7/D9 amend this round. On those paths the per-run directory (named with the PR number and a timestamp, so a new one per run) is left behind with captured streams and review bodies in it. Harmless — it is outside the worktree, so nothing tracked is touched — but the spec asserts a cleanup that does not happen on the most common exit paths.
+**Suggested fix:** either scope the claim (*"6e removes the directory when the run reaches it; a run that stops at `:79`, `:81`, `:83` or `:381` leaves it in the system temp directory, where the host reclaims it"*) or attach `rm -rf "<SCRATCH>"` to the same four exits that now carry the marker sentence.
+
+## Summary
+P0: 0 | P1: 1 | P2: 4 | P3: 1 | P4: 0
+
+Key paths:
+- Spec: `C:\Users\zioni\Documents\Vigil-Harbor\vigil-skills\docs\specs\TODO\VHS-41.spec.md`
+- Brief: `C:\Users\zioni\Documents\Vigil-Harbor\vigil-skills\docs\specs\TODO\VHS-41.brief.md`
+- Subject: `C:\Users\zioni\Documents\Vigil-Harbor\vigil-skills\skills\review-pr\SKILL.md` (406 lines, unmodified on `main`; every anchor verified)
+- Prior reviews: `C:\Users\zioni\Documents\Vigil-Harbor\vigil-skills\docs\specs\TODO\VHS-41.reviews\round-1\`
+
+STATUS: RED P0=0 P1=1 P2=4 P3=1 P4=0
