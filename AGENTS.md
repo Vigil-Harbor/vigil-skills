@@ -4,7 +4,7 @@ Project instructions for any AI agent working in the **vigil-skills** repo. Harn
 
 ## What this repo is
 
-Cross-machine agent skills and subagents. Not an application — no build step, no test suite, no dependencies beyond Python 3.8+ stdlib. The repo is a source-of-truth mirror for files that get installed into your agent's config dir (for Claude Code: `~/.claude/skills/` and `~/.claude/agents/`).
+Cross-machine agent skills and subagents. Not an application — no build step, no dependencies beyond Python 3.8+ stdlib; a stdlib `unittest` suite lives under `tests/` (run `python -m unittest discover -s tests -p 'test_*.py'`). The repo is a source-of-truth mirror for files that get installed into your agent's config dir (for Claude Code: `~/.claude/skills/` and `~/.claude/agents/`).
 
 ## Sync commands
 
