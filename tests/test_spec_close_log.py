@@ -1056,14 +1056,11 @@ class TestNoStaleWording(unittest.TestCase):
         self.assertIn("prepend", after_merge[0].lower())
         self.assertNotIn("append", after_merge[0].lower())
 
-    def test_missing_requires_backlog_no_longer_names_spec_close(self):
+    def test_missing_requires_backlog_is_clear(self):
         text = PORTABLE_DOC.read_text(encoding="utf-8")
         backlog = [ln for ln in text.splitlines()
                    if "have no `requires:` block" in ln]
-        self.assertEqual(len(backlog), 1, backlog)
-        self.assertNotIn("`spec-close`", backlog[0])
-        self.assertIn("`ship-spec`", backlog[0])
-        self.assertIn("`review-pr`", backlog[0])
+        self.assertEqual(backlog, [])
 
 
 class TestInvocationString(PrependCase):

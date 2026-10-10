@@ -55,14 +55,14 @@ requires:
   shell: true                       # executes terminal/shell commands
   filesystem: [read, write]         # access modes needed; omit or [] if none
   network: true                     # makes outbound network requests of its own
-  subagents: true                   # dispatches concurrent sub-agents / parallel tasks
+  subagents: true                   # dispatches concurrent sub-agents / parallel tasks; optional = used when offered
   services: [issue-tracker?, shared-memory?]   # external capability providers, by ROLE
 ```
 
 **Field semantics**
-- `shell`, `network`, `subagents` — booleans. Absent = `false`.
+- `shell`, `network`, `subagents` — `true`, `false`, or `optional`. Absent = `false`. `optional` means the skill uses the affordance when the harness offers it and its body states the fallback when it does not; it is never a pre-flight requirement. A consumer treats only the boolean `true` as a requirement; `optional` is a string and must not be tested for truthiness.
 - `filesystem` — a flow sequence drawn from `{read, write}`. Absent or `[]` = no filesystem access.
-- `services` — a flow sequence of **role** tokens from a controlled vocabulary (`issue-tracker`, `shared-memory`, `code-review-bot`, `vcs-host`; extensible by a future revision of this contract). Roles are harness-neutral: a harness maps `issue-tracker` → Plane (or its own), `shared-memory` → the shared-memory/MCP service, etc. A trailing `?` marks the service **optional** — the skill degrades gracefully (warn-and-proceed) when it is absent. No `?` = **required**.
+- `services` — a flow sequence of **role** tokens from a controlled vocabulary (`issue-tracker`, `shared-memory`, `code-review-bot`, `vcs-host`; extensible by a future revision of this contract). Roles are harness-neutral: a harness maps `issue-tracker` → Plane (or its own), `shared-memory` → the shared-memory/MCP service, `vcs-host` → the pull-request host and its CLI (GitHub via `gh`), `code-review-bot` → the review bot on that host (CodeRabbit), etc. A trailing `?` marks the service **optional** — the skill degrades gracefully (warn-and-proceed) when it is absent. No `?` = **required**.
 
 **Why flat.** The repo is "no dependencies beyond Python 3.8+ stdlib," and stdlib has no YAML parser. The `requires:` block is restricted to scalars and single-line flow sequences (**no nested mappings**) so the authoring lint (VHS-18) can validate it with a small line-oriented stdlib reader, while it remains valid YAML that Claude Code's own parser accepts. Flatness is a property of the **canonical source** block only — generated adapters may emit whatever shape their target requires (the Hermes adapter nests under `metadata.hermes`).
 
@@ -75,7 +75,7 @@ A capability is **available** when:
 - `filesystem` — the declared modes are permitted in the run sandbox;
 - `services` — a provider is bound to the role **and** a cheap liveness probe succeeds (transport reachability alone is *not* sufficient — an ACL-denied or misconfigured provider counts as unavailable).
 
-A harness MUST verify each **required** capability (no `?`) before any mutation and fail clearly, naming the unmet capability. Optional services (`?`) need not be probed at pre-flight; a harness MAY probe them early for an advisory warning, but their absence never blocks. Pre-flight is a fail-fast gate, not a guarantee: a capability that passes pre-flight may still fail at point of use, at which point the same rules apply (required → fail; optional → warn-and-proceed). Parity (§5) is judged on point-of-use behavior, not on whether an early advisory was emitted.
+A harness MUST verify each **required** capability (no `?` on a service; not `optional` on a boolean) before any mutation and fail clearly, naming the unmet capability. Optional services (`?`) need not be probed at pre-flight; a harness MAY probe them early for an advisory warning, but their absence never blocks. An `optional` boolean is likewise never verified at pre-flight; if it fails at point of use, the skill follows the fallback its body states. Pre-flight is a fail-fast gate, not a guarantee: a capability that passes pre-flight may still fail at point of use, at which point the same rules apply (required → fail; optional → warn-and-proceed). Parity (§5) is judged on point-of-use behavior, not on whether an early advisory was emitted.
 
 ### Lexical / tokenization rules (for a stdlib-only validator)
 
@@ -84,7 +84,7 @@ A validator parses the block by: locate the `requires:` line in the frontmatter;
 2. split on the first `:` into key/value (the first-`:` split applies **once per line**; a `:` inside a flow-sequence element is not a separator and, being outside the controlled vocabulary, makes that element a violation);
 3. for flow-sequence values, strip the surrounding `[` `]`, split on `,`, and trim each element; discard empty elements (so `[ ]` ≡ `[]` ≡ an absent key, all meaning "none");
 4. for a `services` element, strip one optional trailing `?` and record it as the optional flag;
-5. the remaining token must match the controlled vocabulary **exactly** (lowercase, unquoted).
+5. the remaining token must match the controlled vocabulary **exactly** (lowercase, unquoted) (for a boolean key: `true`, `false`, `optional`, compared case-insensitively).
 
 Quoted scalars, trailing empty elements (`[read, write,]`), nested mappings, and unknown keys under `requires` are **violations**.
 
@@ -99,6 +99,8 @@ Exactly one `requires:` key per skill, placed after the existing scalar frontmat
 | `services` | `metadata.hermes.requires_toolsets` / `requires_tools` (+ `required_environment_variables` for credentialed services) | role → toolset/tool |
 | `shell` | a `terminal`-toolset requirement | |
 | `network`, `subagents`, `filesystem` | (no direct Hermes frontmatter equivalent) | adapter's own pre-flight enforces |
+
+An `optional` boolean (`shell`, `network`, `subagents`) emits no Hermes gating key and no pre-flight requirement.
 
 The mapping is **lossy in kind**: Hermes's `requires_*` keys *gate visibility* (they hide/show the skill), whereas this contract's `requires` is a *hard pre-flight contract* (it must cause a clear failure when a required capability is unmet). The adapter must therefore add a hard pre-flight even where it also emits the Hermes gating keys.
 

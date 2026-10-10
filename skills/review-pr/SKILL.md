@@ -2,6 +2,11 @@
 name: review-pr
 description: Triage and fix CodeRabbit review comments on a PR. Verifies findings against current code, fixes real issues, pushes, posts per-thread commit-hash replies, waits for CodeRabbit's incremental re-review, and polls for auto-approval.
 user_invocable: true
+requires:
+  shell: true
+  filesystem: [read, write]
+  network: true
+  services: [vcs-host, code-review-bot]
 ---
 
 # /review-pr — CodeRabbit review round handler

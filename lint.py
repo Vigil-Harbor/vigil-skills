@@ -103,9 +103,9 @@ def _find_frontmatter(lines):
 def _validate_requires_value(key, val, fname, lineno):
     findings = []
     if key in BOOL_KEYS:
-        if val.lower() not in ("true", "false"):
+        if val.lower() not in ("true", "false", "optional"):
             findings.append((ERROR, "requires-malformed", fname, lineno,
-                             f"{key} must be true/false, got: {val!r}"))
+                             f"{key} must be true/false/optional, got: {val!r}"))
         return findings
     # filesystem / services: a single-line flow sequence
     if val.startswith("{"):

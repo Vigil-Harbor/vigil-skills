@@ -13,7 +13,7 @@ Day-to-day discipline for writing skills that run on any harness in the fleet �
      shell: true                       # runs terminal/shell commands
      filesystem: [read, write]         # access modes; omit or [] if none
      network: true                     # makes its own outbound requests
-     subagents: true                   # dispatches concurrent sub-agents
+     subagents: true                   # dispatches concurrent sub-agents; or optional
      services: [issue-tracker?, shared-memory?]   # external providers, by ROLE; '?' = optional
    ```
    Keep it flat (scalars + single-line flow sequences only — no nested mappings); that is what lets the stdlib lint validate it without a YAML dependency.
@@ -33,13 +33,12 @@ Both modes print a summary to stderr: `lint: <E> error(s), <W> warning(s)`. **Au
 What it flags:
 - **ERROR `operative-tool-call`** — an `mcp__*` tool name used as an operative instruction (not a tagged example, not in a notes/fenced block).
 - **ERROR `requires-malformed` / `requires-unknown-key`** — a `requires:` block that violates the contract §3 schema.
-- **WARN `missing-requires`** — no `requires:` block (advisory; see promotion path).
+- **WARN `missing-requires`** — no `requires:` block (advisory; never gates `--strict`).
 
 ## Promotion path: warn-only → blocking
 
 The lint ships **warn-only**. To promote it to a hard gate:
-1. **Clear the missing-`requires:` backlog.** Today two shipped skills (`ship-spec`, `review-pr`) have no `requires:` block — they emit a `missing-requires` WARN. Annotate each with its capability block (VHS-17 annotated `spec-cycle` as the worked reference; the third was annotated by VHS-29, when it grew a script and the shell dependency became load-bearing). *This is the tracked backlog item.*
-2. **Install a pre-commit hook** that runs `python lint.py --strict` (mirroring the wiki's `install-hooks` precedent in shape — stdlib Python, not its Node toolchain). Once step 1 is done, `--strict` is clean and the hook blocks regressions.
+1. **Install a pre-commit hook** that runs `python lint.py --strict` (mirroring the wiki's `install-hooks` precedent in shape — stdlib Python, not its Node toolchain). Every shipped skill carries a block, so the lint reports no warnings. The hook blocks ERROR regressions; a shipped skill that loses its block is caught by `tests/test_lint.py::test_shipped_skills_clean`, since `--strict` never gates on WARNs.
 
 ## Known v1 limitations (CodeRabbit backstops these)
 

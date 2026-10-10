@@ -2,6 +2,12 @@
 name: ship-spec
 description: Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Pair with /spec-cycle which produces the spec. After the PR merges, run /spec-close to reconcile and retire the spec.
 user_invocable: true
+requires:
+  shell: true
+  filesystem: [read, write]
+  network: true
+  subagents: optional
+  services: [vcs-host, issue-tracker?]
 ---
 
 # /ship-spec — implement a green-lit spec end-to-end
@@ -410,7 +416,7 @@ Do not auto-update any project wiki — that happens post-merge once the merge S
 - Read, Edit, Write for implementation.
 - Bash for git, gh, package-manager commands — fully scripted, no interactive prompts.
 - plane-proxy tools (project listing, work-item state update, work-item comment) — or the equivalent capabilities in your host's Plane integration.
-- The Phase 3b review runs in a read-only subagent when the host has one, inline otherwise. The review command itself is whatever the project declared; this skill supplies none.
+- The Phase 3b review runs in a read-only subagent when the host has one, inline otherwise, which is what `subagents: optional` in the frontmatter declares. The review command itself is whatever the project declared; this skill supplies none.
 - A shell hash command to check the spec's fingerprint in Phase 0 step 1b (`tr -d '\r' < <spec-path> | sha256sum`, or your host's equivalent). This skill reads the verdict marker and never writes it.
 - Do not run `git rebase -i`, `git add -i`, or any interactive command.
 - Do not push to `<default-branch>`. Do not force-push the feature branch unless the user explicitly asks.
