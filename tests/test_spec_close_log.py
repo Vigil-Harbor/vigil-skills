@@ -1189,6 +1189,7 @@ class TestSkillDeclaration(unittest.TestCase):
         self.assertIn("shell: true", block)
         self.assertIn("issue-tracker?", block)
         self.assertIn("shared-memory?", block)
+        self.assertIn("vcs-host?", block)
 
     def test_lint_is_clean_including_warns(self):
         # `lint.py --strict` exits on ERROR only — WARNs never affect its exit

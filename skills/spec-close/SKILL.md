@@ -6,7 +6,7 @@ requires:
   shell: true
   filesystem: [read, write]
   network: true
-  services: [issue-tracker?, shared-memory?]
+  services: [issue-tracker?, shared-memory?, vcs-host?]
 ---
 
 Invoked as:
@@ -76,7 +76,28 @@ Goal: identify what code actually shipped for this ticket.
    c. If neither yields results, prompt the user: `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`
 
 2. **Read the shipped diff.** Branch on identifier type:
-   - **PR number:** `gh pr view <N> --json files,additions,deletions` for file-level diff stat, then `gh pr diff <N>` for full diff content.
+   - **PR number:** `<N>` is the PR number that classification selected, with one leading `#` removed if the selected text has one, so both `123` and `#123` produce the pattern `(#123)`. No other trimming. An empty or non-numeric `<N>` for which both `gh` commands exit 0 is that other PR: no argument uses the current branch's PR, and a branch name selects that branch. That success is not a fallback case. Do not add a digits check.
+
+     Run `gh pr view <N> --json files,additions,deletions` for the file-level diff stat, then `gh pr diff <N>` for the full diff content. If both exit 0, use that output as today and do not run the fallback.
+
+     `gh` is absent or has failed when it cannot be executed (not on `PATH`, or the harness reports the command unavailable) or either of those two commands exits non-zero. Auth failure, network failure, a missing PR, and a non-zero `gh` are the same case. Do not parse `gh`'s stderr. If `gh pr view` exits 0 and `gh pr diff` does not, discard the view output.
+
+     On that case, print exactly one warning line, then run one `git log`. Do not run a second lookup.
+
+     ```text
+     warning: gh absent or failed for PR #<N> — resolving the squash-merge SHA with git log --grep "(#<N>)"
+     ```
+
+     ```text
+     git --no-pager log --exclude=refs/stash --all --format=%H%x09%P%x09%s -F --grep="(#<N>)"
+     ```
+
+     `--exclude=refs/stash` comes before `--all`, so the stash ref and the index commit it points at are not walked. A squash merge that is not on `HEAD` is still visible. This is not step 1a's reach: step 1a also passes `-- .`, and this command does not. `-F` keeps `(#<N>)` literal. Default `--grep` is basic regex, and unescaped parentheses are already literal there; `-F` is what stops a `grep.patternType=extended` config, or an `-E` flag, from turning the pattern into a group that also matches a bare `#<N>`.
+
+     Split each stdout line on the first two tab characters. Column 1 is the SHA, column 2 is the parent SHAs, and the remainder is the subject. Accept a line only when column 1 is one hex SHA of 40 or 64 characters, column 2 is exactly one parent SHA (hex, no space), and the trimmed subject ends with ` (#<N>)`. A body mention, a revert subject (it does not end with ` (#<N>)`), and anything reachable only from `refs/stash` is not accepted.
+
+     - Exactly one accepted line: take the commit-SHA branch below with that SHA. Do not call `gh` again for this identifier. The reconciliation report's `> Merge:` value is that SHA. The report format already allows a commit SHA there. That line may be any ref `--all` walks, including a commit that is not an ancestor of `HEAD` or of `refs/remotes/origin/HEAD`. Do not add an ancestor filter.
+     - Zero accepted lines, more than one accepted line, or a non-zero exit from that `git log`: this is "finds nothing" (a non-squash or rebase merge, no such commit, or more than one commit that looks like the squash). Do not pick the newest. Print the existing step 1c prompt, unchanged: `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`. Classify the answer the same way step 2 already classifies an identifier, and read it with this same step. No second warning, no attempt counter, no new prompt, no timeout. The automated search ends at that prompt; the operator ends it by supplying a SHA (or a PR number whose lookup succeeds).
    - **Commit SHA:** `git show --stat <SHA>` for file-level diff stat, then `git show <SHA>` for full diff content.
    If the diff is large (>500 lines), summarize by file rather than reading every line — focus grep on the specific code paths the spec's decisions describe.
 
@@ -427,7 +448,7 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 
 ## Tool-use notes
 
-- Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data.
+- Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data (`vcs-host?`; the SHA path needs no `gh`).
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup.
 - plane-proxy's state-list and work-item-lookup capabilities (e.g., `mcp__plane__list_states` and `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalents in your host's Plane integration) for the mode gate.
 - Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
