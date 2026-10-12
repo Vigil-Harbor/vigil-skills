@@ -300,7 +300,7 @@ Keep reasoning concise (1–2 sentences). The goal is a record of the judgment c
 
 ### 6d. Poll for thread resolution + approval
 
-**Short-circuit:** If no fix-categorized findings exist across ALL rounds of this run (not just the current round), skip Phase 1 entirely — no fix-threads to wait for. If prior rounds had fix-categorized findings, poll to observe their resolution status even if the current round had no fixes.
+**Runs with no fixes still observe.** Phase 1 is never skipped: Phase 2's entry test and the 6e thread counts both come from its query. If no fix-categorized findings exist across ALL rounds of this run (not just the current round), what remains to watch is the non-fix threads that got a reasoning reply in 6c (skip, duplicate, already-fixed, defer) — run Phase 1 under the waiting rule as usual when at least one such reply was posted, and run its query once with no wait when none was (nothing to answer, every finding body-level, or every reply failed). If prior rounds had fix-categorized findings, poll to observe their resolution status even if the current round had no fixes.
 
 **Phase 1 — Observe thread resolution status.**
 
