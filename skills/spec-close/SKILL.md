@@ -438,8 +438,12 @@ Wiki (<wiki_root>):
   Status: uncommitted — review with `git diff --stat` then commit.
 
 Suggested commits:
-  (in target repo)  git add docs/specs/ && git commit -m "close(<ticket-lower>): archive spec to DONE/"
-  (in wiki)         git add -A && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
+  (in target repo)  git add docs/specs/DONE/<TICKET-ID>/ && git commit -m "close(<ticket-lower>): archive spec to DONE/"
+  (in wiki)         git add log.md projects/<project>/state.md <each decisions/ and comprehension/ file created above> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
+
+Stage by name in both repos. `git add docs/specs/` (or `-A`) in the target repo sweeps
+other tickets' untracked TODO/ artifacts into the close commit; `git add -A` in the wiki
+sweeps whatever unrelated edits that tree is carrying.
 ```
 
 The `log.md` line is the step 4 table's third column verbatim, and never `Prepended:` on a path that did not prepend: the script's stderr notice on `outcome=fresh` or `=created`, `log.md: entry already present — skipped` on exit 1, and `log.md NOT written: <stderr>` on any other nonzero exit or on the skipped not-found pre-check. A close that reports a prepend over a bottom-placed, unwritten or absent entry sends the operator looking at the top of a file that does not hold it.
@@ -470,5 +474,5 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 - **Log-guard encoding.** The `--guard` substring compare depends on the literal em dash (`—`) in the entry format; tools that normalize it to `--`/`-` will break dedup and produce duplicate entries on re-run. The script pins UTF-8 on every file open, on stdin, and on both output streams, which is what makes that compare reliable on platforms whose default encoding is not UTF-8.
 - **`state.md` evidence incomplete.** Skip the `state.md` update, warn, and suggest `/wiki-state-update` as a follow-up. Don't block the rest of the close.
 - **Untracked spec files.** Some spec artifacts may not be committed yet. Use `mv` + `git add` instead of `git mv` for untracked files. Detect via `git ls-files --error-unmatch <file> 2>/dev/null`.
-- **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print explicit commit suggestions for both repos. The user controls when and how to commit.
+- **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print explicit commit suggestions for both repos, staging by name — never `git add docs/specs/` or `git add -A`, which sweep in other tickets' untracked artifacts or unrelated wiki edits. The user controls when and how to commit.
 - **Cross-repo specs.** The skill runs in the target repo (where the spec lives). Wiki path comes from that repo's CLAUDE.md. No cross-repo file access is needed during reconciliation.
