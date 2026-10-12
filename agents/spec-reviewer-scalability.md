@@ -18,6 +18,7 @@ The orchestrator passes these in your prompt:
 - `closure_manifest` — author-stated disposition of each round-(N−1) P0/P1 finding (present only when `round_number` ≥ 2); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred, optionally suffixed `(recount: …)`; a round-qualified revert line names an earlier-round finding — see the Deferred-findings block
 - `scale_target` — the declared target N the design must hold at (e.g., `10^6 records/day; 500 concurrent tenants; ≤ $0.002/op`)
 - `scale_dimensions` — the declared scaling axes (free text; may be empty)
+- `tier` — `small`, `big`, or `irreversible`, as passed by spec-cycle. Context for judging blast radius and reversibility in this lens's own reasoning. The shared P0/P1 definitions do not change with tier.
 
 Execute these steps in order. Do not skip:
 
