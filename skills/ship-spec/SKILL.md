@@ -159,6 +159,7 @@ for iter in 1..5:
     capture exit code and full stdout+stderr
     if exit == 0:
         save full output to docs/specs/TODO/<TICKET-ID>.test-output.txt
+        redact the worktree's absolute path from that file (Redaction, below)
         break
     else:
         identify the smallest blocking failure (one assertion, one type error)
@@ -166,6 +167,8 @@ for iter in 1..5:
         do not bundle multiple fixes in one iteration — sequence fixes by value, re-run between each, so the evidence trail stays intact
         continue
 ```
+
+**Redaction (VHS-31).** Before the captured file is staged, replace every occurrence of `<worktree-path>` in it with the literal `<worktree>` — the forward-slash form and, on Windows, the backslash form (`C:/Users/<user>/…/<TICKET-ID>-worktree` and `C:\Users\<user>\…\<TICKET-ID>-worktree`) — so a test runner's banner (`RUN  v3 <worktree>/pkg`) no longer commits a username and a local filesystem layout. One substitution over the file and nothing else: apart from that prefix the artifact stays a verbatim gate run. *(e.g., `sed -i "s|<forward-slash path>|<worktree>|g; s|<backslash path, escaped>|<worktree>|g" docs/specs/TODO/<TICKET-ID>.test-output.txt` in a POSIX shell, or the equivalent in your host.)* The placeholder is part of the artifact's convention; a later `/spec-close` reconciliation does not read it as drift.
 
 If after 5 iterations tests are still red:
 ```
