@@ -108,6 +108,7 @@ For EACH finding:
    - `duplicate` — same finding repeated from a prior review round
    - `skip` — over-engineering suggestion, style preference, already fixed, or the reviewer misread the code
    - `already-fixed` — finding was valid but a subsequent commit already addressed it
+   - `defer` — valid, but not this PR's to carry: it is outside the PR's scope, or the right fix is a non-trivial change that deserves its own review. Name where it is tracked — an issue id when a tracker is connected, otherwise a follow-up line you add to the PR description now. Never `defer` a Critical, or a Major on code this PR changed.
 
 Record the categorization and reason for each finding.
 
@@ -138,6 +139,7 @@ Only if fixes were made:
 
    Fixed: <list of what was fixed>
    Skipped: <list of what was skipped with brief reasons>
+   Deferred: <list of what was deferred, each with where it is tracked>
 
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
@@ -152,7 +154,19 @@ Only if fixes were made:
 
 ## Step 6: Wait for re-review, verify thread resolution, poll for approval
 
-Per-thread replies are the primary closure mechanism for all findings. Fix-categorized findings get `Resolved in <sha>` replies. Non-fix findings (skip/duplicate/already-fixed) get a reply stating the categorization and reasoning — this creates a record and lets CodeRabbit resolve threads naturally without force-resolving. Auto-approval (`APPROVED` verdict) requires all threads resolved AND `request_changes_workflow: true` AND pre-merge checks passing. The skill never posts `@coderabbitai resolve` — if threads don't auto-resolve on reply, the report offers the manual command.
+Per-thread replies are the primary closure mechanism for all findings. Fix-categorized findings get `Resolved in <sha>` replies. Non-fix findings (skip/duplicate/already-fixed/defer) get a reply stating the categorization and reasoning — this creates a record and lets CodeRabbit resolve threads naturally without force-resolving. Auto-approval (`APPROVED` verdict) requires all threads resolved AND `request_changes_workflow: true` AND pre-merge checks passing. The skill never posts `@coderabbitai resolve` — if threads don't auto-resolve on reply, the report offers the manual command.
+
+**Waiting rule (used by 6a and 6d).** Each wait is one bounded background wait, not a run of back-to-back tool calls. Start a background shell loop (or your host's monitor capability) that re-runs the probe every 30 seconds, prints one result line and exits as soon as any terminal condition holds, and prints `TIMEOUT <last values>` at the deadline; then hold for its completion notice. A foreground `sleep` is blocked in some harnesses; a background loop is not, and back-to-back probe calls burn the whole attempt budget in seconds while CodeRabbit is still working. A host with no background execution falls back to individual probe calls, in which case the attempt count given at each wait is the bound. Skeleton:
+
+```bash
+deadline=$(( $(date +%s) + <seconds> ))
+while [ $(date +%s) -lt $deadline ]; do
+  <probe commands — each guarded with `|| true` so one failed request does not end the wait>
+  <on any terminal condition: echo "<CONDITION> <values>"; exit 0>
+  sleep 30
+done
+echo "TIMEOUT <last values>"
+```
 
 **Fast-path predicate (evaluated once, after Step 5):**
 
@@ -202,7 +216,7 @@ gh api repos/<OWNER>/<REPO>/pulls/<N>/comments \
 
 **Do not use `select(.submitted_at > PUSH_TIME)` on the reviews endpoint as the detection query.** CodeRabbit posts an empty-bodied `COMMENTED` review for each thread reply it makes, so within ~40 seconds of posting replies that query returns a non-zero count of reviews that contain no findings at all. Taking `last | .id` off it hands Step 6b an acknowledgement review, whose comment list is empty, and the round concludes "no new findings" while a real finding is still inbound. That is a false negative on the one thing this step exists to catch.
 
-Poll by making **individual Bash tool calls**. Make up to 10 attempts (intervals are aspirational — the agent harness fires Bash tool calls back-to-back, so the attempt count is what bounds polling, not wall-clock). Outcomes:
+Run that probe under the waiting rule with a 9-minute deadline (a host without background execution makes up to 10 individual probe calls instead). Outcomes:
 
 - **Count > 0:** new findings exist. Capture their review id and proceed to 6b. Set `REVIEW_SIGNAL=new-findings`.
 - **Count stays 0 for all attempts:** proceed to 6d, but set `REVIEW_SIGNAL=inconclusive` — see the honesty rule in 6e. CodeRabbit may have had nothing to add, or may simply not have finished.
@@ -261,7 +275,7 @@ gh api -X POST \
 
 **Non-fix reply mechanism:**
 
-For each non-fix finding (skip/duplicate/already-fixed) from the current round, post an inline reply with the categorization and reasoning:
+For each non-fix finding (skip/duplicate/already-fixed/defer) from the current round, post an inline reply with the categorization and reasoning:
 
 ```bash
 gh api -X POST \
@@ -274,6 +288,7 @@ Reply body templates by category:
 - **skip**: `Skipped — <reason from triage>` (e.g., "Skipped — style preference; current pattern is consistent with the rest of the codebase", "Skipped — suggestion would over-engineer a straightforward path")
 - **duplicate**: `Duplicate of earlier finding — no action taken.`
 - **already-fixed**: `Already addressed in a prior commit — no action needed.`
+- **defer**: `Deferred — valid, outside this PR's scope: <reason>. Tracked in <TICKET-ID | the PR description's follow-ups>.`
 
 Keep reasoning concise (1–2 sentences). The goal is a record of the judgment call, not a debate.
 
@@ -318,12 +333,12 @@ If `hasNextPage` is true, repeat with `reviewThreads(first:100, after:"<endCurso
 # otherwise: unresolved_threads: <comma-separated .path values of unresolved threads>
 ```
 
-Poll by making **individual Bash tool calls** (not a sleep loop — sleep loops are blocked in this environment). Make up to 8 polling attempts; the attempt count governs total polling, not wall-clock duration — intervals are aspirational because the agent harness fires Bash tool calls back-to-back. After each poll, observe how many CodeRabbit threads are resolved and how many are still unresolved. The skill does not attempt to correlate unresolved thread counts against finding counts — it simply observes and reports.
+Run that query under the waiting rule with a 4-minute deadline, exiting as soon as every CodeRabbit thread is resolved (a host without background execution makes up to 8 individual probe calls instead). After the wait, observe how many CodeRabbit threads are resolved and how many are still unresolved. The skill does not attempt to correlate unresolved thread counts against finding counts — it simply observes and reports.
 
-If after exhausting the polling attempts some threads are still unresolved, report the unresolved thread file paths and the manual resolve command:
+If after the wait some threads are still unresolved, report the unresolved thread file paths and the manual resolve command:
 
 ```text
-N CodeRabbit threads still unresolved after 8 polling attempts:
+N CodeRabbit threads still unresolved after the wait:
   - <path1>
   - <path2>
 To force-resolve all threads: gh pr comment <N> --body "@coderabbitai resolve"
@@ -347,7 +362,7 @@ gh api repos/<OWNER>/<REPO>/pulls/<N>/reviews \
   --jq '[.[] | select(.user.login == "coderabbitai[bot]") | select(.state != "COMMENTED")] | sort_by(.submitted_at) | last | .state'
 ```
 
-Poll by making **individual Bash tool calls**; make up to 9 polling attempts. The attempt count governs total polling, not wall-clock duration — intervals are aspirational because the agent harness fires Bash tool calls back-to-back. CodeRabbit's `request_changes_workflow` auto-approval fires after threads are resolved AND pre-merge checks pass.
+Run that query under the waiting rule with a 6-minute deadline, exiting on `APPROVED` (a host without background execution makes up to 9 individual probe calls instead). CodeRabbit's `request_changes_workflow` auto-approval fires after threads are resolved AND pre-merge checks pass.
 
 Outcomes:
 - `APPROVED`: success — CodeRabbit has lifted the reviewer block.
@@ -361,6 +376,7 @@ Review round complete for PR #<N>:
   [If multi-round: "Round 1: A findings in <sha1>; Round 2: B findings in <sha2>"]
 - Skipped: Y findings (list with reasons) — replied with reasoning
 - Already fixed: Z findings (list them) — replied
+- Deferred: D findings (list each with where it is tracked) — replied
 - Duplicates: W
 - Incremental review rounds: M
 - Reply failures: F (list comment IDs and error codes, if any)
@@ -384,7 +400,7 @@ This distinction is not pedantry. On PR #51 round 1, polling ended reporting "no
 ## Edge cases
 
 - **No new comments**: report "Nothing to review" and exit
-- **All findings are non-fix (skip/duplicate/already-fixed)**: no push, but replies are posted with reasoning for each inline finding (body-level findings without a comment ID are skipped per the guard in 6c)
+- **All findings are non-fix (skip/duplicate/already-fixed/defer)**: no push, but replies are posted with reasoning for each inline finding (body-level findings without a comment ID are skipped per the guard in 6c)
 - **CodeRabbit review pending**: "Review in progress — wait and retry"
 - **CI failing from unrelated issue**: warn user but still process review findings (the review may contain the fix)
 - **Branch protection blocks push**: report the error, don't retry
