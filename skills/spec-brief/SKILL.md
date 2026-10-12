@@ -62,7 +62,7 @@ The brief is the one lifecycle artifact nothing downstream challenges: `/spec-cy
 5. **Ticket resolution**, in this order, each step optional:
    a. The shared-memory service's tag-only search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent in your host) with `tags: ["plane_work_item", "<TICKET-ID>"]`, the `namespace` from step 3, `source_system: "plane"`, `max_results: 1`.
    b. On zero results or an error: the issue tracker's retrieve-by-identifier capability (e.g., `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalent in your host's tracker integration).
-   c. On failure of both: **conversation-only mode.** Print `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.` and wait. Apply the seed gate (§ Phase 2) to the answer: re-prompt once, then halt. The brief header will read `**Plane:** unresolved (local-only)`, and `/spec-cycle`'s local-only path applies downstream.
+   c. On failure of both: **conversation-only mode.** Print `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.` and wait. Apply the seed gate (§ Seed gate) to the answer: re-prompt once, then halt. The brief header will read `**Plane:** unresolved (local-only)`, and `/spec-cycle`'s local-only path applies downstream.
 
    Log one token: `ticket: memory | tracker | local-only`.
 
@@ -81,28 +81,105 @@ Retrieval-first, in this order, stopping as soon as the seed is sufficient:
 
 Assemble `seed`: the problem statement, the facts with their sources, and any related open tickets the ticket text names. Print `grounding: <n> files read, <m> explorations dispatched (<f> failed)`.
 
+## Seed gate
+
+Runs after Phase 1 and before the tier gate, in every mode, including `--no-grill`. The sentence "Skipped entirely under `--no-grill`" in Phase 2 does not cover this step.
+
+Gate the seed: if the ticket text (or the operator's local-only paragraph) states no problem — under two sentences, or nothing a design decision could hang off — re-prompt once, then halt, and nothing is written. In ticket mode the re-prompt is `Ticket <ID> states no problem — describe it in a paragraph and I will proceed from that.`, and the brief header keeps the resolved ticket line while the paragraph becomes the seed. In local-only mode it repeats Phase 0 step 5c's request. An empty seed halts before the tier question. If the interview's primitive itself returns `empty-seed`, halt the same way — nothing is written. A success token for "nothing was ever known" would write a hollow brief that every downstream lens then treats as authority.
+
+## Tier gate
+
+Runs after the seed gate passes, in every mode, before the interview and before Confirm. Nothing in any mode writes a tier the operator did not choose. There is no `--tier` flag and no default that skips the question.
+
+If the host cannot wait, print `tier needs an operator — stopping` and stop. Write nothing. The tier is not filled in.
+
+Otherwise compute the tweak-floor heuristic below and print:
+
+```text
+Tier: recommended <tweak|big>
+<basis line>
+
+1. tweak
+2. small
+3. big
+4. irreversible
+```
+
+The recommended row carries ` (recommended)`. A reply of `1`, `2`, `3`, or `4` after trimming sets the tier. Any other reply stops and writes nothing.
+
+`tweak` is never written into a brief, a spec, or a marker. It exits as follows:
+
+- Collision case: Phase 0 step 2 showed its halt and the operator chose option 1. Print the paths of the brief, the spec, and the reviews tree that exist, state that they stay actionable by `/ship-spec` and `/spec-close` until the operator removes or archives them and re-runs `/spec-brief` clean, and state that spec-brief deletes nothing. Do not print the NEXT block. A stale temp that step 2 already removed is not this case.
+- Otherwise print:
+
+```text
+=== NO BRIEF WRITTEN: <TICKET-ID> ===
+Tier: tweak
+<basis line>
+
+=== NEXT ===
+No lifecycle — ship as a chore PR citing the ticket; the ticket's state and closing comment are yours to set, since no lifecycle stage will touch it.
+```
+
+The tweak path creates no brief temp and deletes nothing. `small`, `big`, or `irreversible` continues to the interview, or under `--no-grill` to Confirm. The chosen tier is kept for Confirm and Phase 4.
+
+### Tweak-floor heuristic
+
+The recommendation is `tweak` only when the estimate is known, the change is at most 2 files and under 50 lines, and it touches none of auth, payments, data, or config. Any of those four surfaces blocks `tweak` at any size. The heuristic never recommends `small` or `irreversible`. Those are choices on the prompt.
+
+The estimate comes from the ticket text (or the local-only paragraph) and the Phase 1 grounding facts. Scope rows do not exist yet. There is no diff.
+
+A check that cannot be answered is unknown. Any unknown check, or any failed check, recommends `big`.
+
+- **Files.** Distinct file paths the change names. A directory does not count. A wiki `state.md` or `filemap.md` that grounding opened does not count. No file path named for the change → unknown.
+- **Lines.** An integer the texts tie to a line count or a diff size; a range uses its top; if several qualify, use the greatest. A ticket id, a date, a file count, or an item number does not qualify. "Under 50" means 49 or fewer. A single typo, a single wording replacement, or a single identifier rename, in one named file, with no other change described, estimates at 1 line. If no qualifying number is stated, that 1-line estimate applies only to that single-edit case; any other change is unknown. A qualifying number wins over the 1-line estimate.
+- **Surfaces.** `none` only when at least one file path is named and every named path and the described change were checked and none matched. No named path → unknown, which blocks `tweak`.
+
+Built-in taxonomy. Matching is case-insensitive. A path signal equals one path segment, or equals the whole filename. `config.py` does not match the filename `config`. A directory segment `config` does. A one-word subject signal matches a whole word in the change description. A quoted multi-word signal matches that phrase with a word boundary at each end. The bare word "data" is not a signal.
+
+| Surface | Path signal | Subject signal |
+|---|---|---|
+| auth | `auth`, `login`, `session`, `oauth`, `credential`, `secret`, `permission`, `rbac` | password, token, credential, secret, login, session, oauth, permission |
+| payments | `billing`, `payment`, `invoice`, `subscription`, `checkout`, `payout`, `stripe` | charge, invoice, refund, payout, subscription |
+| data | `migration`, `migrations`, `schema` | migration, schema, "drop table", "delete rows" |
+| config | a segment or filename `config`; a filename `.env`; a filename `states.json`; a path under `.github/workflows/` | "environment variable", "feature flag" |
+
+A `SKILL.md` file and a docs markdown file are not config unless a signal above matches. `AGENTS.md` and `CLAUDE.md` are not config unless a signal above matches.
+
+**Extension.** An extension signal matches a named path as a substring on purpose, and is not the built-in segment rule. Read the target project's `AGENTS.md` and `CLAUDE.md` when each file is present. This is not a first-source-wins read: each file that is present contributes. Each whole-word `## Tweak surfaces` heading contributes. Its body runs to the next `^#{1,6}` heading. Each non-blank line is one extra signal. Strip one leading list marker (`-`, `*`, or `N.`) and then trim. A line that is empty after that is ignored. A remaining one-word line matches as a one-word signal. A remaining quoted phrase uses the phrase rule above. Any other remaining line is an unknown surface and recommends `big`. Its basis slot is `surfaces: unknown`, with the `never tweak` suffix and a short quote of the line. It is not `surfaces: none`. Signals union. Neither heading hides the other. A one-word signal matches a named path as a substring or the change description as a whole word. A quoted multi-word line uses the phrase rule above. A match blocks `tweak`. No heading in either file means the built-in four only. Extra signals only add surfaces.
+
+**Basis line.** One line, three comma-separated slots, then the suffix, prefixed `basis: `. Files: `<n> file` or `<n> files` (singular when `n` is 1) plus ` (<paths>)`, or `files: unknown`. Lines: `~<m> line` or `~<m> lines` (singular when `m` is 1), or `lines: unknown`. Surfaces: `surfaces: none`, `surfaces: unknown`, or `surfaces: <name>`. When more than one surface matches, name every match, built-in order auth then payments then data then config, then extension lines in file order, joined by `+`. The suffix is `ticket text + grounding` when the recommendation is `tweak`, and `never tweak` otherwise.
+
+Worked examples, normative for that shape:
+
+1. Ticket "fix the typo recieve in README.md". Grounding also opened wiki `state.md` and `filemap.md`. Those do not count. The change names `README.md` only. Recommendation `tweak`. `basis: 1 file (README.md), ~1 line, surfaces: none — ticket text + grounding`
+2. Ticket "add a state UUID to skills/ship-spec/states.json". Recommendation `big`. `basis: 1 file (skills/ship-spec/states.json), lines: unknown, surfaces: config — never tweak`
+3. Ticket "make the gate stricter" and grounding names no path. Recommendation `big`. `basis: files: unknown, lines: unknown, surfaces: unknown — never tweak`
+4. Ticket "drop table users in scripts/cleanup.sql". Grounding names that file and states 10 lines. The phrase "drop table" matches data. Recommendation `big`. `basis: 1 file (scripts/cleanup.sql), ~10 lines, surfaces: data — never tweak`
+
 ## Phase 2 — Interview
 
 Skipped entirely under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: invoke it through the skill-invocation tool, or the equivalent in your host) with `seed` from Phase 1, brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — and `round_cap` / `question_cap` from the flags. The primitive waits for the operator each round; this skill does nothing until the Grill summary comes back.
-
-**Seed gate.** Before the interview, gate the seed: if the ticket text (or the operator's local-only paragraph) states no problem — under two sentences, or nothing a design decision could hang off — re-prompt once, then halt. In ticket mode the re-prompt is `Ticket <ID> states no problem — describe it in a paragraph and I will proceed from that.`, and the brief header keeps the resolved ticket line while the paragraph becomes the seed. In local-only mode it repeats Phase 0 step 5c's request. If the primitive itself returns `empty-seed`, halt the same way — nothing is written. A success token for "nothing was ever known" would write a hollow brief that every downstream lens then treats as authority.
 
 **If this host cannot invoke a nested skill**, halt: `grilling is unavailable in this host — re-run with --no-grill to write the brief from the ticket alone, or run the interview by hand.` Never write a silently ungrilled brief.
 
 ## Phase 3 — Confirm
 
-Render a preview — the numbered `## Decisions carried forward` list (from the summary's Settled items) and the `## Risks / decisions` list (from its Open frontier, each ending "spec author pins this") — then:
+Render a preview — the numbered `## Decisions carried forward` list (from the summary's Settled items) and the `## Risks / decisions` list (from its Open frontier, each ending "spec author pins this") — and show `Tier: <level>` and the basis line, then:
 
 ```
 Write the brief?
 1. Write docs/specs/TODO/<TICKET-ID>.brief.md
 2. Revise an answer (name the Q number) — that decision and everything settled downstream of it return to the frontier; if the cap was hit, one extra round is granted, once
 3. Abort — nothing written
+4. Change the tier — ask the tier gate again
 ```
 
 Wait for the user's response.
 
-Option 2 re-invokes `grilling` with the Grill summary as `prior_summary` and the same `round_cap` / `question_cap`. The primitive itself owns the resume arithmetic and grants the single post-cap round, exiting `revised-after-cap (+1 round)`; this skill offers option 2 at most once after a cap hit, and once a post-cap resume has returned the block re-renders with options 1 and 3 only.
+Option 4 shows the same tier prompt. A reply of `1`, `2`, `3`, or `4` after trimming sets the tier. A non-tweak choice returns to the preview with the new tier. A `tweak` choice takes the tier gate's tweak exit before Phase 4. On option 4's re-ask, a reply other than `1`–`4` re-prints the tier prompt and does not discard the interview. The first tier-gate ask, before any interview, still stops and writes nothing on any other reply.
+
+Option 2 re-invokes `grilling` with the Grill summary as `prior_summary` and the same `round_cap` / `question_cap`. The primitive itself owns the resume arithmetic and grants the single post-cap round, exiting `revised-after-cap (+1 round)`; this skill offers option 2 at most once after a cap hit, and once a post-cap resume has returned the block re-renders with options 1, 3, and 4. Option 2 stays omitted there. A revision (option 2) does not clear the tier.
 
 Under `--no-grill`, option 2 reads `2. Add a decision (state it) — appended to Decisions carried forward`, and the preview's Decisions list is derived **only** from decisions the ticket text states explicitly, each carrying its quote or `path:line`. Anything the model would have to infer goes to `## Risks / decisions` ending "spec author pins this". The altitude fence applies to that derivation exactly as it applies to the interview.
 
@@ -122,10 +199,21 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md` with exactly these sections, in thi
 ## Decisions carried forward
 ## Done when
 ## Out of scope
+## Tier
 ## Scale            (conditional — see the emission rule below)
 ## Risks / decisions
 ## References
 ```
+
+**`## Tier` emission.** On the write path the tier is `small`, `big`, or `irreversible`. Emit `## Tier` immediately before the conditional `## Scale`, exactly:
+
+```markdown
+## Tier
+
+**Level:** small
+```
+
+with the chosen level in place of `small`. Emit no second `**Level:**` line and no sibling line. The rest of Phase 4, including Scale's four cases, is unchanged.
 
 **Atomic write.** Write the full content to a dot-prefixed temporary sibling, `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp`, and rename it over the target in one step, so an interrupted write never leaves a truncated brief; remove the temp on any failure. The leading dot keeps it outside `/spec-close`'s `<TICKET-ID>.<rest>` companion glob. This repo's `.gitignore` does not ignore `.*.tmp`, so "a stray dot-file from a killed run must not be committed" is a prose rule, not a mechanism — Phase 0 step 2 removes such a file on the next run whether or not any other artifact exists. Create `docs/specs/TODO/` first if it does not exist. That directory creation, this rename, and Phase 0 step 2's removal of a stale temp are this skill's only filesystem mutations outside the brief itself.
 
