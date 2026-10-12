@@ -224,14 +224,27 @@ def resolve_predecessor(argument: str, handoffs_dir: Path) -> tuple[Path | None,
     """
     base = handoffs_dir.resolve()
     raw = Path(argument).expanduser()
-    candidate = (raw if raw.is_absolute() else base / raw).resolve()
+    if raw.is_absolute():
+        candidates = [raw]
+    else:
+        # A bare filename resolves against the handoffs directory. A path the
+        # operator copied from a listing is usually project-relative
+        # (`.claude/handoffs/<name>`) or cwd-relative; resolving those against
+        # the handoffs directory doubled the prefix and reported "does not
+        # exist" for a file that was right there. Try each root in turn; the
+        # inside-the-directory check below still applies to whichever wins.
+        project_root = handoffs_dir.parent.parent
+        candidates = [base / raw, project_root / raw, Path.cwd() / raw]
+    resolved = [c.resolve() for c in candidates]
+    for candidate in resolved:
+        if _same_path(candidate.parent, base) and candidate.is_file():
+            return (candidate, "")
+    candidate = resolved[0]
     if not _same_path(candidate.parent, base):
         return (None, "--continues-from must name a file in {}; got {}".format(
             base, candidate))
-    if not candidate.is_file():
-        return (None, "--continues-from names a file that does not exist: {}".format(
-            candidate))
-    return (candidate, "")
+    return (None, "--continues-from names a file that does not exist: {}".format(
+        candidate))
 
 
 def chain_lines(predecessor: Path | None) -> list[str]:
@@ -368,7 +381,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("slug", nargs="?", default="",
                         help="short task slug; sanitized to [a-z0-9-]")
     parser.add_argument("--continues-from", default=None, metavar="FILE",
-                        help="a prior handoff in the same handoffs directory")
+                        help="a prior handoff in the same handoffs directory: a bare "
+                             "filename, a project-relative or cwd-relative path, "
+                             "or an absolute path")
     parser.add_argument("--project-path", default=None, metavar="PATH",
                         help="project root (default: the current directory)")
     return parser

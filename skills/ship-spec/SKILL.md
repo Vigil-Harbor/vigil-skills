@@ -19,7 +19,7 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 ## Phase 0 — Preflight
 
 1. Resolve `<spec-path>`. Confirm it exists and follows shape `docs/specs/TODO/<TICKET-ID>.spec.md`. Extract `ticket_id` (uppercase) from filename.
-1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. Compute the spec's fingerprint: the SHA-256 of the spec file's bytes after every carriage-return byte is removed, written as `sha256-lf:` followed by the 64 lower-case hex digits *(e.g., `tr -d '\r' < <spec-path> | sha256sum` in a POSIX shell, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host)*.
+1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. Compute the spec's fingerprint: the SHA-256 of the spec file's bytes after every carriage-return byte is removed and after every line whose first non-blank characters are `**Follow-up:**` is dropped, every other byte left as it is (so a follow-up ticket filed after green does not read as a changed spec, and a file whose last line has no line feed does not gain one), written as `sha256-lf:` followed by the 64 lower-case hex digits *(e.g., `tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum` in a POSIX shell with GNU `sed`, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host — where the host's `sed` or `grep` appends a missing final line feed, as `grep -v` and BSD `sed` do, use a filter that does not)*.
 
    Before the state table is acted on, read the spec's recorded tier. Never read the brief for this. **Reader rule for the spec line.** Ignore lines inside a fenced code block. Fences are the ones the deferred-section rules already define: a marker of three or more backticks or tildes begins the line (after at most three spaces) and the line is not prefixed `> `, matched from the top of the file; a marker opens a fence only when no fence is open, and closes one only when it uses the same character as the opener and is at least as long — a shorter or different marker inside an open fence is content, and a marker inside a blockquote neither opens nor closes a fence. Outside a fence, a present declaration is a line that, after removing leading indentation, starts with the label `**Tier:**` compared case-insensitively. The first such line wins. A second warns `tier: multiple Tier lines in the spec — using first` and is ignored. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible` is the recorded tier. Any other value, including empty, `tweak`, a trailing note, or punctuation stuck to the token, halts `tier: malformed (<value>) — halting`. That line is not absence and is not `big`. No confirm-through and no write. Absence, which is `big` with no warning, means no label line at all. Where this skill says "no line", it means no label line. A sentence that uses the token without that label is not a declaration. A line inside a fence, and a mid-line mention, are not the recorded tier. This step uses this rule and no other. Hold the result as the spec tier. This step reads the marker and does not rewrite it, including `tier:`.
 
@@ -159,6 +159,7 @@ for iter in 1..5:
     capture exit code and full stdout+stderr
     if exit == 0:
         save full output to docs/specs/TODO/<TICKET-ID>.test-output.txt
+        redact the worktree's absolute path from that file (Redaction, below)
         break
     else:
         identify the smallest blocking failure (one assertion, one type error)
@@ -166,6 +167,8 @@ for iter in 1..5:
         do not bundle multiple fixes in one iteration — sequence fixes by value, re-run between each, so the evidence trail stays intact
         continue
 ```
+
+**Redaction (VHS-31).** Before the captured file is staged, replace every occurrence of `<worktree-path>` in it with the literal `<worktree>` — the forward-slash form and, on Windows, the backslash form (`C:/Users/<user>/…/<TICKET-ID>-worktree` and `C:\Users\<user>\…\<TICKET-ID>-worktree`) — so a test runner's banner (`RUN  v3 <worktree>/pkg`) no longer commits a username and a local filesystem layout. One substitution over the file and nothing else: apart from that prefix the artifact stays a verbatim gate run. *(e.g., `sed -i "s|<forward-slash path>|<worktree>|g; s|<backslash path, escaped>|<worktree>|g" docs/specs/TODO/<TICKET-ID>.test-output.txt` in a POSIX shell, or the equivalent in your host.)* The placeholder is part of the artifact's convention; a later `/spec-close` reconciliation does not read it as drift.
 
 If after 5 iterations tests are still red:
 ```
@@ -452,7 +455,7 @@ Do not auto-update any project wiki — that happens post-merge once the merge S
 - Bash for git, gh, package-manager commands — fully scripted, no interactive prompts.
 - plane-proxy tools (project listing, work-item state update, work-item comment) — or the equivalent capabilities in your host's Plane integration.
 - The Phase 3b review runs in a read-only subagent when the host has one, inline otherwise, which is what `subagents: optional` in the frontmatter declares. The review command itself is whatever the project declared; this skill supplies none.
-- A shell hash command to check the spec's fingerprint in Phase 0 step 1b (`tr -d '\r' < <spec-path> | sha256sum`, or your host's equivalent). This skill reads the verdict marker and never writes it.
+- A shell hash command to check the spec's fingerprint in Phase 0 step 1b (`tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum`, or your host's equivalent). This skill reads the verdict marker and never writes it.
 - Do not run `git rebase -i`, `git add -i`, or any interactive command.
 - Do not push to `<default-branch>`. Do not force-push the feature branch unless the user explicitly asks.
 - Do not skip pre-commit hooks (`--no-verify`). If a hook fails, fix the underlying issue.

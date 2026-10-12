@@ -49,7 +49,7 @@ Each agent emits a `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...` last line.
 
 ### /review-pr
 
-Standalone skill for triaging CodeRabbit review comments. Reads findings, verifies against current code, fixes real issues, pushes, posts per-thread commit-hash replies (`Resolved in <sha>`), conditionally waits for CodeRabbit's incremental re-review, and polls for auto-approval. Non-fix threads (skip/duplicate/already-fixed) are left open for CodeRabbit and the user to handle naturally. Checks `.coderabbit.yaml` for `request_changes_workflow: true` to determine whether auto-approval is expected.
+Standalone skill for triaging CodeRabbit review comments. Reads findings, verifies against current code, fixes real issues, pushes, posts per-thread commit-hash replies (`Resolved in <sha>`), conditionally waits for CodeRabbit's incremental re-review, and polls for auto-approval. Non-fix findings (skip/duplicate/already-fixed/defer) get a per-thread reply with the reasoning; threads that stay unresolved are left open for CodeRabbit and the user to handle naturally. Checks `.coderabbit.yaml` for `request_changes_workflow: true` to determine whether auto-approval is expected.
 
 ### File layout
 
@@ -93,6 +93,8 @@ operator removal step and no two-copies routing ambiguity. To keep both, rename
 the upstream copy before installing.
 
 **`bloat-check` (VHS-46) — retired, not replaced.** The skill is deleted from this repo; `/ship-spec`'s review gate carries its invariant veto. `sync.py install` does not remove a copy it installed earlier, so remove it by hand — for Claude Code, `rm -rf ~/.claude/skills/bloat-check/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/bloat-check/`). Targeted removal only; do not use `--prune`.
+
+**`talaria` — retired, not replaced (2026-10-11).** Another project is taking the name, and the skill (read Talaria operational state, propose safe actions, register heartbeat watches) had no remaining caller in this ecosystem. Deleted from this repo together with its two test modules, `tests/test_talaria_bridge.py` and `tests/test_talaria_watch.py`. `sync.py install` does not remove a copy it installed earlier, so remove it by hand — for Claude Code, `rm -rf ~/.claude/skills/talaria/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/talaria/`). Targeted removal only; do not use `--prune`.
 
 ## Plan & Spec Reviews
 

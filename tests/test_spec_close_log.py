@@ -739,7 +739,7 @@ class TestAtomicWrite(PrependCase):
         self.assertEqual(out, "")
         self.assertEqual(temps_in(self.tmp), [])
         # The dot prefix is load-bearing: the wiki's .gitignore carries `.*.tmp`
-        # and SKILL.md tells the operator to commit the wiki with `git add -A`.
+        # and an operator may still commit the wiki with `git add -A`.
         self.assertTrue(
             any(name.startswith(".prepend-log-entry.") and name.endswith(".md.tmp")
                 for name in seen),
