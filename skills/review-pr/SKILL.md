@@ -148,7 +148,7 @@ Only if fixes were made:
    ```bash
    HEAD_SHORT_SHA=$(git rev-parse --short HEAD)
    ```
-   For each fix-categorized finding from this round, post an inline reply on the originating review-comment thread (see Step 6c for the reply mechanism and error handling). Then post non-fix replies for all skip/duplicate/already-fixed findings from this round (see Step 6c). Then continue to Step 6a.
+   For each fix-categorized finding from this round, post an inline reply on the originating review-comment thread (see Step 6c for the reply mechanism and error handling). Then post non-fix replies for all skip/duplicate/already-fixed/defer findings from this round (see Step 6c). Then continue to Step 6a.
 
 **Note:** Pushing triggers CodeRabbit's auto-incremental review of the new commit. Step 6 waits for it before attempting thread resolution.
 
@@ -180,7 +180,7 @@ If `FAST_PATH` is true, skip Steps 6a and 6b entirely — proceed directly to St
 
 ### 6a. Wait for CodeRabbit's incremental review (only if fixes were pushed)
 
-If no fixes were pushed (all skips/duplicates/already-fixed), skip to 6d.
+If no fixes were pushed (all skips/duplicates/already-fixed/deferred), skip to 6d.
 
 **If FAST_PATH is true**, set `REVIEW_SIGNAL=fast-path` and skip to 6d. (Per-thread replies were already posted in Step 5.)
 
@@ -376,7 +376,7 @@ Review round complete for PR #<N>:
   [If multi-round: "Round 1: A findings in <sha1>; Round 2: B findings in <sha2>"]
 - Skipped: Y findings (list with reasons) — replied with reasoning
 - Already fixed: Z findings (list them) — replied
-- Deferred: D findings (list each with where it is tracked) — replied
+- Deferred: D findings (list each with where it is tracked and its reply status: replied, failed, or skipped as body-level)
 - Duplicates: W
 - Incremental review rounds: M
 - Reply failures: F (list comment IDs and error codes, if any)
