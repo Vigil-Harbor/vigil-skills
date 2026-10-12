@@ -6,7 +6,7 @@ Resolves the repo root and all paths from __file__ (never cwd) so it works
 regardless of the working directory ship-spec runs it from.
 
 The skill's scripts are loaded by file path so they can stay portable scripts
-without package boilerplate, matching tests/test_talaria_bridge.py.
+without package boilerplate, matching the other test modules.
 """
 
 from __future__ import annotations
@@ -656,6 +656,16 @@ class TestChain(TempDirCase):
         start = next(i for i, line in enumerate(lines)
                      if line.startswith("- **Continues from**"))
         return lines[start:start + 2]
+
+    def test_continues_from_accepts_project_relative_path(self):
+        # The path an operator copies from a listing is project-relative;
+        # resolving it against the handoffs directory doubled the prefix.
+        first = self.create("first-leg")
+        relative = Path(".claude") / "handoffs" / first.name
+        second = self.create("second-leg", "--continues-from", str(relative))
+        self.assertEqual(
+            self.chain_block(second)[0],
+            "- **Continues from**: [{0}](./{0})".format(first.name))
 
     def test_fresh_start_line(self):
         block = self.chain_block(self.create("solo"))
