@@ -8,23 +8,27 @@ Four AI-driven skills, plus one optional stage: an interview stage that produces
 
 **Purpose:** produce the brief. Why it sits upstream of everything else: every reviewer lens treats the brief as authority, so a fork left open in it is invisible to review and surfaces later as a P0/P1 against the spec — a branch settled in an interview costs one question, the same branch settled at review round 2 costs a full parallel dispatch plus a revision pass.
 
-**Invocation:** `/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`. `--rounds` takes 1–10 (default 3), `--questions` takes 1–15 (default 7); there is no `0` alias, because a zero-width round is a stall, not a bound. `--no-grill` skips the interview but not the confirmation step.
+**Invocation:** `/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`. `--rounds` takes 1–10 (default 3), `--questions` takes 1–15 (default 7); there is no `0` alias, because a zero-width round is a stall, not a bound. `--no-grill` skips the interview but not the seed gate, the tier gate, or the confirmation step. The seed gate runs before the tier gate in every mode, including `--no-grill`, and is not part of the interview that flag skips.
 
 **Phase 0 — Preflight.** Read the project-instructions file and resolve the wiki. Check for existing artifacts at `docs/specs/TODO/<TICKET-ID>.*` — a brief, a spec, a reviews tree — and halt rather than overwrite the axiom prior review rounds were measured against; a stale temp file from an interrupted run is removed without halting. Run a warn-only origin-sync check (grounding reads the local tree; the skill never updates it). Resolve the ticket through the shared-memory cache, then the issue tracker, then — if both are unreachable — conversation-only mode, where the operator states the problem in a paragraph.
 
 **Phase 1 — Grounding (read-only).** Retrieval-first: the ticket text, then the project wiki's state and filemap, then the files the ticket names by path, and only then read-restricted exploration agents for the gaps that remain — dispatched in one bounded parallel batch, instructed to answer with `path:line` evidence and make no mutations.
 
-**Phase 2 — Interview.** Run the grilling contract below against the grounded seed at brief altitude. A seed that states no problem is gated first: re-prompt once, then halt. Nothing is written on an empty seed.
+**Seed gate.** Runs after Phase 1 and before the tier gate, in every mode, including `--no-grill`. It is not part of the interview that flag skips. A seed that states no problem is re-prompted once, then the run halts. Nothing is written on an empty seed. An empty seed halts before the tier question.
 
-**Phase 3 — Confirm.** Render the settled decisions and the open frontier as they will appear in the brief, then ask: write, revise an answer by question number, or abort. Confirmation happens even under `--no-grill` — the brief is the artifact every downstream lens treats as authority, and the cost is one prompt.
+**Tier gate.** Runs after the seed gate passes, in every mode, before the interview and before Confirm. The operator sets the tier. A host that cannot wait prints `tier needs an operator — stopping` and stops. Nothing is written. The tier ladder, the `## Tier` grammar, and the tweak-floor heuristic are § Stakes tier below.
 
-**Phase 4 — Write.** Write `docs/specs/TODO/<TICKET-ID>.brief.md` through a dot-prefixed temp file renamed over the target, so an interrupted write never leaves a truncated brief. Settled decisions become `## Decisions carried forward`; open frontier items become `## Risks / decisions`, each ending "spec author pins this"; established facts become `## References` with their `path:line`; an optional `## Scale` section is emitted only when the operator settled scale as a factor *and* gave a target N.
+**Phase 2 — Interview.** Run the grilling contract below against the grounded seed at brief altitude. `--no-grill` skips this interview. It does not skip the seed gate, the tier gate, or Confirm.
+
+**Phase 3 — Confirm.** Render the settled decisions and the open frontier as they will appear in the brief, show `Tier: <level>` and the basis line, then ask: write, revise an answer by question number, abort, or change the tier. Changing the tier asks the tier gate again. A non-tweak choice returns to the preview. A `tweak` answer writes nothing. Confirmation happens even under `--no-grill` — the brief is the artifact every downstream lens treats as authority, and the cost is one prompt.
+
+**Phase 4 — Write.** Write `docs/specs/TODO/<TICKET-ID>.brief.md` through a dot-prefixed temp file renamed over the target, so an interrupted write never leaves a truncated brief. Settled decisions become `## Decisions carried forward`; open frontier items become `## Risks / decisions`, each ending "spec author pins this"; established facts become `## References` with their `path:line`; every brief this phase writes carries a `## Tier` section immediately before the conditional `## Scale`, with one `**Level:**` line whose value is `small`, `big`, or `irreversible`; an optional `## Scale` section is emitted only when the operator settled scale as a factor *and* gave a target N.
 
 **Termination shapes and where each lands.** An emptied frontier means the tree was fully visited, or that a later round's remaining candidates all fell below the altitude fence — either way the reason line says which, and anything the operator deferred is still in the brief's open items. A fence-empty exit means nothing met the altitude fence in round 1 — the brief is written with no decisions and the reason recorded. A cap hit or an operator stop is a documented outcome, not a failure: the unresolved branches — questions and unestablished facts alike — go to `## Risks / decisions` for the spec author. An empty seed is the one shape that writes nothing at all.
 
 ### The grilling contract
 
-The interview itself is a separate, model-invocable primitive, reused by three callers — this skill, an ad-hoc `/grill-me` command, and the post-round-4 halt menu in spec-cycle. It is never fired unprompted.
+The interview itself is a separate, model-invocable primitive, reused by three callers — this skill, an ad-hoc `/grill-me` command, and the halt menu in spec-cycle that follows `round_cap` rounds (2 when the tier is `small`, 4 otherwise). The interview that menu starts keeps its own cap of 3. It is never fired unprompted.
 
 It models the problem as a **design tree**: every decision branches into the decisions that hang off it, and the **frontier** is every decision whose prerequisites are already settled. Each round asks the whole frontier at once — never one question at a time — then waits. A question that genuinely branches is rendered as a **fork** with two or three weighed candidates (each with a `For:` and an `Against:`) and an explicit recommendation. That recommendation is **advisory**: it is never a default that carries by silence, and the primitive must not proceed on an unanswered question by adopting its own answer.
 
@@ -63,7 +67,9 @@ Write a spec at `docs/specs/TODO/<TICKET-ID>.spec.md` covering at minimum:
 - **Done when** — bullet list mapped 1:1 to the brief's acceptance criteria.
 - **Out of scope** — explicit fences carried from the brief.
 
-### Phase 2 — Parallel review loop (up to 4 rounds)
+### Phase 2 — Parallel review loop (up to `round_cap` rounds)
+
+`round_cap` is 2 when the tier is `small` and 4 otherwise (`big`, `irreversible`, or an absent tier). Revision runs while `round < round_cap`. The final round, `round == round_cap`, is the rewrite. The halt follows that cap. Grilling's own cap of 3, on the post-halt interview, is not this cap.
 
 Each round:
 
@@ -81,9 +87,9 @@ Each round:
 3. **Each reviewer emits a severity-ranked report** with findings at P0-P4 and a machine-parseable last line: `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...`. P0/P1 block shipping — except that a finding the author routed, under the scope ceiling, to a well-formed row in the spec's `## Deferred — follow-up required` section is not re-filed by the reviewers and so never enters the gate — a malformed row, a duplicate section, a routing-changing scope error, or an in-scope P0 row without `Discharged:` is still filed as a P0; P2+ are advisory.
 4. **Save each report to disk** at `docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/<lens>.md`.
 5. **Gate check:** Sum P0+P1 across all dispatched reviewers. If zero, the spec is green — break the loop.
-6. **If still red (rounds 1-3):** Edit the spec in place. Route every P0 and P1 finding to exactly one disposition — **fold** (edit every propagation site), **defer** (record it as a row in the spec's `## Deferred — follow-up required` section, under the scope ceiling), or **reject** (`not applicable`). P2+ items either get fixed or listed in a `## Deferred (P2+)` section.
-7. **If still red at round 4:** Targeted rewrite — classify each spec section as FROZEN (no unresolved P0/P1) or REWRITE. Build a closed-issues manifest from rounds 1-3 as regression constraints. No blank-slate rewrites.
-8. **If still red after round 4:** Halt. Present remaining P0/P1 and ask the user what to do (patch manually, ship by hand, narrow the brief, or grill the remaining findings — a bounded interview scoped to those titles, whose decisions route back through the in-place revise rules; it never re-dispatches reviewers and never increments the round counter).
+6. **If still red (rounds 1 .. round_cap-1):** Edit the spec in place. Route every P0 and P1 finding to exactly one disposition — **fold** (edit every propagation site), **defer** (record it as a row in the spec's `## Deferred — follow-up required` section, under the scope ceiling), or **reject** (`not applicable`). P2+ items either get fixed or listed in a `## Deferred (P2+)` section. This is ordinary revision, and it runs while `round < round_cap`. With `round_cap` 2, that is round 1 only.
+7. **If still red at round round_cap:** Targeted rewrite — classify each spec section as FROZEN (no unresolved P0/P1 across rounds 1 .. round_cap-1) or REWRITE. The FROZEN window is rounds 1 .. round_cap-1 and does not include the final round. Build a closed-issues manifest from rounds 1 .. round_cap-1 as regression constraints. No blank-slate rewrites. The recount reverts an original fold only when `2 ≤ round < round_cap`, which is empty when `round_cap` is 2, and it does not revert on the final round.
+8. **If still red after round round_cap:** Halt. Present remaining P0/P1 and ask the user what to do (patch manually, ship by hand, narrow the brief, or grill the remaining findings — a bounded interview scoped to those titles, whose own cap is 3, whose decisions route back through the in-place revise rules; it never re-dispatches reviewers and never increments the round counter).
 
 **Round 2+ closure tracking:** Each reviewer reads all prior-round reviewer reports present (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table showing which findings are CLOSED, PARTIAL, REOPENED, DEFERRED, or NEW. Reopened items are P0 unless the spec deliberately changed direction with rationale. In every round, including round 1, each reviewer also checks the spec's `## Deferred — follow-up required` rows for well-formedness and does not re-file a finding whose root a well-formed row already carries.
 
@@ -99,7 +105,7 @@ Then stop. The user reviews the checklist and invokes the implementation skill s
 
 ### Verdict marker
 
-spec-cycle records its verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`: green or red, the round and gate count, the date, and a fingerprint of the spec text that was judged (SHA-256 over the file with carriage returns removed). It is written at three points — pending before round 1's reviewers are dispatched, red at the round-4 halt, green after post-green polish — and the downstream skills read it instead of parsing review reports. Attest mode, `/spec-cycle <path> --attest "<reason>"`, records a green verdict by hand when the review happened outside the loop: it checks the spec's headings, shows the current verdict, and writes an operator-attested marker only on confirmation. It dispatches no reviewer and edits no spec.
+spec-cycle records its verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`: green or red, the round and gate count, the date, and a fingerprint of the spec text that was judged (SHA-256 over the file with carriage returns removed). It is written at three points — pending before round 1's reviewers are dispatched, red at the halt after round `round_cap`, green after post-green polish — and the downstream skills read it instead of parsing review reports. Attest mode, `/spec-cycle <path> --attest "<reason>"`, records a green verdict by hand when the review happened outside the loop: it checks the spec's headings, shows the current verdict, and writes an operator-attested marker only on confirmation. It dispatches no reviewer and edits no spec.
 
 ### Optional scalability lens
 
@@ -127,6 +133,61 @@ How it is read (Phase 0):
 - **Dimensions** *(optional)* — `**Dimensions:** <free text>` names the scaling axes.
 
 When on, the scalability reviewer is dispatched in the same parallel message as the standing lenses, saves to `round-<N>/scalability.md`, emits the same `STATUS:` contract, and folds its P0/P1 into the same gate and round-2+ closure tracking. A design architecturally unable to reach the declared target N is P1 (the scaling analogue of non-functional code); a self-contradiction against a declared scale "Done when" is P0; a concern that only bites *beyond* the declared target stays P2+. A declared non-factor is surfaced in the Phase 3 drift-check for human confirmation.
+
+### Stakes tier
+
+Ceremony follows a tier the operator sets at `/spec-brief`'s tier gate, after the seed gate and before the interview. Nothing writes a tier the operator did not choose.
+
+| Tier | What changes |
+|---|---|
+| `tweak` | spec-brief only. Writes no brief, no spec, and no marker. The operator ships it as a chore PR. |
+| `small` | spec-cycle keeps the three standing lenses and sets `round_cap` to 2. ship-spec skips the review gate and keeps the test gate. |
+| `big` | Today's loop. `round_cap` is 4. ship-spec's three review-gate skip cases stay skips. An absent tier means `big`, with no warning. |
+| `irreversible` | `big`, plus the tier on every reviewer prompt, plus a ship-spec review gate that halts on the three skip cases instead of skipping. It adds no lens. |
+
+Scale stays its own `## Scale` declaration and never follows from the tier.
+
+**Grammar.** In the brief, a whole-word heading matching `^#{1,6}\s+tier\s*$` (case-insensitive) opens `## Tier`. The body runs to the next heading. A `**Level:**` line, unfenced, after indentation, names `small`, `big`, or `irreversible`. Sibling lines are ignored. The first strict section wins and a second warns `tier: multiple Tier sections — using first`. No strict heading means `big` and `round_cap` 4, with no warning. A looser heading that merely starts with `tier` and whose body contains an unfenced `**Level:**` line is malformed and halts; a looser heading with no Level line is ignored. A strict section with no unfenced Level line halts `tier: malformed (no Level line) — halting` and is not absence. `tweak`, an empty value, an unknown token, or punctuation stuck to the token halts `tier: malformed (<line>) — halting`. It does not become `big`.
+
+In the spec, the recorded tier is the first unfenced line that, after indentation, starts with `**Tier:**` (case-insensitive), wherever it sits. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible`. A second line warns `tier: multiple Tier lines in the spec — using first`. No label line at all means `big`, with no warning. Any other value, including empty or `tweak`, halts `tier: malformed (<value>) — halting`. A fenced example and a mid-line mention are not a declaration. Fences are a marker of three or more backticks or tildes; a blockquote neither opens nor closes one.
+
+Once a spec exists, a valid recorded line wins over an absent, disagreeing, or malformed brief: warn `tier: brief <absent|disagrees|malformed> — using recorded` and do not halt. A recorded line outside the three values halts and does not fall through to the brief. ship-spec reads the spec line every time and never reads the brief for the tier. A marker `tier:` that is missing is not a disagreement. A marker `tier:` that is present but is not one of the three tokens, or that differs from the spec tier, puts a fingerprint-matching green marker in `changed`. The confirm names both values and says the gate follows the spec tier. When the spec has no label line, that confirm says the spec tier is `big` because no line was recorded.
+
+`round_cap` is 2 for `small` and 4 for `big`, `irreversible`, and an absent tier. Ordinary revision runs while `round < round_cap`. The final round, `round == round_cap`, is the FROZEN/REWRITE rewrite, and the recount does not revert there. The recount reverts an original fold only when `2 ≤ round < round_cap`. The FROZEN window is rounds `1 .. round_cap-1` and no other. Grilling's interview cap of 3 is not `round_cap`.
+
+A host that cannot wait at the tier gate prints `tier needs an operator — stopping` and stops. Nothing is written.
+
+**Tweak-floor heuristic.** The recommendation is `tweak` only when the estimate is known, the change is at most 2 files and under 50 lines, and it touches none of auth, payments, data, or config. Any of those four surfaces blocks `tweak` at any size. The heuristic never recommends `small` or `irreversible`. Those are choices on the prompt.
+
+The estimate comes from the ticket text (or the local-only paragraph) and the Phase 1 grounding facts. Scope rows do not exist yet. There is no diff.
+
+A check that cannot be answered is unknown. Any unknown check, or any failed check, recommends `big`.
+
+- **Files.** Distinct file paths the change names. A directory does not count. A wiki `state.md` or `filemap.md` that grounding opened does not count. No file path named for the change → unknown.
+- **Lines.** An integer the texts tie to a line count or a diff size; a range uses its top; if several qualify, use the greatest. A ticket id, a date, a file count, or an item number does not qualify. "Under 50" means 49 or fewer. A single typo, a single wording replacement, or a single identifier rename, in one named file, with no other change described, estimates at 1 line. If no qualifying number is stated, that 1-line estimate applies only to that single-edit case; any other change is unknown. A qualifying number wins over the 1-line estimate.
+- **Surfaces.** `none` only when at least one file path is named and every named path and the described change were checked and none matched. No named path → unknown, which blocks `tweak`.
+
+Built-in taxonomy. Matching is case-insensitive. A path signal equals one path segment, or equals the whole filename. `config.py` does not match the filename `config`. A directory segment `config` does. A one-word subject signal matches a whole word in the change description. A quoted multi-word signal matches that phrase with a word boundary at each end. The bare word "data" is not a signal.
+
+| Surface | Path signal | Subject signal |
+|---|---|---|
+| auth | `auth`, `login`, `session`, `oauth`, `credential`, `secret`, `permission`, `rbac` | password, token, credential, secret, login, session, oauth, permission |
+| payments | `billing`, `payment`, `invoice`, `subscription`, `checkout`, `payout`, `stripe` | charge, invoice, refund, payout, subscription |
+| data | `migration`, `migrations`, `schema` | migration, schema, "drop table", "delete rows" |
+| config | a segment or filename `config`; a filename `.env`; a filename `states.json`; a path under `.github/workflows/` | "environment variable", "feature flag" |
+
+A `SKILL.md` file and a docs markdown file are not config unless a signal above matches. `AGENTS.md` and `CLAUDE.md` are not config unless a signal above matches.
+
+**Extension.** An extension signal matches a named path as a substring on purpose, and is not the built-in segment rule. Read the target project's `AGENTS.md` and `CLAUDE.md` when each file is present. This is not a first-source-wins read: each file that is present contributes. Each whole-word `## Tweak surfaces` heading contributes. Its body runs to the next `^#{1,6}` heading. Each non-blank line is one extra signal. Strip one leading list marker (`-`, `*`, or `N.`) and then trim. A line that is empty after that is ignored. A remaining one-word line matches as a one-word signal. A remaining quoted phrase uses the phrase rule above. Any other remaining line is an unknown surface and recommends `big`. Its basis slot is `surfaces: unknown`, with the `never tweak` suffix and a short quote of the line. It is not `surfaces: none`. Signals union. Neither heading hides the other. A one-word signal matches a named path as a substring or the change description as a whole word. A quoted multi-word line uses the phrase rule above. A match blocks `tweak`. No heading in either file means the built-in four only. Extra signals only add surfaces.
+
+**Basis line.** One line, three comma-separated slots, then the suffix, prefixed `basis: `. Files: `<n> file` or `<n> files` (singular when `n` is 1) plus ` (<paths>)`, or `files: unknown`. Lines: `~<m> line` or `~<m> lines` (singular when `m` is 1), or `lines: unknown`. Surfaces: `surfaces: none`, `surfaces: unknown`, or `surfaces: <name>`. When more than one surface matches, name every match, built-in order auth then payments then data then config, then extension lines in file order, joined by `+`. The suffix is `ticket text + grounding` when the recommendation is `tweak`, and `never tweak` otherwise.
+
+Worked examples, normative for that shape:
+
+1. Ticket "fix the typo recieve in README.md". Grounding also opened wiki `state.md` and `filemap.md`. Those do not count. The change names `README.md` only. Recommendation `tweak`. `basis: 1 file (README.md), ~1 line, surfaces: none — ticket text + grounding`
+2. Ticket "add a state UUID to skills/ship-spec/states.json". Recommendation `big`. `basis: 1 file (skills/ship-spec/states.json), lines: unknown, surfaces: config — never tweak`
+3. Ticket "make the gate stricter" and grounding names no path. Recommendation `big`. `basis: files: unknown, lines: unknown, surfaces: unknown — never tweak`
+4. Ticket "drop table users in scripts/cleanup.sql". Grounding names that file and states 10 lines. The phrase "drop table" matches data. Recommendation `big`. `basis: 1 file (scripts/cleanup.sql), ~10 lines, surfaces: data — never tweak`
 
 ---
 
@@ -184,7 +245,7 @@ If still red after 5 iterations, halt and ask the user: continue with more itera
 
 ### Phase 3b — Review gate
 
-One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file. A declared command that is unavailable or fails is also skipped, and recorded. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change. With an `N/A` test command the gate still runs, and there is no test re-run.
+One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file — except on the `irreversible` tier, where that case halts before the commit. A declared command that is unavailable or fails is also skipped, and recorded, for `big` and an absent tier. For `irreversible` those two cases halt with the Phase 3b case text, keep the worktree, and do not commit. `small` skips the review gate before the three cases, prints `review gate: skipped (small tier)`, writes no review file, and still runs the test gate. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change. With an `N/A` test command the review gate still runs for `big`, `irreversible`, and an absent tier, and there is no test re-run. `small` skips the review gate even then.
 
 ### Phase 4 — Commit
 
@@ -243,6 +304,6 @@ The things **not** to change (they're load-bearing):
 - **Reviewers are read-only.** They never edit files. The orchestrator (spec-cycle) owns all edits. This prevents reviewers from "fixing" things in ways that introduce new issues.
 - **STATUS line protocol.** Machine-parseable last line (`GREEN` or `RED P0=<n> P1=<n> ...`) gates the loop. The orchestrator sums P0+P1 across all dispatched reviewers.
 - **Round 2+ closure tracking.** Each reviewer reads all prior-round reviewer reports present (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table. Without this, the loop doesn't converge — reviewers re-raise issues that were already fixed.
-- **Targeted rewrite at round 4, not blank-slate.** Blank-slate rewrites regress closed findings. The FROZEN/REWRITE manifest preserves converged sections.
+- **Targeted rewrite at round `round_cap`, not blank-slate.** Blank-slate rewrites regress closed findings. The FROZEN/REWRITE manifest preserves converged sections. The FROZEN window is rounds 1 .. round_cap-1.
 - **Worktree isolation in ship-spec.** Working in the user's checkout means you're one bad `git stash pop` away from losing their uncommitted work.
 - **One test fix per iteration.** Bundling multiple fixes makes it impossible to attribute which fix resolved which failure.
