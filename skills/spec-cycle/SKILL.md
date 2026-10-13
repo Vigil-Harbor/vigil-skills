@@ -54,7 +54,7 @@ Field rules:
 
 **Write points.** The marker is written at three points, each described where it happens: pending once per invocation immediately before the first dispatch, red at the halting pass's cumulative round, and green after post-green polish at the top of Phase 3. A no-op writes no marker. Pending, red, and green use the temp-then-rename protocol in `### Round artifacts`. Attest mode (`## Attest mode`) is the one other writer. 2f-i never rewrites it. An interrupted run writes nothing more, so a pending marker stays.
 
-**A failed write does not change the run's outcome.** Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` at once, where the write was attempted: before round 1 for the pending write, under the SPEC READY header for the green write, above the halt block for the red write. The marker on disk is then whatever the last successful write left.
+**A failed write does not change the run's outcome, with one exception.** A failed pending write over a `green` marker stops the run before dispatch (see **Pending write** in Phase 2). Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` at once, where the write was attempted: before the first dispatch for the pending write, under the SPEC READY header for the green write, above the halt block for the red write. The marker on disk is then whatever the last successful write left.
 
 ### Reading the marker
 
@@ -493,7 +493,7 @@ For each open finding, split `Where` on `;`. `spec.md`, the ticket spec filename
 
 ## Phase 2 — Review loop
 
-**Pending write.** Once per invocation, immediately before the first dispatch, create `docs/specs/TODO/<TICKET-ID>.reviews/` if absent and atomically write a pending marker (see `## The verdict marker`: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, `tier: <the invocation's tier>`, today's date, `fingerprint: none`). It replaces the prior marker. A no-op never reaches this write. If it fails, print the failed-write line and continue.
+**Pending write.** Once per invocation, immediately before the first dispatch, create `docs/specs/TODO/<TICKET-ID>.reviews/` if absent and atomically write a pending marker (see `## The verdict marker`: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, `tier: <the invocation's tier>`, today's date, `fingerprint: none`). It replaces the prior marker. A no-op never reaches this write. If it fails, print the failed-write line. If the marker on disk is then `green`, stop before dispatch: a review that may end red must not run under a green marker that `/ship-spec` still accepts. Otherwise continue.
 
 Run passes under `### Two counters`: a full invocation uses `P = 1..round_cap`; a delta invocation uses at most `P = 1..2`. For every pass derive cumulative `C` before any directory is created.
 

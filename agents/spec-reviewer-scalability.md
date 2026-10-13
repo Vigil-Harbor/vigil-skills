@@ -20,7 +20,7 @@ The orchestrator passes these in your prompt:
 - `scale_dimensions` — the declared scaling axes (free text; may be empty)
 - `tier` — `small`, `big`, or `irreversible`, as passed by spec-cycle. Context for judging blast radius and reversibility in this lens's own reasoning. The shared P0/P1 definitions do not change with tier.
 - `review_mode` — `full` or `delta`. Absent means `full`. When `full`, review the whole spec. When `delta`, new critique is limited to `changed_regions` and `open_findings`.
-- `changed_regions` — present only for `delta`. Each entry is a Markdown heading plus a diff hunk, or `deleted: true` for a heading that was removed. A heading covers its exclusive body only. This is the only list of sections you may newly explore.
+- `changed_regions` — present only for `delta`. Each entry is a Markdown heading plus a diff hunk, or `deleted: true` for a heading that was removed. The heading `(before first heading)` names the bytes before the first Markdown heading. A heading covers its exclusive body only. This is the only list of sections you may newly explore.
 - `open_findings` — present only for `delta`. The prior round's unresolved P0 and P1 findings. Their headings are in scope even when the hunk says the text did not change.
 
 Execute these steps in order. Do not skip:
@@ -80,7 +80,7 @@ Apply this only when `review_mode` is `delta`. When it is `full` or absent, skip
 
 Read the spec (grounding step 1), run the Deferred-findings block, verify closures, check vanished references, and record process failures exactly as you do on a full pass. Those checks are not limited to `changed_regions`.
 
-Apply your critique-lens questions only to headings named in `changed_regions` or in `open_findings`. A named heading covers its exclusive body only: the lines after that heading and before the next heading of any depth. A descendant heading is in scope only when it is itself named. Do not explore any other region. Do not file a finding whose claim is that a Decision outside that scope should be a different decision. A changed section that contradicts a Decision outside the scope is in scope: file it against the changed section.
+Apply your critique-lens questions only to headings named in `changed_regions` or in `open_findings`. A named heading covers its exclusive body only: the lines after that heading and before the next heading of any depth. A descendant heading is in scope only when it is itself named. A `deleted: true` entry has no body in the current spec: read that heading's body in `spec.copy.md` in the prior round's reviews directory, and assess what the removal drops. Do not explore any other region. Do not file a finding whose claim is that a Decision outside that scope should be a different decision. A changed section that contradicts a Decision outside the scope is in scope: file it against the changed section.
 
 A line whose id is `<lens>/STATUS` names no heading. It is not a changed region and not an open-finding heading. Ignore it as scope.
 
