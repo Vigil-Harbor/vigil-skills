@@ -1,0 +1,10 @@
+$ python lint.py --strict
+lint: 0 error(s), 0 warning(s)
+
+$ python -m unittest discover -s tests -p "test_*.py"
+......................................................................................s............ss..........................
+----------------------------------------------------------------------
+Ran 127 tests in 6.607s
+
+OK (skipped=3)
+exit: lint=0 unittest=0
