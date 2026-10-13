@@ -1,0 +1,2 @@
+closure_manifest (round 3 → next):
+  - correctness/F-1 (P1) "The replacement resolver no longer places `spec.md:<line>` locators, so the reviewers' canonical `Where` form falls to every-heading" — fixed: edited § Decision 8 — segment multiple references and expand line ranges; § Open-finding resolver; § `skills/spec-cycle/SKILL.md:492` — open-finding resolver; § Scenarios (scenarios 19, 20, 25); § Done when (sites: 5)
