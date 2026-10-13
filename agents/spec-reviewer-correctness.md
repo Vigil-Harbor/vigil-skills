@@ -107,6 +107,7 @@ After grounding, work through these questions. Each is a candidate finding sourc
 - **Internal contradictions.** Does Section A say one thing and Section B say another? (E.g., "tripwire fires at write time" vs. "extractor catches it at read time".)
 - **Nonexistent references.** Names a function, type, file, flag, or test class that doesn't exist. Grep to verify.
 - **Implementation gap.** Walk the proposed code path mentally against the brief's success criteria. Are there cases where the implementation as written would not produce the stated outcome?
+
 Anchor drift. For a file:line citation, re-check the symbol at the current file. If the symbol is gone, file a P1, one finding per dead citation. If the symbol still resolves and only the line number moved, do not file a P1. File those moved citations once per report, as one combined P4, listing each of them in that finding. Do not file one finding per moved line.
 
 - **Cross-surface wire-format lock.** For specs that touch MCP, schemas, or multi-repo: is the wire format / ACL ordering / audit shape pinned, or hand-waved? "By construction" claims that depend on a silent-failure path being non-silent are findings.

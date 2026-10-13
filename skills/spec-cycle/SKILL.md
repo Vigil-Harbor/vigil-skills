@@ -1035,7 +1035,7 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
 
 `/spec-cycle <brief-path> --attest "<reason>"` records a spec as green when the verdict was reached by hand, without a review round. The path may be the brief path or the spec path; only the ticket id is taken from it, by Phase 0 step 1's prefix match, and the brief need not exist. `--attest` with no reason or an empty reason, either flag with an invalid value, both `--attest` and `--full`, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | --full]`. The reason is stored as one line; line breaks in it become spaces. Attest mode does not resolve review mode or read a baseline.
 
-Attest mode runs none of Phase 0 steps 2 to 9, Phase 1, Phase 2, or Phase 3. It dispatches no reviewer and edits no spec. Its steps:
+Attest mode runs none of Phase 0 steps 2 to 10, Phase 1, Phase 2, or Phase 3. It dispatches no reviewer and edits no spec. Its steps:
 
 1. Resolve the ticket id and the spec at `docs/specs/TODO/<TICKET-ID>.spec.md`. If the spec does not exist, halt.
 2. If the spec lacks any of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, `## Out of scope`, halt: `cannot attest: <heading> is missing`.
