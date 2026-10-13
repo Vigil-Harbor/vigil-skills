@@ -95,8 +95,6 @@ Read the spec (grounding step 1), run the Deferred-findings block, verify closur
 
 Apply your critique-lens questions only to headings named in `changed_regions` or in `open_findings`. A named heading covers its exclusive body only: the lines after that heading and before the next heading of any depth. A descendant heading is in scope only when it is itself named. A `deleted: true` entry has no body in the current spec: read that heading's body in `spec.copy.md` in the prior round's reviews directory, and assess what the removal drops. Do not explore any other region. Do not file a finding whose claim is that a Decision outside that scope should be a different decision. A changed section that contradicts a Decision outside the scope is in scope: file it against the changed section.
 
-A line whose id is `<lens>/STATUS` names no heading. It is not a changed region and not an open-finding heading. Ignore it as scope.
-
 A P0 you meet while doing a check this section still requires (you were not hunting an unchanged region for it) may be filed. Cite the evidence. It counts in the gate. Do not open an unchanged section to look for one.
 
 # Critique lens — correctness
