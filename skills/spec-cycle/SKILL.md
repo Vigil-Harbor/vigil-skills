@@ -12,7 +12,7 @@ requires:
 
 # /spec-cycle — author and converge a spec
 
-Invoked as: `/spec-cycle <brief-path> [--attest "<reason>"]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
+Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | --full]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
 This skill does two things: author a v1 spec from a brief, then loop a parallel review (three default lenses, plus an optional fourth when the brief declares scale) until the spec is clean or round_cap passes complete. It does **not** implement anything. It halts at a session boundary so the user can review the spec on disk and invoke `/ship-spec` separately.
 
@@ -33,7 +33,7 @@ verdict: green | red | pending
 source: review | operator-attested
 ticket: <TICKET-ID>
 spec: docs/specs/TODO/<TICKET-ID>.spec.md
-round: <1..round_cap> | not reviewed | in progress
+round: <positive integer> | not reviewed | in progress
 gate: <P0+P1 count> | not reviewed | in progress
 tier: small | big | irreversible
 date: <YYYY-MM-DD>
@@ -52,7 +52,7 @@ Field rules:
 
 **The fingerprint.** The fingerprint is the SHA-256 of the spec file's bytes after every carriage-return byte is removed and after every line whose first non-blank characters are `**Follow-up:**` is dropped, every other byte left as it is, written as `sha256-lf:` followed by the 64 lower-case hex digits. Removing carriage returns makes the value the same for a CRLF and an LF checkout. Dropping the `**Follow-up:**` lines lets the operator replace `unfiled` with a ticket id after the green marker is written (R2 under the Deferred section) without turning the marker into `/ship-spec`'s `changed` case; nothing else in a Deferred row is excluded. The filter is byte-preserving: a file whose last line has no line feed must not gain one, so a spec with no `**Follow-up:**` line hashes exactly as it did under carriage-return removal alone. Compute it with the host's shell *(e.g., `tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum` in a POSIX shell with GNU `sed`, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host — where the host's `sed` or `grep` appends a missing final line feed, as `grep -v` and BSD `sed` do, use a filter that does not)*. This skill computes it when it writes a green or red marker; `/ship-spec` computes it again to compare; `/spec-tickets` does not compute it. If the fingerprint cannot be computed, write `fingerprint: none` and print `verdict marker: fingerprint not computed (<reason>)`. A green marker with `fingerprint: none` reads as the changed-spec case in `/ship-spec`; `/spec-tickets` does not look at the fingerprint.
 
-**Write points.** The marker is written at three points, each described where it happens: pending at the start of Phase 2, red in 2f, green at the top of Phase 3. Attest mode (`## Attest mode`) is the one other writer. 2f-i never rewrites it. An interrupted run writes nothing more, so a pending marker stays.
+**Write points.** The marker is written at three points, each described where it happens: pending once per invocation immediately before the first dispatch, red at the halting pass's cumulative round, and green after post-green polish at the top of Phase 3. A no-op writes no marker. Pending, red, and green use the temp-then-rename protocol in `### Round artifacts`. Attest mode (`## Attest mode`) is the one other writer. 2f-i never rewrites it. An interrupted run writes nothing more, so a pending marker stays.
 
 **A failed write does not change the run's outcome.** Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` at once, where the write was attempted: before round 1 for the pending write, under the SPEC READY header for the green write, above the halt block for the red write. The marker on disk is then whatever the last successful write left.
 
@@ -73,7 +73,7 @@ A reader looks at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` and lands on 
 
 ## Phase 0 — Preflight
 
-Before anything else:
+Before anything else, validate the invocation. `--full` takes no value and is exclusive with `--attest`. Both flags together, `--attest` with no reason or an empty reason, `--full` with a value, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | --full]`. Write nothing on this halt.
 
 If `--attest` is present, do step 1 only (the ticket id from the path), then go to `## Attest mode`; nothing else in this skill runs.
 
@@ -352,7 +352,33 @@ If `--attest` is present, do step 1 only (the ticket id from the path), then go 
    2. **Level.** Inside the section, ignore lines inside a fenced code block, the same fences as the reader rule. A Level line is an unfenced line that, after removing leading indentation, starts with the label `**Level:**` compared case-insensitively. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible` is the level: `small` → `round_cap = 2`; `big` or `irreversible` → `round_cap = 4`. Any other value, including empty, `tweak`, a trailing note, or punctuation stuck to the token, halts `tier: malformed (<line>) — halting`. Write no marker. Leave an existing marker as it is. The first Level line wins. A second warns `tier: multiple Level lines — using first` and is ignored. If the strict section contains no unfenced Level line, halt `tier: malformed (no Level line) — halting`. Write no marker. Leave an existing marker as it is. Do not treat that section as absence. A fenced example, and a mid-line mention that does not start the line, does not set `round_cap` and does not count as the Level line. The looser heading's "no Level line → ignore" rule stays as it is.
    3. Sibling lines in the section are ignored.
 
-Print a one-line preflight summary — including the upstream check result token (clean / skipped / N stale — user proceeded), the origin check result token (in-sync / behind-N (updated) / behind-N (user proceeded) / behind-N (update failed — proceeded) / behind-N (diverged — proceeded) / behind-N (informational — no counterpart) / skipped (<reason>)), the scale-lens token (on (target: <…>) / non-factor (recorded) / off / off (no target) / off (malformed declaration) / off (heading not recognized) / multiple Scale sections — using first), and `tier: <level> (round_cap=<n>)` — then continue.
+10. **Review mode.** Resolve it once after the tier, before Phase 1 and before a pending write, and hold it for the invocation. Attest mode never reaches this step. Read `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` now. For each field, take the trimmed text after the first `key:` line and remove one trailing carriage return if present. The marker reader's six states are not the mode key: a green fingerprint mismatch is recorded by the text diff and does not itself force full mode.
+
+    Set `candidate` only when `source: review` and `round:` matches `^[1-9][0-9]*$`; it is that integer even when the marker reader calls the spec `changed`. Otherwise it is unset. Read baseline files only from `docs/specs/TODO/<TICKET-ID>.reviews/round-<candidate>/`. Never search another round or `docs/specs/DONE/`.
+
+    A baseline matches only when `spec.copy.md`, `brief.copy.md`, and `baseline.commit` all exist in that directory. The copies may be empty. `baseline.commit` must be exactly 40 lower-case hex digits followed by one LF or CRLF newline: reject a missing newline, a second line, any other byte, or any other carriage return. A ledger is readable only when `ledger.md` is non-empty and, after all carriage returns are removed, its first non-blank line is exactly `closure_manifest (round <candidate> → next):`. Compare briefs after removing every carriage return and dropping every line whose first non-blank characters are `**Follow-up:**`; preserve every other byte, including final-newline presence.
+
+    First matching row wins:
+
+    | # | Condition | Token |
+    |---|---|---|
+    | 1 | `--full` was given | `mode: full (--full)` |
+    | 2 | Marker missing | `mode: full (marker missing)` |
+    | 3 | Marker has no valid `verdict:` or has no matching `ticket:` | `mode: full (marker unreadable)` |
+    | 4 | `verdict:` is `pending` | `mode: full (pending)` |
+    | 5 | `source:` is `operator-attested` | `mode: full (attested)` |
+    | 6 | Candidate set, saved brief present, and filtered brief differs | `mode: full (brief changed)` |
+    | 7 | Candidate set, review green or red, and baseline does not match | `mode: full (no baseline)` |
+    | 8 | Candidate set, baseline matches, and ledger is missing or unreadable | `mode: full (ledger unreadable)` |
+    | 9 | Candidate set, and `round-<candidate+1>/` or `round-<candidate+2>/` exists | `mode: full (round span occupied)` |
+    | 10 | Candidate unset after rows 1–5 | `mode: full (round unreadable)` |
+    | 11 | Otherwise | `mode: delta (continuing round <candidate>)` |
+
+    Row 5 applies regardless of fingerprint. Row 7 also applies when a review marker's fingerprint differs. A full invocation chooses the smallest positive `start` for which the whole span `round-<start>/` through `round-<start+round_cap-1>/` is absent. Reserve the span before creating any directory. If no such span exists, stop with the marker unchanged. Its first pass has no closure predecessor. Later passes close the immediately preceding pass. A delta invocation starts at `candidate + 1`; row 9 reserves both possible delta directories. A later override from delta to full discards that start and recomputes the full span before creating a directory.
+
+    When row 11 matched, compute code drift as `### Changed regions` defines before printing the token or writing pending. A command failure or timeout, a saved SHA that does not resolve, or a non-raw listing line changes the token to `mode: full (code-drift unavailable)`. Do not dispatch a text-only delta and do not run the no-op. Recompute the full span and take a fresh full-pass snapshot at artifact write time. When code drift succeeds, hold its snapshot SHA for the first delta pass; do not run a second `rev-parse` for that pass.
+
+Print a one-line preflight summary — including the upstream check result token (clean / skipped / N stale — user proceeded), the origin check result token (in-sync / behind-N (updated) / behind-N (user proceeded) / behind-N (update failed — proceeded) / behind-N (diverged — proceeded) / behind-N (informational — no counterpart) / skipped (<reason>)), the scale-lens token (on (target: <…>) / non-factor (recorded) / off / off (no target) / off (malformed declaration) / off (heading not recognized) / multiple Scale sections — using first), `tier: <level> (round_cap=<n>)`, and the held review-mode token — then continue.
 
 ## Phase 1 — Author v1 spec
 
@@ -381,17 +407,103 @@ Do not include implementation prescriptions in the spec that the brief deliberat
 
 Save and continue.
 
-## Phase 2 — Review loop (≤ round_cap passes)
+### Delta no-op
 
-**Pending write.** Once per invocation, before round 1's reviewers are dispatched: create `docs/specs/TODO/<TICKET-ID>.reviews/` if it is absent and write a pending marker (see `## The verdict marker`: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, `tier: <the invocation's tier>`, today's date, `fingerprint: none`). This runs on a first run and on a re-run over an existing spec alike, and replaces whatever marker was there. If the write fails, print the failed-write line and continue.
+Run this classification only while the held token is `mode: delta (continuing round <candidate>)`, after Phase 1 and before pending. Phase 1 does not edit an existing spec. Use the held code-drift result; do not compute it again. Run steps 1–3 in order, then take the first matching outcome in steps 4–7.
 
-For each round 1..round_cap:
+1. Run the guarantee scan defined in 2d against the current spec. If it withholds, print its existing `green withheld:` line and add each row as `guarantee/D-<n>` (or `guarantee/D-?`) to the open set. Do not end classification yet. `## Deferred — follow-up required` is in scope.
+2. Read the candidate round's standing reports, plus `scalability.md` only when this invocation's scale lens is on. A missing or unreadable required report adds `<lens>/STATUS (P0)`. Ignore stale scalability output while scale is off.
+3. Union the held code-drift regions with the text diff against the candidate round's `spec.copy.md`. Extract open findings as `### F-<k>:` P0/P1 headings from the candidate reports. A report with no parseable STATUS, or with a positive STATUS P0+P1 sum but no matching P0/P1 heading, adds `<lens>/STATUS (P0)`.
+4. If any `<lens>/STATUS` line exists, or the marker is red and both sets are empty, replace the token with `mode: full (open findings unreadable)`. Discard the delta start, reserve the smallest free full span, and run full. If no full span exists, stop with the marker unchanged. Do not print the no-op block or dispatch delta.
+5. A red marker with either set non-empty continues to pending and a delta dispatch.
+6. A green marker with both sets empty and a clean scan prints the following block and stops. It takes no round, dispatches no reviewer, runs no synthesis or polish, writes no round file, and leaves the marker byte-for-byte untouched.
+7. A green marker with either set non-empty continues to pending and a delta dispatch.
+
+```text
+=== NO-OP: <TICKET-ID> ===
+Mode: delta (nothing changed, nothing open)
+Marker: left as written (<verdict>, round <candidate>)
+Spec: docs/specs/TODO/<TICKET-ID>.spec.md
+```
+
+`<verdict>` and `<candidate>` are the values on disk. `--full` and every full token skip this classification.
+
+### Two counters
+
+`C` is the cumulative positive review round used by `round-<C>/`, reviewer `round_number`, synthesis, and the completed marker. `P` is the pass index for this invocation and is never sent to reviewers.
+
+For a full invocation, `P` runs from 1 through `round_cap` and `C = start + P - 1`. Ordinary revision runs while `P < round_cap`. FROZEN/REWRITE runs when `P == round_cap`, over the earlier passes of this invocation only. Recount may revert only when `2 ≤ P < round_cap`. When `start` is 1 this is the existing first-invocation loop.
+
+A delta invocation has at most two passes on every tier. Pass 1 uses ordinary revision, including on `small`; it never runs FROZEN/REWRITE and its recount does not revert. Pass 2 routes every P0/P1 and folds wherever the ceiling says fold, without FROZEN/REWRITE or a closed-issues manifest. Its recount may append `(recount: <k> sites, fold kept)` and may not revert, including for an out-of-scope original. It then goes green or writes red at cumulative `C` and uses the existing halt menu. Never substitute `P < round_cap` for this two-pass bound.
+
+Before delta pass 2, extract its predecessor reports. If the open set contains `<lens>/STATUS`, do not dispatch or write green. Leave pending, print `open findings unreadable: <lens>/STATUS — pass 2 not dispatched; marker left pending`, and stop without Phase 3. Its text baseline is pass 1's pre-dispatch `spec.copy.md`; its code baseline is pass 1's `baseline.commit`. If code-drift computation fails, times out, the SHA does not resolve, or a listing line is not raw, print `code-drift: skipped (git error)`, delete this pass's `baseline.commit` if already written, leave pending, and stop without Phase 3.
+
+A green pass on either mode breaks immediately, runs 2g, rewrites that round's `spec.copy.md` to the post-polish bytes, writes the empty ledger, then enters Phase 3. It does not rewrite `brief.copy.md` or start another pass. Synthesis remains per dispatched round. The gate formula is unchanged.
+
+### Round artifacts
+
+Every dispatched round uses `docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/`. Immediately before dispatch, write this three-file set:
+
+| File | Bytes |
+|---|---|
+| `spec.copy.md` | Exact spec bytes the reviewers see. On green only, rewrite after 2g to the exact post-polish bytes before the marker. |
+| `brief.copy.md` | Exact brief bytes at dispatch. Never rewrite it. |
+| `baseline.commit` | The one snapshot SHA used for this pass: 40 lower-case hex digits plus one LF, with no CR. |
+
+Write every round file by a dot-prefixed same-directory temp named `.<filename>.<random>.tmp`, then rename over the destination. Write all three temps first, then rename spec, brief, commit in that order. If any rename fails, print `<filename> NOT written: <error>`, delete an unrenamed temp, do not dispatch, do not write a ledger, and do not start another pass. Already renamed files remain and pending remains pending. Do not take a second snapshot for a delta pass. If HEAD moves after the listing snapshot, save the held snapshot; the newer tree is not treated as reviewed. A full pass takes one `timeout 30 git --no-pager rev-parse HEAD` at the start of this set; invalid or timed-out output fails the commit write rather than inventing a SHA.
+
+Marker writes use `docs/specs/TODO/<TICKET-ID>.reviews/.verdict.md.<random>.tmp` and rename over `verdict.md`; never truncate it in place. A partial artifact set is routed on the next invocation by the ordinary mode table: pending takes row 4, a partial reserved later directory takes row 9, and only a missing member in the candidate directory takes row 7 or 8.
+
+`ledger.md` is a separate atomic write after a loop-red revision, including the final pass, or before a green marker after the green copy rewrite. On failure print `ledger NOT written: <error>` without rolling back spec edits. The next pass reads it from disk; if missing, dispatch that pass as `review_mode: full`, omit `closure_manifest`, print `ledger: missing — pass <P> dispatched full`, and do not extend the pass budget or read an older ledger. A no-op writes none of these files.
+
+### Disposition ledger
+
+The ledger is the manifest block and nothing else. After a red revision it contains every P0/P1 disposition the revision rules require, including guarantee and round-qualified revert lines:
+
+```text
+closure_manifest (round <C> → next):
+  - correctness/F-1 (P1) "title" — fixed: edited § Design
+```
+
+The literal word is `next`, not the next number. Build the block, write it, then read the bytes back for the next prompt. Do not carry a second in-memory version. P2+ never enters it. Before a green marker, after polish and the copy rewrite, write:
+
+```text
+closure_manifest (round <C> → next):
+  (empty — round <C> closed green)
+```
+
+### Changed regions
+
+For text comparison, remove every carriage return and drop every line whose first non-blank characters are `**Follow-up:**`. A heading is an unfenced, non-blockquoted line matching `^#{1,6}\s` per line, with one or more spaces or tabs after the hashes; fences use the Deferred-section rules. A heading owns only the lines until the next heading of any depth. Pair headings in document order by their full stack of heading lines; pair the nth identical stack on each side. Do not pair by similarity or by heading line alone. Emit a changed heading with the diff hunk of its exclusive body, an unpaired current heading with its exclusive body as the hunk, and an unpaired baseline heading as `deleted: true`. Do not emit an ancestor only because a descendant changed. Treat bytes before the first heading as `(before first heading)`. If filtered file bytes differ but pairing and exclusive bodies yield nothing, emit every current heading. A renamed heading is one deletion and one addition.
+
+For code drift, first run `timeout 30 git --no-pager rev-parse HEAD`; require exactly 40 lower-case hex digits and call it `snapshot`. Against the saved baseline SHA, union the output of these commands, each wrapped in `timeout 30`:
+
+```text
+git --no-pager -c core.quotePath=false diff --no-color --no-renames --name-only <saved-baseline-sha> <snapshot>
+git --no-pager -c core.quotePath=false diff --no-color --no-renames --name-only
+git --no-pager -c core.quotePath=false diff --no-color --no-renames --name-only --cached
+git --no-pager -c core.quotePath=false ls-files --others --exclude-standard
+```
+
+A raw path is a non-empty project-relative forward-slash line after removing one trailing CR, with no leading `"`, `=>`, tab, or backslash. Do not repair or unquote output. A non-zero exit, timeout, unresolved SHA, or non-raw line is failure. `--no-renames` makes a rename list both old and new paths.
+
+Before matching citations, drop the resolved brief path, `docs/specs/TODO/<TICKET-ID>.spec.md`, and every path under `docs/specs/TODO/<TICKET-ID>.reviews/`. Strip one trailing locator (`:digits`, `:digits-digits`, `:digits–digits`, or `#Ldigits`) and one leading `./` from each backtick span. In a heading's exclusive body, a citation matches a changed path by exact value, slash-boundary suffix, or filename-only equality. Matching is case-sensitive. Also inspect `## Scope` rows/list items: a changed backtick path with `§` references adds every named section; with no section it adds only `## Scope`. A code-only hit's hunk is `(no text change — cited file <path> changed since <sha>)`.
+
+For each open finding, split `Where` on `;`. `spec.md`, the ticket spec filename, and its repo-relative path mean this spec; another path emits every current heading. After `§` or a heading marker, take text through the next comma and match heading text by equality or the longest heading-text prefix; emit every tie and do not then use the line. Otherwise place its line in the predecessor `spec.copy.md`, take the innermost owning heading there, and stack-pair it into the current spec. A deleted pair is emitted as deleted. A non-matching `§` phrase does not discard a line. With no heading match or placeable line, emit every current heading. An unchanged heading selected by an open finding gets `(open finding <lens>/<id> — no text hunk)`.
+
+## Phase 2 — Review loop
+
+**Pending write.** Once per invocation, immediately before the first dispatch, create `docs/specs/TODO/<TICKET-ID>.reviews/` if absent and atomically write a pending marker (see `## The verdict marker`: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: pending`, `source: review`, `round: in progress`, `gate: in progress`, `tier: <the invocation's tier>`, today's date, `fingerprint: none`). It replaces the prior marker. A no-op never reaches this write. If it fails, print the failed-write line and continue.
+
+Run passes under `### Two counters`: a full invocation uses `P = 1..round_cap`; a delta invocation uses at most `P = 1..2`. For every pass derive cumulative `C` before any directory is created.
 
 ### 2a. Cold-read the spec
 
 Read `<TICKET-ID>.spec.md` from disk fresh. Do not rely on what you wrote — the file is the source of truth.
 
 ### 2b. Dispatch the reviewers in parallel
+
+Before dispatch, atomically save the three-file set in `### Round artifacts`. Do not dispatch if the set is incomplete.
 
 Single message, the reviewer Agent tool calls (three, or four when scale is declared) — they must run in parallel, not sequentially. The three standing lenses are always dispatched:
 
@@ -415,9 +527,26 @@ Each agent's prompt must include:
 - `project_root: <absolute>`
 - `ticket_id: <TICKET-ID>`
 - `namespace: <resolved from preflight step 7, default "plane">`
-- `round_number: <N>`
+- `review_mode: <full|delta>`
+- `round_number: <C>` — a positive integer, not capped at 4
 - `scale_lens: <on|off>` — the dispatch-time collapse of Phase 0 step 8's three-valued resolution (`on` stays `on`; both `non-factor` and `off` map to the reviewer-facing `off`). Passed to **every** dispatched reviewer. The three standing lenses use it solely to decide whether to read a prior-round `scalability.md` during closure tracking; the scalability reviewer always receives `on`.
 - `tier: <small|big|irreversible>` — the tier resolved in Phase 0 step 9. Passed to every dispatched reviewer, including scalability when `scale_lens == on`.
+
+When `review_mode: delta`, also pass the already-computed inputs:
+
+```text
+changed_regions:
+  - heading: "## Design"
+    hunk: |
+      <exclusive-body diff hunk, code-drift line, or open-finding line>
+  - heading: "### Old name"
+    deleted: true
+open_findings:
+  - correctness/F-2 (P1) "title" — § Design
+```
+
+Every non-empty delta pass dispatches all lenses this invocation would normally dispatch. Delta narrows each lens's exploration; it does not drop a lens.
+A full pass omits `changed_regions` and `open_findings`. Reviewers treat a missing `review_mode` as `full` for compatibility with older callers.
 
 For the conventions reviewer additionally:
 - `wiki_root: <absolute path to wiki, resolved in preflight>` (omit if no wiki configured)
@@ -427,14 +556,12 @@ For the scalability reviewer additionally (only dispatched when `scale_lens == o
 - `scale_target: <from Phase 0 step 8>`
 - `scale_dimensions: <from Phase 0 step 8>`
 
-For rounds N > 1, each agent's prompt must additionally include a
-closure-manifest block — the author's stated disposition of every
-round-(N−1) P0/P1 finding, one line each:
+Include `closure_manifest` only when this pass has a closure predecessor. It is the exact bytes read from that predecessor's `ledger.md`: the candidate ledger on delta pass 1, or the preceding pass ledger thereafter. The first pass of a full invocation omits it even when `C > 1`. If the required ledger cannot be read inside an invocation, dispatch this pass as full with no manifest as `### Round artifacts` directs.
 
 ```text
-closure_manifest (round <N-1> → <N>):
+closure_manifest (round <N-1> → next):
   - <lens>/<finding-id> (P<sev>) "<title>" — <how addressed, with spec § anchor>
-  - correctness/F-2 (P1) "stale anchor in § Design" — fixed: re-anchored to SKILL.md:142
+  - correctness/F-2 (P1) "stale anchor in § Design" — fixed: re-anchored to § Design
   - edge-cases/F-4 (P1) "jq empty-array path" — deferred: D-2 (§ Deferred — follow-up required)
 ```
 
@@ -469,23 +596,22 @@ A fold the recount reverted adds one extra line for the *original* finding
 even though it predates round N−1; that line is round-qualified
 (`<lens>/R<m>/F-<k>`) and marked `revert of round <m> fold`.
 
-When the scalability lens ran, its P0/P1 dispositions (and any synthetic
-missing-STATUS P0) appear in this manifest exactly like any other lens — the
-manifest is built from every round-(N−1) P0/P1 finding, not from a fixed
-per-lens file list, so no construction change is needed for the fourth lens.
+When the scalability lens ran, its P0/P1 dispositions and any synthetic missing-STATUS P0 appear exactly like another lens. P2 and lower never enter the manifest or ledger.
+
+**Open findings are extracted, not recalled.** Read the predecessor round's `correctness.md`, `edge-cases.md`, and `conventions.md`, plus `scalability.md` only while this invocation's scale lens is on. Ignore `synthesis.md` and stale scalability output. Every `### F-<k>:` heading whose severity is P0 or P1 is open; do not drop it because that report's closure table mentions it. A missing/unreadable report or missing STATUS adds `<lens>/STATUS (P0) "missing STATUS line"`. A positive STATUS count with no corresponding heading adds `<lens>/STATUS (P0) "STATUS count without a finding heading"`. Such a line names no heading and triggers the full-mode or pass-2 stop already defined. Delta pass 2 uses pass 1's reports and pre-dispatch copy.
 
 ### 2c. Persist findings
 
 Save each agent's full report to:
 ```
-docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/correctness.md
-docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/edge-cases.md
-docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/conventions.md
+docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/correctness.md
+docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/edge-cases.md
+docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/conventions.md
 ```
 
 When the scalability reviewer was dispatched (`scale_lens == on`), also save:
 ```
-docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/scalability.md
+docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/scalability.md
 ```
 
 If the scalability reviewer was dispatched but returned **no parseable report
@@ -516,10 +642,10 @@ An Act-on entry with two or more sites records `sites: <k>` as the cost note. Co
 
 The Agreement Map groups findings that share a root (same spec section, same defect). Each finding stays in its own bucket. The map does not promote or demote a finding. Columns: root, finding ids, lenses, severities, bucket. When the grouped findings have different buckets, the bucket cell is `mixed:` followed by each id and its bucket. Grouping does not merge STATUS counts.
 
-Write `docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/synthesis.md`:
+Write `docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/synthesis.md`:
 
 ```markdown
-# Synthesis — round <N>
+# Synthesis — round <C>
 
 Lenses: <dispatched lens names>
 Empty review: <lens names with no findings, or none>
@@ -541,9 +667,9 @@ Empty review: <lens names with no findings, or none>
 |---|---|---|---|---|
 ```
 
-Each bucket section is a list or the single line `(none)`. `Empty review` lists only lenses with a parseable report and no findings. A stub or a missing STATUS is Act on and is not on that line. Print one line to the operator: `synthesis: Act on <a>, Consider <c>, Noted <n>, Dismissed <d> — round-<N>/synthesis.md`.
+Each bucket section is a list or the single line `(none)`. `Empty review` lists only lenses with a parseable report and no findings. A stub or a missing STATUS is Act on and is not on that line. Print one line to the operator: `synthesis: Act on <a>, Consider <c>, Noted <n>, Dismissed <d> — round-<C>/synthesis.md`.
 
-Each invocation's first write of `round-<N>/synthesis.md` replaces any existing file of that name, by tmp-rename in the same directory. Later lines in the same invocation append. A failed write prints `synthesis NOT written: <error>` and does not change the gate or routing. Do not append to a file this invocation did not write. A prior round's file is not edited. The recount re-runs routing step 2 for scope and does not read this file for it.
+Each invocation's first write of `round-<C>/synthesis.md` replaces any existing file of that name, by tmp-rename in the same directory. Later lines in the same invocation append. A failed write prints `synthesis NOT written: <error>` and does not change the gate or routing. Do not append to a file this invocation did not write. A prior round's file is not edited. The recount re-runs routing step 2 for scope and does not read this file for it.
 
 2e routes each P0 and P1 from steps 0–3. The 2e disposition is authoritative for those findings. Act on folds, Consider defers, Dismissed is `not applicable:`. When a 2e disposition puts a finding in a different bucket than this invocation's synthesis recorded, including a recount that keeps or reverts a fold, append `adjustment: <id> — <old bucket> → <new bucket> — <reason>`. The closure manifest is still built from the 2e dispositions, not from the map.
 
@@ -560,19 +686,19 @@ total_p0p1 = sum of P0+P1 from RED status lines (GREEN contributes 0)
 
 The gate **formula is unchanged** — only the count of summands varies, and only when scale is on. With the lens off there is no fourth summand and the arithmetic is identical to today.
 
-**loop-red.** The round is red when `total_p0p1 > 0` or the guarantee scan withheld. The formula for `total_p0p1` is unchanged. "If loop-red and `round < round_cap`", "If loop-red and `round == round_cap`", and "If after round round_cap the spec is still loop-red" use this definition and no other. A withhold sticks for the round: discharging the rows in 2e does not clear loop-red and does not re-open the break in the same round.
+**loop-red.** A pass is red when `total_p0p1 > 0` or the guarantee scan withheld. The formula for `total_p0p1` is unchanged. Every ordinary-revision, final-rewrite, delta-pass-2, and halt condition uses this definition. A withhold sticks for the pass: discharging the rows in 2e does not clear loop-red or re-open the break in that pass.
 
 **Guarantee scan.** Before breaking on `total_p0p1 == 0`, scan `## Deferred — follow-up required`. Reuse the 2f extraction rule for the section's extent, its row headings, severity, the `Scope` token, and `Discharged:`. Do not invent a second parser for those. Also read each row's `**Where:**` and `**Suggested fix:**` verbatim; that extraction rule does not yield them. A missing field classifies the row in-scope. These rules apply only to a row with no valid `Discharged:` (empty, unparseable, or names no section counts as absent — the same test as the reviewers' Discharge bullet). A row withholds the break when its `Finding` severity is P0 or P1, it has no `Discharged:` field that names a section, and the ceiling test classifies it as in-scope. That includes a grill row whose token is `operator`. A `?` from the extraction rule is not one case. A `Scope` token the render would print as `?` does not withhold by itself. Classify it with the step-2 classifier, the same as `operator` and any other token. Withhold only when that classification is in-scope; the 2e action is the R2(c) discharge, and that same fold repairs `Scope` to `in-scope — <the step-2 citation>`. A severity or a `D-<n>` id the render would print as `?` is not rewritten. The severity is read as P1 for this test only. Scope still comes from the step-2 classifier, not from the malformation. When that classification is in-scope, withhold and print `green withheld: D-<n> — malformed row`, using `D-?` when the id does not parse. Do not discharge the row in that round, and do not emit `fixed: repaired`. The next round's reviewers file `routing violation: D-<n>` (or `routing violation: D-?`), and that finding's ordinary R2(c) discharge is what clears it. When the classification is out-of-scope, do not withhold and do not discharge; the row stays live. The scan is this skill's instruction to the agent executing it, the same layer as the rest of § 2e. It is not `check_spec.py` and it is not the author-side ground-truth gate (VHS-26, out of scope).
 
-When the scan is clean and `total_p0p1 == 0`: break the loop. Spec is green at round N. Run the post-green polish step (2g) before Phase 3. The green marker is written at the top of Phase 3, after 2g, not here.
+When the scan is clean and `total_p0p1 == 0`: break the loop. Spec is green at cumulative round `C`. Run the post-green polish step (2g), rewrite this round's `spec.copy.md`, and write the empty ledger before Phase 3. The green marker is written at the top of Phase 3, after those writes, not here.
 
-When the scan is not clean, do not break, do not run 2g, and do not write `verdict: green`. The round is loop-red. Print `green withheld: <D-ids> — undischarged in-scope P0/P1`, or `green withheld: D-<n> — malformed row` when the withhold is an unparseable severity or id. Append `guarantee: withheld <D-ids>` to this round's `synthesis.md`. Discharge each row the ceiling classifies as an undischarged in-scope P0 or P1 in this round's 2e under R2(c), including the `Scope` repair a grill row or a `?` scope token needs. A `?` severity or id is the withhold above and is not discharged in that round. A scan discharge with no reviewer finding is dispositioned `guarantee/D-<n> (P<sev>) "<row title>" — fixed: discharged D-<n> — edited § <a>; § <b> (§ Deferred — follow-up required)`. These rows are not added to `total_p0p1`. If `round < round_cap`, loop-red enters 2e. The next round's reviewers see the discharge. If `round == round_cap`, loop-red enters 2e, the discharge happens inside that 2e, and the 2f red write then uses `gate:` equal to the STATUS sum (0 when no reviewer P0/P1 remains). Phase 3 is not rendered.
+When the scan is not clean, do not break, do not run 2g, and do not write `verdict: green`. The round is loop-red. Print `green withheld: <D-ids> — undischarged in-scope P0/P1`, or `green withheld: D-<n> — malformed row` when the withhold is an unparseable severity or id. Append `guarantee: withheld <D-ids>` to `round-<C>/synthesis.md`. Discharge each row the ceiling classifies as an undischarged in-scope P0 or P1 in this pass's 2e under R2(c), including the `Scope` repair a grill row or a `?` scope token needs. A `?` severity or id is the withhold above and is not discharged in that pass. A scan discharge with no reviewer finding is dispositioned `guarantee/D-<n> (P<sev>) "<row title>" — fixed: discharged D-<n> — edited § <a>; § <b> (§ Deferred — follow-up required)`. These rows are not added to `total_p0p1`. If another pass is allowed (a full pass with `P < round_cap`, or delta pass 1), loop-red enters 2e. The next pass's reviewers see the discharge. On the final allowed pass (`P == round_cap` in a full invocation, `P == 2` in a delta invocation), loop-red enters 2e, the discharge happens inside that 2e, and the 2f red write then uses `gate:` equal to the STATUS sum (0 when no reviewer P0/P1 remains). Phase 3 is not rendered.
 
 A reviewer may return `STATUS: RED` with only P2+ findings (P0=0 P1=0). This does not block the loop since the gate checks `total_p0p1 == 0`. P2+ items are advisory — they are carried forward as spec notes in the `## Deferred (P2+)` section but do not prevent the spec from going green. On the green round, the carry into `## Deferred (P2+)` is performed by the post-green polish step (2g); P2s tagged `Pre-ship recommended` by a reviewer are 2g candidates.
 
-### 2e. Revise (rounds 1 .. round_cap-1) or rewrite (round == round_cap)
+### 2e. Revise or rewrite by pass index
 
-If loop-red (`total_p0p1 > 0` or the guarantee scan withheld) and `round < round_cap`:
+If loop-red (`total_p0p1 > 0` or the guarantee scan withheld) and this is a full pass with `P < round_cap`, or delta pass 1, use the ordinary revision rules below. Delta pass 2 also routes every P0/P1 through these rules and folds where the ceiling says fold, but never runs FROZEN/REWRITE, never builds a closed-issues manifest, and never reverts a recount fold:
 - Edit the spec in place.
 - **Route every P0 and P1 finding** to exactly one disposition — **fold**, **defer**, or **reject** — before editing anything, in this order:
   0. **Test validity.** If the finding is wrong (misread, stale, already handled) → **reject**: disposition it `not applicable: <reason>` in the next manifest and stop. Otherwise continue. A finding whose title begins `routing violation:` is never deferred: it is folded by the R2 edit the violation calls for — the field repair it names (R2(a)), the R6 merge, the preamble insert, or, for a ceiling-class violation, the R2(c) discharge — whatever its site count or scope; disposition it `fixed: repaired D-<n> (§ Deferred — follow-up required)`, `fixed: merged (§ Deferred — follow-up required)`, `fixed: preamble (§ Deferred — follow-up required)`, or `fixed: discharged D-<n> — edited § <a>; § <b> (§ Deferred — follow-up required)`, naming every section a discharge fold touched so the recount can see them.
@@ -581,10 +707,10 @@ If loop-red (`total_p0p1 > 0` or the guarantee scan withheld) and `round < round
   3. **Apply the ceiling:**
      - one site or none → **fold**, whatever the scope or severity;
      - two or more sites and out-of-scope → **defer**, whatever the severity;
-     - two or more sites and in-scope → **fold**, whatever the severity (P0 or P1): edit every site on the list. An in-scope P0 or P1 cannot ship as a known issue. When the site count `k` is 2 or more, append ` (sites: <k>)` to the disposition phrase, after the section list and before a recount suffix if there is one. The note does not route, and no consumer parses it. If the fold is more than the brief supports, stop and tell the operator; there is no mid-loop scope-down path (2f option 3 is reachable only after round round_cap). Print `fold exceeds brief: <finding id> (<k> sites) — <brief row or Out-of-scope item>; marker left pending`. Do not defer the finding instead of stopping. Do not write a review-produced green verdict on that stop. The Phase 2 pending marker stays.
+     - two or more sites and in-scope → **fold**, whatever the severity (P0 or P1): edit every site on the list. An in-scope P0 or P1 cannot ship as a known issue. When the site count `k` is 2 or more, append ` (sites: <k>)` to the disposition phrase, after the section list and before a recount suffix if there is one. The note does not route, and no consumer parses it. If the fold is more than the brief supports, stop and tell the operator; there is no mid-loop scope-down path (2f option 3 is reachable only after the final allowed pass). Print `fold exceeds brief: <finding id> (<k> sites) — <brief row or Out-of-scope item>; marker left pending`. Do not defer the finding instead of stopping. Do not write a review-produced green verdict on that stop. The Phase 2 pending marker stays.
   4. **Act.** Fold: edit every listed site and disposition it `fixed: edited § <a>; § <b>` or `reworked: …` in the next manifest, naming every section the edit touched. If the finding cites a row `D-<n>` and that row records a P0 or a P1 that the ceiling test classifies as in-scope — R2(c)'s precondition — the fold is also the row's discharge: fold at the union of this finding's sites and the row's `Propagation sites`, append `**Discharged:** folded round <n> — § <a>; § <b>` naming every one of them, and disposition the finding `fixed: discharged D-<n> — edited § <a>; § <b> (§ Deferred — follow-up required)`. A grill row whose token is `operator` and that classifies as in-scope is the same discharge. In that same fold, repair `Scope` to `in-scope — <the step-2 citation>` (an R2(a) repair) and then append `Discharged:`. One disposition, the discharge form. The finding record (`Finding`, `Deferred in`, `Suggested fix`) is still never rewritten. The guarantee scan does not rewrite it, and it does not rewrite a heading id. A cited row the ceiling test classifies as out-of-scope stays live: fold the finding at its own sites, disposition `fixed: edited § <a>; § <b>`, and do not discharge the row. Defer: first check `## Deferred — follow-up required` for a row with the same root (same section in `Where`, same defect); if one exists and carries no `Discharged:`, repair that row under R2(a) instead of appending and disposition the finding `deferred: D-<n> (§ Deferred — follow-up required; repaired)`. A row carrying `Discharged:` is not a same-root target — its finding was folded; append a new row and suffix its title ` (recurrence of D-<m>)`. Otherwise add a row (shape below), make no other spec edit for that finding, and disposition it `deferred: D-<n> (§ Deferred — follow-up required)`.
 
-  Routing's tests do not run inside 2f-i step 4; a Settled grill decision is applied as written. A Settled decision that dispositions a finding as a follow-up is satisfied by appending a row in the shape below with `Deferred in: round <round_cap> (grill)` — the step 4 append above, which R2 records — so 2f-i step 5's re-render shows it. A row whose `Deferred in:` carries `(grill)` records the operator's disposition, not a routing outcome: `Propagation sites:` lists whatever sites the finding names — one entry is permitted, and `§ (operator decision — routing tests not run)` when it names none — and `Scope:` is written `operator — round-<round_cap> grill` when step 2 did not run. The row is a legal resting state only until the next review run; that run's ceiling classifies it, and an in-scope P0 or P1 is folded and discharged. 2f-i does not change. The grill run stays red because `total_p0p1` is unchanged.
+  Routing's tests do not run inside 2f-i step 4; a Settled grill decision is applied as written. A Settled decision that dispositions a finding as a follow-up is satisfied by appending a row in the shape below with `Deferred in: round <C> (grill)` — the step 4 append above, which R2 records — so 2f-i step 5's re-render shows it. A row whose `Deferred in:` carries `(grill)` records the operator's disposition, not a routing outcome: `Propagation sites:` lists whatever sites the finding names — one entry is permitted, and `§ (operator decision — routing tests not run)` when it names none — and `Scope:` is written `operator — round-<C> grill` when step 2 did not run. The row is a legal resting state only until the next review run; that run's ceiling classifies it, and an in-scope P0 or P1 is folded and discharged. The grill run stays red because `total_p0p1` is unchanged.
 - For P2 findings, either fix or list them in a `## Deferred (P2+)` section at the end of the spec with one-line acknowledgments. P2s carrying a reviewer's `Pre-ship recommended` tag become 2g candidates once the spec goes green.
 - Do not delete history of what changed; if a section is rewritten, that's fine, but the spec at end of round must stand on its own.
 
@@ -599,13 +725,13 @@ Under the heading, before the first row, a fixed preamble line is always present
 
 ### D-1: <title copied from the finding>
 **Finding:** <lens>/R<n>/F-<k> (P0 | P1)
-**Deferred in:** round <n>   (the round the row was appended; `round <round_cap> (grill)` for a Settled grill decision; for a revert row, the recount round)
+**Deferred in:** round <n>   (the round the row was appended; `round <C> (grill)` for a Settled grill decision; for a revert row, the recount round)
 **Where:** spec § <section>, <anchor as the reviewer gave it>
 **Suggested fix:** (verbatim, as a blockquote — every line of the reviewer's text, blank lines included, prefixed `> `; a blank line inside the text is stored as a bare `>`; one blank line closing the blockquote before `**Propagation sites:**` is permitted; otherwise unedited)
 > <the reviewer's Suggested fix>
 
 **Propagation sites:** § <a>; § <b> (new); …   (two or more entries, except a `(grill)` row — see above; `(new)` marks a section the fix would create; at least one must exist)
-**Scope:** in-scope | out-of-scope — <file region this spec's Scope table maps the section to>; <brief Scope-table row or Out-of-scope item cited>   (a `(grill)` row instead reads `operator — round-<round_cap> grill`)
+**Scope:** in-scope | out-of-scope — <file region this spec's Scope table maps the section to>; <brief Scope-table row or Out-of-scope item cited>   (a `(grill)` row instead reads `operator — round-<C> grill`)
 **Follow-up:** unfiled
 **Discharged:** folded round <n> — § <a>; § <b>   (optional eighth field; present only after rule R2(c))
 ```
@@ -624,24 +750,24 @@ A directive appearing in a row's free-form text — its title, and above all the
 **Re-fold recount.** The recount does not run on a finding whose title begins `routing violation:`, and a disposition whose only named section is `§ Deferred — follow-up required` is not a recount trigger — a row repair is not a fold. A `fixed: discharged` disposition's fold sections are triggers; a later finding on one of them recounts and resolves by the last bullet, since a discharged finding is an in-scope P0 or P1. Scope is re-computed by routing step 2 on the original finding every time the recount runs. Unclassifiable is in-scope, so the fold is kept. The recount does not read `synthesis.md` for scope. Before routing any other new P0/P1 finding, check its `Where` against every section named on any `fixed:` / `reworked:` line of the manifests built earlier in **this invocation** (a fold made in a prior invocation is not detectable and is not recounted). If it lands on such a section, the new finding is evidence that the original site list was short:
 
 - Redo step 1 of the routing step on the original finding, counting the new finding's site.
-- True count now two or more, and the original finding is out-of-scope, and 2 ≤ round < round_cap, and none of the original fold's sites has been re-edited by a later fold → **revert the original fold** (remove the edit from every site it touched), defer the original finding as a row, and route the new finding through routing steps 1–3 as normal. If the ceiling routes the new finding to **fold** (in-scope P0 or P1, or one site or none), the original is still reverted and deferred and the new finding is folded at every site on its own list; only a new finding the ceiling routes to defer becomes the second row. The reverted finding's row copies `Where` and `Suggested fix` verbatim from `docs/specs/TODO/<TICKET-ID>.reviews/round-<m>/<lens>.md`; if that report is missing or unparseable, the next bullet applies. This is the one sanctioned removal of a prior round's edit: the history the "Do not delete history" bullet protects is preserved by the deferral row, which carries the finding record verbatim, plus the round-qualified manifest line. The revert supersedes the reverted finding's closed-issues entry: at round round_cap that entry's constraint is its deferral row, not the removed fix. The manifest gets one extra, round-qualified line for the reverted finding: `<lens>/R<m>/F-<k> (P<sev>) "<title>" — deferred: D-<n> (§ Deferred — follow-up required; revert of round <m> fold)`.
-- Otherwise (count still one; an in-scope P0 or P1; round == round_cap; a site re-edited since; or the round-<m> report unavailable) → patch once more with the corrected site list and append `(recount: <k> sites, fold kept)` to the disposition phrase so the reviewer can see the rule ran.
+- True count now two or more, and the original finding is out-of-scope, and this is a full invocation with `2 ≤ P < round_cap`, and none of the original fold's sites has been re-edited by a later fold → **revert the original fold** (remove the edit from every site it touched), defer the original finding as a row, and route the new finding through routing steps 1–3 as normal. If the ceiling routes the new finding to **fold** (in-scope P0 or P1, or one site or none), the original is still reverted and deferred and the new finding is folded at every site on its own list; only a new finding the ceiling routes to defer becomes the second row. The reverted finding's row copies `Where` and `Suggested fix` verbatim from `docs/specs/TODO/<TICKET-ID>.reviews/round-<m>/<lens>.md`; if that report is missing or unparseable, the next bullet applies. This is the one sanctioned removal of a prior round's edit: the history the "Do not delete history" bullet protects is preserved by the deferral row, which carries the finding record verbatim, plus the round-qualified manifest line. The revert supersedes the reverted finding's closed-issues entry: on a full invocation's final pass that entry's constraint is its deferral row, not the removed fix. The manifest gets one extra, round-qualified line for the reverted finding: `<lens>/R<m>/F-<k> (P<sev>) "<title>" — deferred: D-<n> (§ Deferred — follow-up required; revert of round <m> fold)`. Delta passes never take this branch.
+- Otherwise (count still one; an in-scope P0 or P1; either delta pass; a full invocation's final pass, `P == round_cap`; a site re-edited since; or the round-<m> report unavailable) → patch once more with the corrected site list and append `(recount: <k> sites, fold kept)` to the disposition phrase so the reviewer can see the rule ran.
 
-If loop-red (`total_p0p1 > 0` or the guarantee scan withheld) and `round == round_cap`:
+If loop-red and this is a full invocation with `P == round_cap`:
 - **Targeted rewrite, not blank-slate.** Enumerate every section of the spec
   (Goal, Scope, Decisions, Design sub-sections, Test plan, Done-when, Out of
   scope, plus any spec-specific sections). For each, decide:
-    - **FROZEN** — no unresolved P0/P1 in this section across rounds 1 .. round_cap-1. This is the only FROZEN window. Do not also count `round == round_cap`.
+    - **FROZEN** — no unresolved P0/P1 in this section across the earlier passes of this invocation. This is the only FROZEN window. Do not include this pass or an older invocation's directories.
       Copy the section verbatim from the current spec. Do not touch.
     - **REWRITE** — has unresolved P0/P1 OR has cross-references to a REWRITE
       section that need re-aligning.
 
-  Route every P0 and P1 finding first — the routing step in the round < round_cap half runs at round round_cap too, before the FROZEN/REWRITE manifest. An in-scope P1 folds at round `round_cap` under that ceiling and is not deferred there. `## Deferred — follow-up required` is FROZEN and governed by rule R2: the unresolved-P0/P1 test does not apply to it, and these edits are permitted here without promotion: appending a row routed this round (step 4 of the routing step in the round < round_cap half, including a row recording a Settled grill decision), R2's three row edits — repairing the field a `routing violation: D-<n>` names, re-anchoring, and discharging — inserting a missing preamble, and R6's merge of a duplicate section into the first. A finding routed to defer does not put its target section into REWRITE. When building the closed-issues manifest, an entry whose `finding_id` matches the `Finding:` field of a row in this section is superseded: its regression constraint is the row, not the removed fix. The re-fold recount's revert is not available at round round_cap. There is no next manifest at round round_cap, so a rejection is recorded by suffixing the finding's title in the 2f halt block with ` — rejected: <reason>`, a fold with ` — folded § <section>`, and a deferral with ` — deferred: D-<n>`.
+  Route every P0 and P1 finding first — the routing step in the ordinary revision rules above runs on this final pass too, before the FROZEN/REWRITE manifest. An in-scope P1 folds on this pass under that ceiling and is not deferred there. `## Deferred — follow-up required` is FROZEN and governed by rule R2: the unresolved-P0/P1 test does not apply to it, and these edits are permitted here without promotion: appending a row routed this round (step 4 of the routing step, including a row recording a Settled grill decision), R2's three row edits — repairing the field a `routing violation: D-<n>` names, re-anchoring, and discharging — inserting a missing preamble, and R6's merge of a duplicate section into the first. A finding routed to defer does not put its target section into REWRITE. When building the closed-issues manifest, an entry whose `finding_id` matches the `Finding:` field of a row in this section is superseded: its regression constraint is the row, not the removed fix. The re-fold recount's revert is not available on this final pass. No later pass in this invocation reads a manifest, so a rejection is recorded by suffixing the finding's title in the 2f halt block with ` — rejected: <reason>`, a fold with ` — folded § <section>`, and a deferral with ` — deferred: D-<n>`. The same dispositions also go in this round's `ledger.md`.
 - Print the FROZEN/REWRITE manifest before editing. Sections in REWRITE may
   only modify themselves — they may not silently change content in FROZEN
   sections. If a REWRITE forces a FROZEN-section edit (e.g., changed function
   signature must propagate), explicitly promote that section to REWRITE first.
-- Build a closed-issues manifest from rounds 1 .. round_cap-1 (the only FROZEN window; do not also count `round == round_cap`) and pass it to the rewrite
+- Build a closed-issues manifest from the earlier passes of this invocation and pass it to the rewrite
   phase as regression constraints. Construct it by scanning every reviewer
   report present in each round's directory (`correctness.md`, `edge-cases.md`,
   `conventions.md`, plus `scalability.md` when the scaling lens ran) and
@@ -657,26 +783,30 @@ If loop-red (`total_p0p1 > 0` or the guarantee scan withheld) and `round == roun
   The manifest is ephemeral (constructed in-context, not written to disk).
   Every entry is a regression constraint: the rewritten spec must preserve
   the fix that closed it.
-- Blank-slate rewrites are forbidden at round round_cap. The historical "patches stop
+- Blank-slate rewrites are forbidden on the final full pass. The historical "patches stop
   converging, restart" failure mode applied to plans, not to specs with
   established cross-section invariants.
 
+After every loop-red revision, including the final pass in either mode, atomically write `ledger.md` from the dispositions just made. The next pass reads those bytes back. Keep the pre-dispatch `spec.copy.md` unchanged on every loop-red path.
+
 ### 2f. Halt condition
 
-If after round round_cap the spec is still loop-red (`total_p0p1 > 0` or the guarantee scan withheld), do **not** auto-proceed. After round round_cap's 2e edits and before the halt block prints, write a red marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: red`, `source: review`, `round: <round_cap>`, `tier: <the invocation's tier>`, `gate: <round-<round_cap> total_p0p1>`, today's date, and the fingerprint of the spec as it stands at the halt. If that write fails, print the failed-write line above the block. Options 1 to 3 end the skill with the red marker in place; option 4 edits the spec and leaves the marker untouched, so it stays red. When no reviewer P0/P1 remains, Remaining P0/P1 is the line `GREEN WITHHELD: <D-ids>` and option 4 is not offered. Option 1, patch manually and re-run `/spec-cycle`, is how that discharge is reviewed. When reviewer P0/P1 titles remain, Remaining lists those titles and options 1–4 stay, including option 4. `gate:` on the red marker is the STATUS sum, 0 when no reviewer P0/P1 remains. Print:
+If a full invocation is still loop-red after `P == round_cap`, or a delta invocation after `P == 2` (`total_p0p1 > 0` or the guarantee scan withheld), do **not** auto-proceed. After that pass's 2e edits and the ledger write, and before the halt block prints, atomically write a red marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: red`, `source: review`, `round: <C>`, `tier: <the invocation's tier>`, `gate: <round-<C> total_p0p1>`, today's date, and the fingerprint of the spec as it stands at the halt. If that write fails, print the failed-write line above the block. Options 1 to 3 end the skill with the red marker in place; option 4 edits the spec and leaves the marker untouched, so it stays red. When no reviewer P0/P1 remains, Remaining P0/P1 is the line `GREEN WITHHELD: <D-ids>` and option 4 is not offered. Option 1, patch manually and re-run `/spec-cycle`, is how that discharge is reviewed. When reviewer P0/P1 titles remain, Remaining lists the cumulative round's titles and options 1–4 stay, including option 4. `gate:` on the red marker is the STATUS sum, 0 when no reviewer P0/P1 remains. Print:
 ```
-SPEC NOT GREEN AFTER <round_cap> ROUNDS.
+SPEC NOT GREEN AFTER <C> ROUNDS.
 Remaining P0/P1:
-  - <round <round_cap> correctness P0/P1 titles>
-  - <round <round_cap> edge-cases P0/P1 titles>
-  - <round <round_cap> conventions P0/P1 titles>
-  - <round <round_cap> scalability P0/P1 titles — only when scale_lens == on for this invocation>
+  - <round <C> correctness P0/P1 titles>
+  - <round <C> edge-cases P0/P1 titles>
+  - <round <C> conventions P0/P1 titles>
+  - <round <C> scalability P0/P1 titles — only when scale_lens == on for this invocation>
 
 Spec at: docs/specs/TODO/<TICKET-ID>.spec.md
 Reviews at: docs/specs/TODO/<TICKET-ID>.reviews/
 
 === FOLLOW-UPS (proposed; not filed by this skill) ===
   - <D-n>  <lens>/R<n>/F-<k>  <P0|P1>  <in-scope|out-of-scope|operator>  "<title>"  — Follow-up: <value>
+
+DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle before the next pass.
 
 What would you like to do?
 1. Patch manually and re-run /spec-cycle
@@ -698,9 +828,9 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
 
 ### 2f-i. Option 4 — grill the remaining findings
 
-1. **Seed.** Read the round-<round_cap> reports on disk (`correctness.md`, `edge-cases.md`,
+1. **Seed.** Read the round-<C> reports on disk (`correctness.md`, `edge-cases.md`,
    `conventions.md`, plus `scalability.md` only when `scale_lens == on` for this
-   invocation — a `scalability.md` present in `round-<round_cap>/` under `scale_lens == off`
+   invocation — a `scalability.md` present in `round-<C>/` under `scale_lens == off`
    is stale from a prior on-run and is ignored, matching the closure-read guard in
    § Failure modes) and extract each remaining P0/P1 finding: id, severity, title,
    body. The id is lens-qualified — `<lens>/<finding-id>`, the two-part form
@@ -734,9 +864,9 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
    `grill.md`, print `grill returned no summary — nothing persisted`, and re-render
    the menu with options 1–3. Never write a partial or reconstructed summary.
    Otherwise append the returned Grill summary verbatim to
-   `docs/specs/TODO/<TICKET-ID>.reviews/round-<round_cap>/grill.md`, preceded by `---` if the
+   `docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/grill.md`, preceded by `---` if the
    file already exists and by the header line
-   `# Grill <k> — <TICKET-ID> round <round_cap> — <ISO datetime> — findings: <ids>`, where
+   `# Grill <k> — <TICKET-ID> round <C> — <ISO datetime> — findings: <ids>`, where
    `<k>` is one more than the number of lines matching `^# Grill ` already in the
    file (anchored — the `## Grill summary` line inside each block is not one).
    Write it read-modify-tmp-rename via a uniquely named dot-prefixed temp in the
@@ -749,11 +879,11 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
    whole file and nothing detects a lost concurrent grill; the `<k>` counter makes
    any duplicate visible in the audit trail after the fact.
 
-4. **Apply.** For each **Settled** item, edit the spec in place under the round < round_cap revise rules, and do not re-run FROZEN (address the finding per the decision; the spec must stand on
+4. **Apply.** For each **Settled** item, edit the spec in place under the ordinary revise rules, and do not re-run FROZEN (address the finding per the decision; the spec must stand on
    its own at the end). Locate the finding(s) a decision dispositions by its
    `ref:` ids, never by title. A Settled item with `ref: none` — or with no
    `ref:` field at all, which is what a v1-shaped return looks like — is applied
-   as a spec edit like any other but dispositions no finding. The round-<round_cap>
+   as a spec edit like any other but dispositions no finding. The round-<C>
    FROZEN/REWRITE protocol is not re-run — it already ran before the halt. A
    Settled decision that cannot be discharged by an in-place spec edit (e.g.,
    "narrow the brief" — that is menu option 3's job) is **not applied**: report
@@ -762,10 +892,10 @@ Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once
    grillable** items are not touched; they remain P0/P1.
 
 5. **Re-render.** Print
-   `grill applied (exit: <token>): dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids>; unreferenced decisions applied: <n> — docs/specs/TODO/<TICKET-ID>.reviews/round-<round_cap>/grill.md`,
+   `grill applied (exit: <token>): dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids>; unreferenced decisions applied: <n> — docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/grill.md`,
    then the 2f halt block again with options 1–3 only, each dispositioned title
    suffixed ` — grilled (spec edited; not re-reviewed)` so the operator can see what
-   moved without opening `grill.md`. The round counter is still round_cap; no reviewer is
+   moved without opening `grill.md`. The cumulative round stays `C`; no reviewer is
    re-dispatched; `total_p0p1` is unchanged because no reviewer has re-verified —
    the honest path to green is option 1.
 
@@ -836,7 +966,7 @@ already-run: reconcile (merge/dedup) rather than append.
 
 A review-produced green verdict (`source: review`) from a run under this rule is never written while an in-scope P0 or P1 sits undischarged in `## Deferred — follow-up required`. Attest mode and green markers issued before this change are outside this guarantee and are not edited.
 
-When the spec is green, first write the green marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: green`, `source: review`, the round that went green, `gate: 0`, `tier: <the invocation's tier>`, today's date, and the fingerprint of the spec as 2g left it. Every green run reaches this point, whether 2g folded candidates or left by its no-candidate exit, so the write lives here and not in 2g. If the write fails, print the failed-write line directly under the SPEC READY header, above the `Path:` line.
+When the spec is green, first atomically write the green marker (see `## The verdict marker`): `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: green`, `source: review`, `round: <C>`, `gate: 0`, `tier: <the invocation's tier>`, today's date, and the fingerprint of the spec as 2g left it. The green pass already rewrote its `spec.copy.md` and wrote the empty ledger. Every green run reaches this point, whether 2g folded candidates or left by its no-candidate exit. If the marker write fails, print the failed-write line directly under the SPEC READY header, above the `Path:` line.
 
 `<u>`, `<out>`, `<op>`, `<x>`, and `<d>` count rows by the raw `Scope` token the 2f render already uses. `<x>` is the count of tokens that render prints as `?`. It can be non-zero on a green path: an out-of-scope row whose token prints `?` does not withhold. The tally reuses the 2f extraction rule for extent, headings, severity, the scope token, and `Discharged:`, and also reads `**Where:**` and `**Suggested fix:**`. A missing field classifies in-scope, the same reading as the guarantee scan. The in-scope figure is the guarantee scan's count and is 0 on every path that reaches this template. An absent deferred section renders all zeros. No marker field carries these numbers.
 
@@ -845,7 +975,7 @@ Then render this output verbatim, with sections populated from the brief:
 ```
 === SPEC READY: <TICKET-ID> ===
 Path: docs/specs/TODO/<TICKET-ID>.spec.md
-Rounds: <N> (green at round <N>)
+Rounds: <C> (green at round <C>)
 Verdict: green — docs/specs/TODO/<TICKET-ID>.reviews/verdict.md
 
 === DRIFT CHECK against brief ===
@@ -869,11 +999,13 @@ Scale declaration:
 Scale: explicitly marked a non-factor in the brief — confirm the spec adds no scale machinery.
 [ when scale_lens == off, render neither — output is unchanged ]
 
-Synthesis: docs/specs/TODO/<TICKET-ID>.reviews/round-<N>/synthesis.md
+Synthesis: docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/synthesis.md
 Deferred rows: <u> undischarged (<out> out-of-scope, <op> operator, <x> other), <d> discharged. Undischarged in-scope P0/P1: 0.
 
 === FOLLOW-UPS (proposed; not filed by this skill) ===
   - <D-n>  <lens>/R<n>/F-<k>  <P0|P1>  <in-scope|out-of-scope|operator>  "<title>"  — Follow-up: <value>
+
+DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle before the next pass.
 
 === NEXT ===
 When ready, run:
@@ -901,7 +1033,7 @@ After printing the checklist, **do not auto-proceed**. The user invokes `/ship-s
 
 ## Attest mode
 
-`/spec-cycle <brief-path> --attest "<reason>"` records a spec as green when the verdict was reached by hand, without a review round. The path may be the brief path or the spec path; only the ticket id is taken from it, by Phase 0 step 1's prefix match, and the brief need not exist. `--attest` with no reason, an empty reason, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>"]`. The reason is stored as one line; line breaks in it become spaces.
+`/spec-cycle <brief-path> --attest "<reason>"` records a spec as green when the verdict was reached by hand, without a review round. The path may be the brief path or the spec path; only the ticket id is taken from it, by Phase 0 step 1's prefix match, and the brief need not exist. `--attest` with no reason or an empty reason, either flag with an invalid value, both `--attest` and `--full`, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | --full]`. The reason is stored as one line; line breaks in it become spaces. Attest mode does not resolve review mode or read a baseline.
 
 Attest mode runs none of Phase 0 steps 2 to 9, Phase 1, Phase 2, or Phase 3. It dispatches no reviewer and edits no spec. Its steps:
 
@@ -932,6 +1064,7 @@ Attestation is allowed over no marker, a pending marker, a red marker, a green m
 
 - Read, Edit, Write for spec authorship and revision.
 - A shell hash command for the fingerprint (`tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum`, or your host's equivalent); Write for the verdict marker at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`.
+- For delta code drift, use `timeout 30 git --no-pager rev-parse HEAD`; `timeout 30 git --no-pager -c core.quotePath=false diff --no-color --no-renames --name-only <saved> <snapshot>`; the same diff without revisions for unstaged changes and with `--cached` for staged changes; and `timeout 30 git --no-pager -c core.quotePath=false ls-files --others --exclude-standard`. These are read-only. Do not omit `--no-pager`, repair quoted paths, or take a second snapshot.
 - Bash for `git fetch upstream` / `git fetch origin` (ref updates only, bounded by timeout), `git log` / `git remote` / `git rev-list` / `git rev-parse` / `git symbolic-ref` / `git merge-base --is-ancestor` / `sed` (read-only), `mkdir` for review subdirs, and — the lone git-level mutation of existing tracked files in this skill — `git merge --ff-only origin/<branch>`, run only after explicit user confirmation in Phase 0 step 5e.
 - Agent calls (parallel) for the reviewers (three, or four when scale is declared).
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup (tags: [plane_work_item, <TICKET-ID>], namespace from states.json). Falls back to brief alone on zero results or error response.
@@ -943,7 +1076,7 @@ Attestation is allowed over no marker, a pending marker, a red marker, a green m
 - **Stale spec read.** Always re-read from disk at the start of each round. Do not trust the spec content from your own prior write.
 - **Verdict marker write fails.** The run's outcome is unchanged. Print `verdict marker NOT written: <error> — the marker on disk says <its verdict, or none>` where the write was attempted; the marker on disk is whatever the last successful write left, and a downstream reader meets it as it is.
 - **Fingerprint cannot be computed.** Write the marker with `fingerprint: none` and print `verdict marker: fingerprint not computed (<reason>)`. `/ship-spec` then reads a green marker as `changed` and asks the operator to confirm.
-- **Interrupted run.** Nothing after the pending write is written. The marker stays `pending`, and `/ship-spec` and `/spec-tickets` report a review that started and did not finish. Re-run `/spec-cycle`, or attest.
+- **Interrupted run.** A partial `spec.copy.md` / `brief.copy.md` / `baseline.commit` set may remain and the marker stays `pending`. Re-run takes mode-table row 4 and reserves a new full span; it never overwrites the partial directory. `/ship-spec` and `/spec-tickets` report a review that started and did not finish. Re-run `/spec-cycle`, or attest.
 - **Reviewer status drift.** If a reviewer doesn't end with a parseable `STATUS:` line, treat its report as `STATUS: RED P0=1 P1=0` (count one P0 for "missing status") and surface it as an issue.
 - **Severity inflation.** If a single reviewer is producing >5 P1 findings consistently, that's a signal to re-check whether the reviewer is following the severity definitions. The fix is to push back through the prompt — but in v1 just trust the loop.
 - **Ticket not in MCP memory cache.** When `memory_search` returns zero results or an error for the ticket, warn-and-proceed using only the brief. The brief is the local source of truth. This covers cold-cache (ticket untouched since MCP-33 shipped) and MCP memory outage.
