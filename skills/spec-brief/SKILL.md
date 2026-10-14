@@ -190,7 +190,8 @@ On the first entry to this phase, apply Phase 5's mapping rules and `## Scale` e
 
 The tier and `reviewer_eligible` decide; this phase never asks again whether the host can wait. Announce every skip as `Doubt pass: skipped — <reason>`.
 
-- `small` — skip with reason `tier small; operator did not request the pass` and go to Confirm, without waiting, whether or not a reviewer is eligible. Confirm offers option 5 when one is.
+- `small`, entered from Confirm option 5 — run the pass.
+- `small`, otherwise — skip with reason `tier small; operator did not request the pass` and go to Confirm without waiting, eligible reviewer or not. Confirm offers option 5 when one is eligible.
 - `big`, eligible — show the offer below and wait.
 - `big`, not eligible — skip with reason `no eligible cross-model reviewer`.
 - `irreversible` — run the pass; there is no skip.
@@ -341,7 +342,7 @@ Before resuming, carry the operator's batch resolutions:
 - Amend Q-linked items in `prior_summary`: keep leaves the current text and rationale, replace substitutes the new text, and reopen removes the item from Settled and lists it once in Open frontier as `(Q<n>) … unresolved because: deferred`. Invent no Q numbers and reset no counters.
 - Q-less resolutions stay in the candidate only. Pass `seed` again with kept Q-less resolutions in its problem statement, labelled as operator-settled constraints the interview must not re-decide. They are not grounding facts: an empirical claim inside one keeps its verification status.
 
-After the resume returns, compare every returned decision with the kept resolutions; any conflict goes through Phase 3's operator batch with temporary `F-<n>` ids (not a reviewer cycle) before Phase 3 runs again, under every tier. Update the affected candidate sections and their consumers, keeping unrelated folds, resolutions, and anchors. Refresh the `Interview:` References bullet from the returned header, and map newly established facts into References and Scope.
+After the resume returns, compare every returned decision with the kept resolutions; any conflict goes through Phase 3's operator batch with temporary `F-<n>` ids (not a reviewer cycle) before Phase 3 runs again, under every tier. Apply Phase 5's mapping rules to the returned new or changed items only: a fence ("X is not in scope") goes to `## Out of scope`, other Settled items to `## Decisions carried forward`, Open items to `## Risks / decisions`, and an emptied Decisions list takes the `_(none settled — see Risks / decisions)_` line. Renumber each list you changed, then update the sections that consume those items. Leave unrelated folds, resolutions, and anchors as they are. Refresh the `Interview:` References bullet from the returned header, and map newly established facts into References and Scope.
 
 Under `--no-grill`, option 2 reads `2. Add a decision (state it) — appended to Decisions carried forward`, and the candidate's Decisions list is derived **only** from decisions the ticket text states explicitly, each carrying its quote or `path:line`. Anything the model would have to infer goes to `## Risks / decisions` ending "spec author pins this". The altitude fence applies to that derivation exactly as it applies to the interview. An added decision is appended to the candidate, keeping its corrections.
 
