@@ -1,0 +1,6 @@
+closure_manifest (round 1 → next):
+  - correctness/F-1 (P0) "Cycle-2 failure has conflicting irreversible outcomes" — fixed: edited § Decision 12 — Failure posture follows tier and never silently substitutes same-model review; § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 3)
+  - correctness/F-2 (P1) "Adding a decision under no-grill leaves the previous review valid" — fixed: edited § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 2)
+  - edge-cases/F-1 (P1) "A partially failed pass can become valid for an irreversible brief" — fixed: edited § Decision 12 — Failure posture follows tier and never silently substitutes same-model review; § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 3)
+  - edge-cases/F-2 (P1) "Adding a decision under `--no-grill` retains a stale doubt result" — fixed: edited § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 2)
+  - conventions/F-1 (P0) "A failed second cycle can become an irreversible completion" — fixed: edited § Decision 12 — Failure posture follows tier and never silently substitutes same-model review; § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 3)

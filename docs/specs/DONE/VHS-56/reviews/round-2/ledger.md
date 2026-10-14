@@ -1,0 +1,3 @@
+closure_manifest (round 2 → next):
+  - correctness/F-1 (P1) "Recovery requires two successful cycles even when the second is forbidden" — fixed: edited § Decision 12 — Failure posture follows tier and never silently substitutes same-model review; § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 3)
+  - edge-cases/F-1 (P0) "Restart requires a second cycle that the cycle rule can forbid" — fixed: edited § Decision 12 — Failure posture follows tier and never silently substitutes same-model review; § 6. Renumber Confirm and Write and make the outcome visible; § Test plan (sites: 3)
