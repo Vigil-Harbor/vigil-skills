@@ -106,6 +106,10 @@ Anchor drift. For a file:line citation, re-check the symbol at the current file.
 
 Work through these axes:
 
+## Precedent is not evidence
+- A prior spec or Runbook may establish naming or intent, but it is only a pointer to evidence. Verify every inherited mechanism and runtime-behavior assertion against the current live code path before accepting it.
+- When precedent conflicts with live code, report the stale precedent at the severity dictated by the definitions below; do not propagate it as an established repo convention.
+
 ## Stated conventions (CLAUDE.md)
 - Does the spec follow the conventions CLAUDE.md states? (E.g., language-specific import patterns, async-handling rules, error-return semantics, dependency footprint constraints.)
 - Does the spec violate one without acknowledging it?
