@@ -87,6 +87,8 @@ Runs after Phase 1 and before the tier gate, in every mode, including `--no-gril
 
 Gate the seed: if the ticket text (or the operator's local-only paragraph) states no problem — under two sentences, or nothing a design decision could hang off — re-prompt once, then halt, and nothing is written. In ticket mode the re-prompt is `Ticket <ID> states no problem — describe it in a paragraph and I will proceed from that.`, and the brief header keeps the resolved ticket line while the paragraph becomes the seed. In local-only mode it repeats Phase 0 step 5c's request. An empty seed halts before the tier question. If the interview's primitive itself returns `empty-seed`, halt the same way — nothing is written. A success token for "nothing was ever known" would write a hollow brief that every downstream lens then treats as authority.
 
+Once the seed passes, hold the resolved ticket text (or the local-only paragraph) as `ticket_contract`. When this gate collected a paragraph, append it, labelled `Seed-gate paragraph:`. Phase 3 sends `ticket_contract` to its reviewer; it never looks the ticket up again.
+
 ## Tier gate
 
 Runs after the seed gate passes, in every mode, before the interview and before Confirm. Nothing in any mode writes a tier the operator did not choose. There is no `--tier` flag and no default that skips the question.
@@ -121,7 +123,7 @@ Tier: tweak
 No lifecycle — ship as a chore PR citing the ticket; the ticket's state and closing comment are yours to set, since no lifecycle stage will touch it.
 ```
 
-The tweak path creates no brief temp and deletes nothing. `small`, `big`, or `irreversible` continues to the interview, or under `--no-grill` to Confirm. The chosen tier is kept for Confirm and Phase 4.
+The tweak path creates no brief temp and deletes nothing. `small`, `big`, or `irreversible` resolves the reviewer (§ Doubt-pass reviewer, below), then continues to the interview, or under `--no-grill` to Phase 3 — Doubt pass. The chosen tier is kept for Phases 3 to 5.
 
 ### Tweak-floor heuristic
 
@@ -157,15 +159,165 @@ Worked examples, normative for that shape:
 3. Ticket "make the gate stricter" and grounding names no path. Recommendation `big`. `basis: files: unknown, lines: unknown, surfaces: unknown — never tweak`
 4. Ticket "drop table users in scripts/cleanup.sql". Grounding names that file and states 10 lines. The phrase "drop table" matches data. Recommendation `big`. `basis: 1 file (scripts/cleanup.sql), ~10 lines, surfaces: data — never tweak`
 
+### Doubt-pass reviewer
+
+Resolve this after a non-tweak tier is chosen and before the interview. Phase 3 dispatches a fresh-context reviewer from a different model family; this step finds out whether one exists.
+
+- **Candidates.** Any mechanism available in this session counts: native agent dispatch, an installed skill, or a command-line tool. A skill counts only when it names the mechanism it dispatches through.
+- **Family.** A candidate's family is what it states itself — in its instructions, its configuration, or its runtime output (such as a provider or model line). Its own provider or vendor statement counts as its family. Never infer a family from a tool's name. Compare like with like, trimmed and case-insensitive: its stated model family with your own, or its stated provider with your own. No comparable pair means the family is unknown.
+- **Eligible** only when all of these hold: a known family different from yours; a selectable model; fresh context; the narrowest read-restricted agent class or a read-only sandbox mode; a run identity (a provider or model line) it reports on every run, apart from its final response; and a final response you can read apart from progress output, without a file. Unknown or same family, unknown mode, or write-capable-only execution is ineligible.
+- **Selection.** Prefer the mechanism's configured default model, then its documented default, then its own declared ranking. If eligible choices still tie, ask the operator to pick one and hold that choice.
+- **Identity probe.** You may send one probe through the selected mechanism, in its read-only mode, carrying no draft or repository content, solely to read its identity. Its output is runtime evidence.
+- Hold the mechanism, model, and family evidence, and set `reviewer_eligible`. When nothing is eligible, print every candidate with its first failed check, to the console only.
+
+If the tier is `irreversible` and no reviewer is eligible, print `irreversible needs an eligible cross-model reviewer — not available on this host` and the candidate diagnostics, then halt here, before the interview. Nothing is written. No tier ever substitutes a same-family review.
+
 ## Phase 2 — Interview
 
 Skipped entirely under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: invoke it through the skill-invocation tool, or the equivalent in your host) with `seed` from Phase 1, brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — and `round_cap` / `question_cap` from the flags. The primitive waits for the operator each round; this skill does nothing until the Grill summary comes back.
 
 **If this host cannot invoke a nested skill**, halt: `grilling is unavailable in this host — re-run with --no-grill to write the brief from the ticket alone, or run the interview by hand.` Never write a silently ungrilled brief.
 
-## Phase 3 — Confirm
+## Phase 3 — Doubt pass
 
-Render a preview — the numbered `## Decisions carried forward` list (from the summary's Settled items) and the `## Risks / decisions` list (from its Open frontier, each ending "spec author pins this") — and show `Tier: <level>` and the basis line, then:
+Runs once the interview path ends, including under `--no-grill`: that flag skips only the interview. A fresh-context reviewer from a different model family challenges the draft before the operator confirms it. Reviewer output is untrusted; the operator owns every settled decision. This phase writes no file — no brief, no temp, no report.
+
+### Render and hold the candidate
+
+On the first entry to this phase, apply Phase 5's mapping rules and `## Scale` emission once to render the complete brief, every section except `## Doubt pass`. Under `--no-grill`, Decisions come only from decisions the ticket states explicitly (Phase 4's `--no-grill` rule). Hold that text in context as the **candidate**. From then on the candidate is the source of truth: reconciliation edits it in place, and displaying it, re-entering this phase, or writing it never re-derives it from the Grill summary or the ticket.
+
+### Gate
+
+The tier and `reviewer_eligible` decide; this phase never asks again whether the host can wait. Announce every skip as `Doubt pass: skipped — <reason>`.
+
+- `small` — skip with reason `tier small; operator did not request the pass` and go to Confirm, without waiting, whether or not a reviewer is eligible. Confirm offers option 5 when one is.
+- `big`, eligible — show the offer below and wait.
+- `big`, not eligible — skip with reason `no eligible cross-model reviewer`.
+- `irreversible` — run the pass; there is no skip.
+
+```text
+Doubt pass: a fresh-context reviewer from a different model family is available.
+1. Run the doubt pass
+2. Skip — reply `2: <reason>`
+3. Abort — nothing written
+```
+
+`2: <reason>` with a non-empty reason after trimming skips with reason `operator declined — <reason>`. A bare `2`, an empty reason, or any other reply re-prints the offer and keeps the interview, as many times as needed. Option 3 stops with nothing written.
+
+### Dispatch
+
+At most two cycles. Cycle 1 is the first dispatch. Cycle 2 runs only when cycle 1's reconciliation changed the candidate — a verified fold, an operator replace or reopen, or a premise moved into `## Risks / decisions`. Cycle 2 is the cap: reconcile it, but never dispatch a cycle 3, even if it changed the candidate again. A cycle whose findings were all rejected ends the pass.
+
+Each cycle is a fresh-context dispatch through the selected reviewer, in its read-restricted agent class or read-only sandbox mode. Send the prompt by stdin; use an argument only when the mechanism takes no stdin. Never a file. It contains only:
+
+- `draft_brief: |` followed by the candidate verbatim, minus any `## Doubt pass` block;
+- `ticket_contract: |` followed by the held ticket contract;
+- `project_root`, plus `wiki_root` and `project_slug` when Phase 0 resolved them (otherwise state that no wiki is available);
+- `cycle_number` (`1` or `2`) and `finding_cap: 7` — fixed, whatever `--questions` says;
+- the report shape below;
+- instructions: challenge false premises, stale or unsupported anchors, acceptance-criterion gaps, and internal contradictions; check evidence only in the paths the draft or the contract cite, and answer `evidence needed` for gaps; name a conflict with a settled decision rather than resolve it; treat narrowing recorded in Origin or a settled Out of scope as a decision, not a defect; return at most 7 findings; make no mutations of any kind, report files included; change no settled decision.
+
+Never send the conversation, the Grill summary, your reasoning, a prior report, or a claim that the draft is correct. Use the longest call timeout the host offers, or a background dispatch you can wait on — never a shorter default. If neither gives a bound, say that no timeout guarantee exists.
+
+Suggested report shape:
+
+```markdown
+# Doubt review — cycle <n>
+
+## Findings
+
+### F-1: <title>
+**Target:** <draft section/item>
+**Challenge:** <one falsifiable concern>
+**Evidence:** <ticket quote, path:line, or evidence needed>
+**Suggested change:** <concrete draft edit or operator question>
+**Decision touched:** <decision number/title | none>
+
+## Summary
+Findings: 1
+
+STATUS: DOUBT FINDINGS=1
+```
+
+**Read the result** in this order:
+
+1. A host error or timeout is a dispatch failure.
+2. Read the run's identity from the mechanism's provider or model line, not from the final response, and check it against the evidence held at the tier gate. Missing or mismatched identity is a dispatch failure.
+3. Read only the final response message, apart from progress or transport output. Strip one fence that wraps the whole response. The report fails only when it is empty, or has neither a readable finding block nor an explicit clean statement (such as `STATUS: READY`). Missing fields, duplicate ids, or wrong counts or status do not fail readable findings: classify them yourself and give them unambiguous ids.
+4. Keep the first 7 finding blocks in response order. Cut the rest without reconciling them, count them as rejected, and print how many were cut.
+
+### Reconcile
+
+Classify every kept finding before editing anything. You own the classification; the reviewer's labels are advisory.
+
+**Settled targets first.** A finding that would change any of these goes to the operator batch, whatever else it is — a true fact, a contract objection, or an unverifiable premise:
+
+- a numbered `## Decisions carried forward` item or its rationale;
+- an `## Out of scope` fence the operator set;
+- an explicit ticket decision used under `--no-grill`;
+- an acceptance statement transcribed into `## Done when`.
+
+Verify its factual claims first and show the result in the batch. Never fold or move it on your own. Model-inferred prose and existing `## Risks / decisions` items are not settled.
+
+**Then, in order:**
+
+1. **Contract misread** — asks for something outside the ticket or brief contract, or misreads the draft. Reject with one line of evidence. Narrowing recorded in Origin or a settled Out of scope is not a missing requirement; a challenge to it is a settled target.
+2. **Fact or anchor** — a fact, count, path, anchor, current-behavior statement, or claimed omission. Open the live source and check it; reviewer prose is a lookup hint, never evidence. True: fold it, citing `path:line`. Disproved: reject. Cannot be established: add a `## Risks / decisions` item ending "spec author pins this".
+3. **Trade-off** — operator batch; never fold.
+4. **Noise or duplicate** — reject with the duplicate id or a one-line reason.
+
+A Tier finding is advisory evidence shown at Confirm; only Confirm's option 4 changes the tier. A Scale finding becomes a `## Risks / decisions` item ending "spec author pins this", or is resolved through Phase 5's four `## Scale` cases. Neither takes a free-text replacement in the batch.
+
+Folds may edit Problem, Why it matters, Scope, Done when, Risks / decisions, and References, including their metadata and factual anchors — never a settled target, even inside those sections. Record the source for every correction.
+
+Work in this order: classify all; verify every actionable fact; compose findings that target the same text into one intended result; edit; run the operator batch; update `## Risks / decisions`; then re-read every changed section and every section that consumes a changed decision, so the next cycle and Confirm get one consistent candidate.
+
+**Operator batch.** Before Confirm, show at most 7 settled-target findings per cycle, numbered `F-<n>`. For each, show the settled text, the challenge, and the verification result, including unavailable or disproved evidence. Every tier waits here. Accepted replies, one per line:
+
+- `F-<n>: keep` — the text stands;
+- `F-<n>: replace: <non-empty text>` — the text may continue on indented lines; update every consumer;
+- `F-<n>: reopen` — remove the decision and add it to `## Risks / decisions` ending "spec author pins this".
+
+A comma-separated id group (`F-1, F-3: keep`) answers overlapping challenges together; overlapping answers must compose to one intended result. Re-print missing, invalid, or conflicting items with the specific reason, keeping the valid answers and the interview. An unknown id is invalid, and so is `abort` mixed with item answers. `abort` as the only non-blank line stops with nothing written. Never infer an answer. Hold each resolution with its Q number when its decision came from a Grill Q.
+
+### Outcome
+
+`Result` is `completed at cap` when cycle 2's reconciliation changed the candidate, or when cycle 2 failed after cycle 1 changed it (Skip or Accept cycle 1); otherwise `completed`. `Cycles` is the number of reconciled cycles. Count findings per distinct root (same target, same concern) across both cycles; a root's last disposition wins:
+
+- **folded** — verified fact or anchor edits you made;
+- **operator resolved** — keep, replace, and reopen;
+- **rejected** — disproved, contract misread, noise, or cut at the cap of 7;
+- **open** — `## Risks / decisions` items the pass left unresolved, reopens included.
+
+A reopen counts as resolved and as one new open item.
+
+### Dispatch failure
+
+Print `Doubt pass dispatch failed: cycle <n>; class <reason>; last line: <last non-blank final-response line | none>`; a timeout reason includes the bound used. Then offer only the choices that apply:
+
+```text
+1. Retry once
+2. Skip
+3. Abort — nothing written
+4. Accept cycle 1 (completed at cap)
+```
+
+- **Retry** — only when this cycle's retry is unused. One per cycle; it re-sends the same candidate and is not a new cycle.
+- **Skip** — `small` and `big` only. Before any cycle reconciled, skip with reason `reviewer dispatch failed — <short reason>`. After cycle 1 reconciled, keep its edits and record `completed at cap`, `Cycles: 1`.
+- **Accept cycle 1** — `irreversible` only, after cycle 2's retry is spent, when cycle 1 reconciled and changed the candidate. Records the same as Skip after cycle 1.
+- **Abort** — always offered; stops with nothing written.
+
+`irreversible` never skips: once a retry is spent without the Accept precondition, only Abort remains. Invalid replies re-print the available choices and keep the interview. Never substitute a same-family review.
+
+## Phase 4 — Confirm
+
+Show the full candidate exactly as Phase 5 will write it, with its `## Doubt pass` block in place, then `Tier: <level>`, the basis line, any Tier finding from the pass as advisory evidence, and:
+
+```text
+Doubt pass: <completed in N cycle(s) | completed at cap (N cycle(s)) | skipped — <reason>>
+```
+
+At cap, also print `Final reconciliation edits were not re-reviewed`. When cycle 2 failed, also print `Cycle 2 failed; only cycle 1 completed`. Then:
 
 ```
 Write the brief?
@@ -173,19 +325,31 @@ Write the brief?
 2. Revise an answer (name the Q number) — that decision and everything settled downstream of it return to the frontier; if the cap was hit, one extra round is granted, once
 3. Abort — nothing written
 4. Change the tier — ask the tier gate again
+5. Run the doubt pass
 ```
 
 Wait for the user's response.
 
-Option 4 shows the same tier prompt. A reply of `1`, `2`, `3`, or `4` after trimming sets the tier. A non-tweak choice returns to the preview with the new tier. A `tweak` choice takes the tier gate's tweak exit before Phase 4. On option 4's re-ask, a reply other than `1`–`4` re-prints the tier prompt and does not discard the interview. The first tier-gate ask, before any interview, still stops and writes nothing on any other reply.
+Option 5 appears only when the tier is `small`, a reviewer is eligible, and the pass has not yet run on this candidate. It runs Phase 3 without the `big` offer and returns here; it stays hidden until the candidate changes.
 
-Option 2 re-invokes `grilling` with the Grill summary as `prior_summary` and the same `round_cap` / `question_cap`. The primitive itself owns the resume arithmetic and grants the single post-cap round, exiting `revised-after-cap (+1 round)`; this skill offers option 2 at most once after a cap hit, and once a post-cap resume has returned the block re-renders with options 1, 3, and 4. Option 2 stays omitted there. A revision (option 2) does not clear the tier.
+Option 4 shows the same tier prompt. A reply of `1`, `2`, `3`, or `4` after trimming sets the tier. A non-tweak choice returns to the preview with the new tier. A `tweak` choice takes the tier gate's tweak exit before Phase 5. On option 4's re-ask, a reply other than `1`–`4` re-prints the tier prompt and does not discard the interview. The first tier-gate ask, before any interview, still stops and writes nothing on any other reply. Choosing `irreversible` with no eligible reviewer prints the tier gate's `irreversible needs an eligible cross-model reviewer` message and re-shows the tier prompt, keeping the interview, the candidate, and the previous tier. A non-tweak change updates the candidate's `## Tier` and the basis line. A completed result, including at cap, stands under the new tier. A skipped result runs Phase 3's gate again under the new tier; under `irreversible` that runs the pass, and a failure there cannot skip.
 
-Under `--no-grill`, option 2 reads `2. Add a decision (state it) — appended to Decisions carried forward`, and the preview's Decisions list is derived **only** from decisions the ticket text states explicitly, each carrying its quote or `path:line`. Anything the model would have to infer goes to `## Risks / decisions` ending "spec author pins this". The altitude fence applies to that derivation exactly as it applies to the interview.
+Option 2 re-invokes `grilling` with the Grill summary as `prior_summary` and the same `round_cap` / `question_cap`. The primitive itself owns the resume arithmetic and grants the single post-cap round, exiting `revised-after-cap (+1 round)`; this skill offers option 2 at most once after a cap hit, and once a post-cap resume has returned the block re-renders with options 1, 3, and 4, plus 5 under its rule. Option 2 stays omitted there. A revision (option 2) does not clear the tier.
 
-## Phase 4 — Write
+Before resuming, carry the operator's batch resolutions:
 
-Write `docs/specs/TODO/<TICKET-ID>.brief.md` with exactly these sections, in this order and with these headers (`/spec-cycle`'s Phase 3 parser keys on three of them):
+- Amend Q-linked items in `prior_summary`: keep leaves the current text and rationale, replace substitutes the new text, and reopen removes the item from Settled and lists it once in Open frontier as `(Q<n>) … unresolved because: deferred`. Invent no Q numbers and reset no counters.
+- Q-less resolutions stay in the candidate only. Pass `seed` again with kept Q-less resolutions in its problem statement, labelled as operator-settled constraints the interview must not re-decide. They are not grounding facts: an empirical claim inside one keeps its verification status.
+
+After the resume returns, compare every returned decision with the kept resolutions; any conflict goes through Phase 3's operator batch with temporary `F-<n>` ids (not a reviewer cycle) before Phase 3 runs again, under every tier. Update the affected candidate sections and their consumers, keeping unrelated folds, resolutions, and anchors. Refresh the `Interview:` References bullet from the returned header, and map newly established facts into References and Scope.
+
+Under `--no-grill`, option 2 reads `2. Add a decision (state it) — appended to Decisions carried forward`, and the candidate's Decisions list is derived **only** from decisions the ticket text states explicitly, each carrying its quote or `path:line`. Anything the model would have to infer goes to `## Risks / decisions` ending "spec author pins this". The altitude fence applies to that derivation exactly as it applies to the interview. An added decision is appended to the candidate, keeping its corrections.
+
+Any content change here — a revision or an added decision — voids the doubt-pass result. Drop only the outdated `## Doubt pass` block and re-enter Phase 3 at cycle 1 under the current tier. Reviewer output is never reused.
+
+## Phase 5 — Write
+
+Write `docs/specs/TODO/<TICKET-ID>.brief.md`: the exact candidate the operator confirmed in Phase 4, with its one `## Doubt pass` block. Never re-apply the mapping rules here and never add a second block. The brief has exactly these sections, in this order and with these headers (`/spec-cycle`'s Phase 3 parser keys on three of them):
 
 ```
 # <TICKET-ID> — <title>
@@ -201,6 +365,7 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md` with exactly these sections, in thi
 ## Out of scope
 ## Tier
 ## Scale            (conditional — see the emission rule below)
+## Doubt pass
 ## Risks / decisions
 ## References
 ```
@@ -213,15 +378,36 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md` with exactly these sections, in thi
 **Level:** small
 ```
 
-with the chosen level in place of `small`. Emit no second `**Level:**` line and no sibling line. The rest of Phase 4, including Scale's four cases, is unchanged.
+with the chosen level in place of `small`. Emit no second `**Level:**` line and no sibling line. The rest of Phase 5, including Scale's four cases, is unchanged.
+
+**`## Doubt pass` emission.** Every written brief carries exactly one `## Doubt pass` section, after `## Scale` (or straight after `## Tier` when Scale is absent) and before `## Risks / decisions`. A completed pass:
+
+```markdown
+## Doubt pass
+
+**Result:** completed | completed at cap
+**Cycles:** 1 | 2
+**Outcome:** folded <n> fact/anchor findings; operator resolved <n> decision findings; rejected <n>; open <n>
+```
+
+A skipped pass:
+
+```markdown
+## Doubt pass
+
+**Result:** skipped
+**Reason:** <normalized reason>
+```
+
+The reason is one of `tier small; operator did not request the pass`, `operator declined — <reason>`, `no eligible cross-model reviewer`, or `reviewer dispatch failed — <short reason>`. Counts follow Phase 3 § Outcome. The section names no vendor, model, or tool and quotes no reviewer prose. It is audit metadata; nothing downstream gates on it.
 
 **Atomic write.** Write the full content to a dot-prefixed temporary sibling, `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp`, and rename it over the target in one step, so an interrupted write never leaves a truncated brief; remove the temp on any failure. The leading dot keeps it outside `/spec-close`'s `<TICKET-ID>.<rest>` companion glob. This repo's `.gitignore` does not ignore `.*.tmp`, so "a stray dot-file from a killed run must not be committed" is a prose rule, not a mechanism — Phase 0 step 2 removes such a file on the next run whether or not any other artifact exists. Create `docs/specs/TODO/` first if it does not exist. That directory creation, this rename, and Phase 0 step 2's removal of a stale temp are this skill's only filesystem mutations outside the brief itself.
 
 Two `/spec-brief` runs on the same ticket in one worktree are outside the supported flow: the collision check is not a lock, the brief is last-writer-wins, and the stale-temp removal cannot distinguish an abandoned temp from a concurrent run's in-flight one.
 
-**Mapping rules.**
+**Mapping rules.** Phase 3 applies these once, to render the candidate.
 
-- `## Problem`, `## Why it matters`, and `## Done when` are transcribed from the ticket text (or, in local-only mode, the operator's paragraph) — never inferred.
+- `## Problem`, `## Why it matters`, and `## Done when` are transcribed from the ticket text (or, in local-only mode, the operator's paragraph) — never inferred. After that, only a live-verified Phase 3 fold outside a settled target or an explicit operator replacement changes them; this phase keeps those changes and never restores the ticket wording.
 - In local-only mode the header fields read `**Status:** local-only · **Priority:** unset · **Assignee:** unassigned`.
 - A Settled decision the operator framed as a fence (an answer of the form "X is not in scope") is written to `## Out of scope`, not to `## Decisions carried forward`.
 - The remaining Settled items → `## Decisions carried forward`, numbered, each carrying the chosen branch and its one-line why. If Settled is empty, write `_(none settled — see Risks / decisions)_` under the header rather than leaving it blank, and print `warning: interview settled no decisions — the brief pins everything to the spec author`.
@@ -251,14 +437,17 @@ Ticket: <memory | tracker | local-only>
 /spec-cycle docs/specs/TODO/<TICKET-ID>.brief.md
 ```
 
+Count `<s>` and `<o>` from the written brief's settled decisions and open `## Risks / decisions` items, not from the Grill summary.
+
 ## What /spec-brief never does
 
-Creates or transitions a ticket; writes anything other than the one brief file (and its transient `.tmp`, and `docs/specs/TODO/` when absent); deletes anything other than a stale `.<TICKET-ID>.brief.md.tmp` of its own shape; commits; fast-forwards or otherwise mutates the tree; invokes `/spec-cycle`.
+Creates or transitions a ticket; writes anything other than the one brief file (and its transient `.tmp`, and `docs/specs/TODO/` when absent); writes a doubt-review report, or any brief or temp before the operator confirms; deletes anything other than a stale `.<TICKET-ID>.brief.md.tmp` of its own shape; commits; fast-forwards or otherwise mutates the tree; invokes `/spec-cycle`; substitutes a same-family review for the doubt pass; lets a reviewer finding change a settled decision without the operator.
 
 ## Tool-use notes
 
 - Read, Grep, and Bash (`git remote`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse`, `git rev-list`, `git status`, `git log` — all read-only or ref-only, plus `mkdir` for `docs/specs/TODO/` when absent, the rename of the brief's dot-prefixed temp onto its target, and the removal of a stale temp, which are this skill's only filesystem mutations outside the brief) for preflight and grounding.
 - Agent for the read-restricted exploration dispatched in Phase 1.
+- The Phase 3 doubt reviewer: a fresh-context, read-only dispatch to a different model family — a native agent (`subagents`), or a command-line tool or an installed skill's shell bridge (`shell`) — chosen at the tier gate. The prompt goes by stdin (an argument only when the mechanism takes no stdin); the report is the final response, never a file.
 - Skill for `grilling`.
 - Write for the single brief file.
 - The shared-memory search capability and the issue tracker's read capability, both optional.
@@ -275,3 +464,11 @@ Creates or transitions a ticket; writes anything other than the one brief file (
 - **Exploration dispatch fails** → a fact request in round 1, or a `## Risks / decisions` item under `--no-grill`. A dispatch that never returns blocks its batch; the batch cap and the prompt's own bound are the mitigations.
 - **Operator abandons mid-interview** → nothing is written; re-run to start over. No resume state is kept, by design.
 - **`--no-grill` with cap flags** → warn, ignore the caps, continue.
+- **No eligible different-family reviewer** → `small` and `big` skip and record it; `irreversible` halts after the tier gate, before the interview. Candidate diagnostics go to the console only.
+- **Doubt dispatch fails** — an empty or unreadable report, a host error or timeout, or missing or mismatched run identity → print the failure line and offer Phase 3's failure choices.
+- **Doubt dispatch never returns** → it blocks the run. Use the longest timeout the host offers or a background dispatch you can wait on, and print the bound when it times out.
+- **Operator abandons the contradiction batch** (`abort`) → nothing is written.
+- **Cycle 2 fails** under `small` or `big` → Retry or Skip; Skip keeps cycle 1's edits as `completed at cap`, `Cycles: 1`.
+- **Invalid `big` skip reason** (bare `2` or empty) → re-print the offer; the interview is kept.
+- **`irreversible` dispatch fails** → never skip: one retry per cycle, then Accept cycle 1 only when Phase 3's precondition holds, otherwise Abort with nothing written.
+- **Invalid reply to any post-interview prompt** → re-print that prompt and keep the interview; only an explicit abort ends it.
