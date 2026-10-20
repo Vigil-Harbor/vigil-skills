@@ -1,5 +1,5 @@
 {
-  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-07-27. Each project's `state_groups` mirrors `states` key-for-key, carrying Plane's `group` field verbatim (backlog | unstarted | started | completed | cancelled) — this is the gate signal /spec-close reads; `states` stays name->UUID because ship-spec and spec-cycle depend on that shape. Review states ('In Review' / 'PR Review') were moved from group `completed` to `started` in Plane on 2026-07-27 across all 11 affected projects and re-swept here — see vigil-harbor-wiki decisions/2026-07-27-cross-review-states-belong-in-started.md. Talaria (TAL) has NO Plane project: TAL-* spec IDs are repo-local only, so /spec-close can never full-close them and they are always partial. Deliberately absent: DEM (Demerzel) and MED (Media) run the default 5-state workflow and do no spec-cycle work.",
+  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-07-27; N2O (INFUZD) added 2026-10-20 from a live state list. Each project's `state_groups` mirrors `states` key-for-key, carrying Plane's `group` field verbatim (backlog | unstarted | started | completed | cancelled) — this is the gate signal /spec-close reads; `states` stays name->UUID because ship-spec and spec-cycle depend on that shape. Review states ('In Review' / 'PR Review') were moved from group `completed` to `started` in Plane on 2026-07-27 across all 11 affected projects and re-swept here — see vigil-harbor-wiki decisions/2026-07-27-cross-review-states-belong-in-started.md. Talaria (TAL) has NO Plane project: TAL-* spec IDs are repo-local only, so /spec-close can never full-close them and they are always partial. Deliberately absent: DEM (Demerzel) and MED (Media) run the default 5-state workflow and do no spec-cycle work.",
   "MCP": {
     "project_id": "98788c4e-f30f-466d-9562-19e28aa4e53e",
     "namespace": "mcp",
@@ -362,6 +362,33 @@
       "Backlog": "backlog",
       "Todo": "unstarted",
       "In Progress": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
+  },
+  "N2O": {
+    "project_id": "1e05dab1-78a3-4cbb-88f0-238083604b14",
+    "namespace": "plane",
+    "review_state_id": "6c555cfe-1124-4897-bb14-c18b58e6d706",
+    "states": {
+      "Backlog": "08981505-4e15-4e15-85d8-592a96e34552",
+      "Todo": "b8dbee20-beaf-40f8-a271-b3215b7252ff",
+      "Ready to Ship": "d1e77bfc-5340-475a-9282-a8a150c2fe98",
+      "In Progress": "700a9313-38f8-4f84-b86b-c4df065513b5",
+      "Spec Authoring": "8066234f-fdf8-46f1-8ea6-49c197ae8379",
+      "Spec Review": "79d2d88c-4910-49ce-b254-d1849ef72eb4",
+      "PR Review": "6c555cfe-1124-4897-bb14-c18b58e6d706",
+      "Done": "bed4b6ca-9abb-494d-b48c-da68071fe9de",
+      "Cancelled": "32719a1e-1457-475f-aa3e-d363691fa249"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
       "Done": "completed",
       "Cancelled": "cancelled"
     }
