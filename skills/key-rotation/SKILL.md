@@ -389,7 +389,7 @@ The script prints paths, not lines. Do not open the files the script names. Keep
 
 ### Same-or-different comparison, optional (item 8)
 
-This step waits on permission B. After that permission, one `--hash-names` call per value file compares the hex strings. The value files are the paths `--match-names` printed, or a file the operator names. The record stores fingerprints only. `--hash-name` is a single-name spot check. A missing name or an empty value is `hash: absent`.
+This step waits on permission B. After that permission, one `--hash-names` call per value file compares the hex strings. The value files are the paths `--match-names` printed, or a file the operator names. When the sweep did not run (permission A refused, or helpers not yet used in this run), there is no names file: write one now, the same shape as the sweep's, from the confirmed names in the record, one per line and with no values, and delete it after the last hash call. The record stores fingerprints only. `--hash-name` is a single-name spot check. A missing name or an empty value is `hash: absent`.
 
 ```text
 scripts/prepare_record.py --project-root <dir> --hash-names --names-file <project-relative> --file <project-relative>
