@@ -39,6 +39,19 @@ A section that is empty, or has more than one non-blank line, is ignored with a 
 
 If no review command is declared anywhere, the gate is skipped: `/ship-spec` prints a one-line note, puts `Review gate: skipped — no review command declared` in the PR body, and commits as before. A declared command that is not available on the host, or that fails, is also skipped and never blocks the commit.
 
+### Key rotation (optional)
+
+`/key-rotation` reads an optional project section for the provider roster, shared-account notes, the notify list, and the record path. The same block may live in `AGENTS.md`. The skill uses project-instructions text the harness already supplied. When the harness supplied none, it reads `CLAUDE.md` and then `AGENTS.md` at the project root, each only when the file can be read, and uses the first `## Key rotation` section. A missing or unreadable file is an absent section: the skill asks and does not stop. A missing section or a missing key is asked the same way. The skill matches the heading `## Key rotation` and no other.
+
+````markdown
+## Key rotation
+
+Providers: source host, build service
+Shared accounts: one credential covers two roles; name the roles
+Notify: the operator's on-call channel
+Record path: .key-rotation/record-YYYY-MM-DD.md
+````
+
 ### Project guardrails
 
 If your project has load-bearing rules — async handling, error patterns, ordering constraints — list them here. The reviewers and `/ship-spec` will respect them. Example:

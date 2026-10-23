@@ -13,6 +13,7 @@ Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → s
 - **`/spec-close <spec-path> [--report-only | --partial]`** *(new)* — After the PR merges, close the spec in one pass: reconcile it against shipped code, propose wiki entries, archive artifacts from `TODO/` to `DONE/<TICKET-ID>/`, and prepend the wiki's `log.md` entry. Plane state gates full vs. partial close.
 - **`/grill-me <topic>`** *(new)* — Ad-hoc bounded interview on a plan, decision, or idea. Same design-tree interview `/spec-brief` runs, with no lifecycle artifact — the summary is the deliverable.
 - **`/review-pr [<num>]`** — Process one round of CodeRabbit review findings on a GitHub PR. Triages by severity, fixes real issues, pushes, resolves threads, and verifies the resolve actually took.
+- **`/key-rotation`** — Guide a credential-exposure response. The operator performs every provider action. The skill keeps a gitignored record of names and dispositions and never prints or stores a secret value.
 
 `grilling` is the model-invocable interview primitive behind `/grill-me`, `/spec-brief`, and `/spec-cycle`'s post-round-4 option 4 — not a slash command.
 
