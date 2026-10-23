@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Record lifecycle tests for skills/key-rotation/scripts/prepare_record.py.
+"""Record lifecycle and read-only name, match, and hash tests.
 
 Stdlib unittest. Builds a temporary git repository the way the session-handoff
 tests do, and runs the script as a subprocess of sys.executable the way the
-spec-close tests do. Rows 9, 12, and 16 belong to later tickets.
+spec-close tests do.
 """
 
+import hashlib
+import importlib.util
 import os
 import shutil
 import stat
@@ -108,6 +110,48 @@ def snapshot(root):
             rel = os.path.relpath(os.path.join(dirpath, name), str(root))
             found.append(Path(rel).as_posix())
     return sorted(found)
+
+
+B64_64 = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+
+def write_rel(root, rel, data):
+    path = root.joinpath(*rel.split("/"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def assert_secrets(case, out, err, *secrets):
+    for secret in secrets:
+        case.assertNotIn(secret, out)
+        case.assertNotIn(secret, err)
+
+
+def armor_span(body_lines, tail):
+    """Hashed armor bytes: header through END, no final line ending."""
+    lines = ["-----BEGIN TEST-----"] + list(body_lines) + [tail, "-----END TEST-----"]
+    return "\n".join(lines).encode("ascii")
+
+
+def armor_file(body_lines, tail, ending=b"\n", final=True):
+    text_lines = ["-----BEGIN TEST-----"] + list(body_lines) + [tail, "-----END TEST-----"]
+    raw = [line.encode("ascii") for line in text_lines]
+    body = ending.join(raw)
+    if final:
+        body += ending
+    return body
+
+
+def load_script():
+    spec = importlib.util.spec_from_file_location("prepare_record_vhs78", str(SCRIPT))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class TestKeyRotationRecord(unittest.TestCase):
@@ -603,6 +647,772 @@ class TestKeyRotationRecord(unittest.TestCase):
         self.assertEqual(snapshot(root), before)
         self.assertFalse((root / ".gitignore").exists())
         self.assertTrue(target.is_dir())
+
+    def test_09_quoted_sentinel_and_config_txt(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b'NAME="VALUE-SENTINEL"\n')
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        assert_secrets(self, out, err, "VALUE-SENTINEL")
+
+        root = self.make_repo()
+        write_rel(root, "config.txt", b'NAME="VALUE-SENTINEL"\n')
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        assert_secrets(self, out, err, "VALUE-SENTINEL")
+
+        code, out, err = run(root, ["--list-names", "--file", "config.txt"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        assert_secrets(self, out, err, "VALUE-SENTINEL")
+
+    def test_09_app_env_unexplained(self):
+        root = self.make_repo()
+        write_rel(root, "app.env", b"NAME=1\nKEY = 2\n  # note\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        self.assertEqual(err, "prepare_record: unsupported syntax app.env:2\n")
+        self.assertNotIn("KEY", out)
+        self.assertNotIn("note", err)
+
+    def test_09_secret_key_not_read(self):
+        root = self.make_repo()
+        first = b"A" * 43 + b"="
+        second = b"B" * 43 + b"=="
+        write_rel(root, "secret.key", first + b"\n")
+        write_rel(root, "another.key", second + b"\n")
+        write_rel(root, "keep.env", b"KEEPNAME=1\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEEPNAME\n")
+        self.assertNotIn("secret.key", err)
+        self.assertNotIn("another.key", err)
+        self.assertNotIn("AAAA", out)
+        self.assertNotIn("BBBB", out)
+
+    def test_09_node_modules_skipped(self):
+        root = self.make_repo()
+        write_rel(root, "node_modules/pkg/.env", b"NAME=1\n")
+        write_rel(root, "keep.env", b"KEEPNAME=1\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEEPNAME\n")
+
+    def test_09_hash_quoted_endings(self):
+        expect = sha256(b'"VALUE-SENTINEL"')
+        fixtures = {
+            "lf": b'NAME="VALUE-SENTINEL"\n',
+            "crlf": b'NAME="VALUE-SENTINEL"\r\n',
+            "no_final_newline": b'NAME="VALUE-SENTINEL"',
+        }
+        for label, data in fixtures.items():
+            with self.subTest(fixture=label):
+                root = self.make_repo()
+                write_rel(root, ".env", data)
+                code, out, err = run(root, ["--hash-name", "NAME", "--file", ".env"])
+                self.assertEqual(code, 0, err)
+                self.assertEqual(out, "NAME {}\n".format(expect))
+                assert_secrets(self, out, err, "VALUE-SENTINEL")
+
+    def test_09_hash_absent_empty(self):
+        for label, data in (("lf", b"NAME=\n"), ("crlf", b"NAME=\r\n")):
+            with self.subTest(fixture=label):
+                root = self.make_repo()
+                write_rel(root, ".env", data)
+                code, out, err = run(root, ["--hash-name", "NAME", "--file", ".env"])
+                self.assertEqual(code, 0, err)
+                self.assertEqual(out, "NAME hash: absent\n")
+
+    def test_09_export_and_withheld_other(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b'export NAME="VALUE"\nOTHER=\n')
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        self.assertEqual(err, "prepare_record: withheld line .env:2\n")
+        self.assertNotIn("OTHER", out)
+        self.assertNotIn("VALUE", out)
+        self.assertNotIn("VALUE", err)
+
+        code, out, err = run(root, ["--hash-name", "NAME", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME {}\n".format(sha256(b'"VALUE"')))
+        assert_secrets(self, out, err, "VALUE")
+
+        code, out, err = run(root, ["--hash-name", "OTHER", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "OTHER hash: absent\n")
+
+    def test_09_base64_value_then_empty_name(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"KEY=" + B64_64 + b"\nXYZ=\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY\n")
+        self.assertEqual(err, "prepare_record: withheld line .env:2\n")
+        self.assertNotIn("XYZ", out)
+        self.assertNotIn("XYZ", err)
+        assert_secrets(self, out, err, B64_64.decode("ascii"))
+
+    def test_09_raw_base32_31(self):
+        root = self.make_repo()
+        name = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ23456"
+        self.assertEqual(len(name), 31)
+        write_rel(root, ".env", name + b"=\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn(name.decode("ascii"), out)
+        self.assertNotIn(name.decode("ascii"), err)
+
+    def test_09_last_assignment_wins(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"NAME=first\nNAME=second\n")
+        code, out, err = run(root, ["--hash-name", "NAME", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME {}\n".format(sha256(b"second")))
+        self.assertEqual(err, "prepare_record: duplicate assignment NAME .env\n")
+        assert_secrets(self, out, err, "first", "second")
+
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        self.assertEqual(err, "prepare_record: duplicate assignment .env:2\n")
+        self.assertNotIn("NAME", err)
+
+    def test_09_mixed_case(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"mixedCase=1\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn("mixedCase", out)
+        self.assertNotIn("mixedCase", err)
+
+    def test_09_mixed_case_43(self):
+        root = self.make_repo()
+        name = b"Aa" + (b"b" * 41)
+        self.assertEqual(len(name), 43)
+        write_rel(root, ".env", name + b"=\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn(name.decode("ascii"), out)
+        self.assertNotIn(name.decode("ascii"), err)
+
+    def test_09_unquoted_armor(self):
+        expect = sha256(armor_span(["line-one", "line-two"], "AB=="))
+        other = sha256(armor_span(["line-one", "line-zzz"], "AB=="))
+        self.assertNotEqual(expect, other)
+
+        root = self.make_repo()
+        write_rel(root, ".env", b"KEY=" + armor_file(["line-one", "line-two"], "AB=="))
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY\n")
+        self.assertEqual(err, "")
+        assert_secrets(self, out, err, "line-one", "line-two", "AB==")
+
+        variants = {
+            "lf": b"KEY=" + armor_file(["line-one", "line-two"], "AB==", b"\n", True),
+            "crlf": b"KEY=" + armor_file(["line-one", "line-two"], "AB==", b"\r\n", True),
+            "no_final_newline": b"KEY=" + armor_file(
+                ["line-one", "line-two"], "AB==", b"\n", False),
+        }
+        for label, data in variants.items():
+            with self.subTest(fixture=label):
+                root = self.make_repo()
+                write_rel(root, ".env", data)
+                code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+                self.assertEqual(code, 0, err)
+                self.assertEqual(out, "KEY {}\n".format(expect))
+                assert_secrets(self, out, err, "line-one", "line-two", "AB==")
+
+        root = self.make_repo()
+        write_rel(root, ".env", b"KEY=" + armor_file(["line-one", "line-zzz"], "AB=="))
+        code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY {}\n".format(other))
+        self.assertNotEqual(out, "KEY {}\n".format(expect))
+
+    def test_09_private_key_then_armor(self):
+        expect = sha256(armor_span(["line-one", "line-two"], "QK=="))
+        root = self.make_repo()
+        block = armor_file(["line-one", "line-two"], "QK==")
+        write_rel(root, ".env", b"PRIVATE_KEY=\n" + block)
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        assert_secrets(self, out, err, "QK==", "line-one", "PRIVATE_KEY")
+
+        code, out, err = run(root, ["--hash-name", "PRIVATE_KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "PRIVATE_KEY {}\n".format(expect))
+        self.assertNotIn("hash: absent", out)
+        assert_secrets(self, out, err, "QK==", "line-one")
+
+    def test_09_key_base64_xyz_cert(self):
+        root = self.make_repo()
+        data = (
+            b"KEY=" + B64_64 + b"\nXYZ=\nCERT="
+            + armor_file(["line-one"], "AB==")
+        )
+        write_rel(root, ".env", data)
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY\nCERT\n")
+        self.assertEqual(err, "prepare_record: withheld line .env:2\n")
+        self.assertNotIn("XYZ", out)
+        self.assertNotIn("XYZ", err)
+        assert_secrets(self, out, err, B64_64.decode("ascii"), "line-one", "AB==")
+
+    def test_09_abcd_then_bare_header(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"ABCD==\n" + armor_file(["line-one"], "AB=="))
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn("unsupported", err)
+        self.assertNotIn("ABCD", err)
+        assert_secrets(self, out, err, "line-one", "AB==")
+
+    def test_09_xyz_space_withheld(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"NAME=1\nXYZ= \n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        self.assertEqual(err, "prepare_record: withheld line .env:2\n")
+        self.assertNotIn("XYZ", out)
+        self.assertNotIn("XYZ", err)
+
+    def test_09_blank_line_breaks_armor(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"NAME=\n\n" + armor_file(["line-one"], "AB=="))
+        code, out, err = run(root, ["--hash-name", "NAME", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME hash: absent\n")
+        assert_secrets(self, out, err, "line-one", "AB==")
+
+    def test_09_same_name_two_env_files(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"NAME=1\n")
+        write_rel(root, ".env.example", b"NAME=2\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+        self.assertNotIn("duplicate assignment", err)
+
+    def test_09_armor_space_before_header(self):
+        expect = sha256(armor_span(["line-one", "line-two"], "AB=="))
+        root = self.make_repo()
+        write_rel(root, ".env", b"KEY= " + armor_file(["line-one", "line-two"], "AB=="))
+        code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY {}\n".format(expect))
+        assert_secrets(self, out, err, "line-one", "AB==")
+
+    def test_09_private_key_space_then_armor(self):
+        expect = sha256(armor_span(["line-one", "line-two"], "QK=="))
+        root = self.make_repo()
+        block = armor_file(["line-one", "line-two"], "QK==")
+        write_rel(root, "nospace.env", b"PRIVATE_KEY=\n" + block)
+        write_rel(root, "space.env", b"PRIVATE_KEY= \n" + block)
+        code, out, err = run(root, ["--hash-name", "PRIVATE_KEY", "--file", "space.env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "PRIVATE_KEY {}\n".format(expect))
+        code, out2, err2 = run(root, ["--hash-name", "PRIVATE_KEY", "--file", "nospace.env"])
+        self.assertEqual(code, 0, err2)
+        self.assertEqual(out2, out)
+        assert_secrets(self, out, err, "QK==", "line-one")
+
+    @unittest.skipIf(_skip_unreadable(), "unreadable files are POSIX-only")
+    def test_09_unreadable_env(self):
+        root = self.make_repo()
+        env = write_rel(root, ".env", b"NAME=1\n")
+        write_rel(root, "node_modules/names.txt", b"NAME\n")
+        os.chmod(str(env), 0)
+        try:
+            code, _out, err = run(root, ["--list-names"])
+            self.assertEqual(code, 0, err)
+            self.assertIn("prepare_record: skipped unreadable .env", err)
+            code, _out, err = run(
+                root,
+                ["--match-names", "--names-file", "node_modules/names.txt"],
+            )
+            self.assertEqual(code, 0, err)
+            self.assertIn("prepare_record: skipped unreadable .env", err)
+        finally:
+            os.chmod(str(env), stat.S_IRUSR | stat.S_IWUSR)
+
+    def test_09_cert_raw_body_unsupported(self):
+        root = self.make_repo()
+        body = b"B" * 64
+        data = b"CERT=" + B64_64 + b"\n" + body + b"\n" + body + b"\nQUJD==\n"
+        write_rel(root, ".env", data)
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "CERT\n")
+        self.assertEqual(err, "prepare_record: unsupported syntax .env:2\n")
+        self.assertNotIn("QUJD", out)
+        self.assertNotIn("QUJD", err)
+        self.assertNotIn("withheld", err)
+        assert_secrets(self, out, err, B64_64.decode("ascii"))
+
+    def test_09_raw_base32_28(self):
+        root = self.make_repo()
+        name = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ23"
+        self.assertEqual(len(name), 28)
+        write_rel(root, ".env", name + b"====\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn(name.decode("ascii"), out)
+        self.assertNotIn(name.decode("ascii"), err)
+
+    def test_09_backslash_continuation(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"TOKEN=prefix\\\nfragment=tail\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "TOKEN\n")
+        assert_secrets(self, out, err, "prefix", "fragment", "tail")
+
+        code, out, err = run(root, ["--hash-name", "TOKEN", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "TOKEN {}\n".format(sha256(b"prefix\\\nfragment=tail")))
+        assert_secrets(self, out, err, "prefix", "fragment", "tail")
+
+    def test_09_mixed_case_quoted_armor(self):
+        root = self.make_repo()
+        data = b'privateKey="-----BEGIN TEST-----\nline-one\nQQ==\n-----END TEST-----"\n'
+        write_rel(root, ".env", data)
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: withheld line .env:1\n")
+        self.assertNotIn("unsupported", err)
+        self.assertNotIn("privateKey", err)
+        assert_secrets(self, out, err, "QQ==", "line-one", "BEGIN")
+
+    def test_09_pem_file_consumed(self):
+        root = self.make_repo()
+        body = "B" * 64
+        write_rel(root, "key.pem", armor_file([body, body], "AB=="))
+        code, out, err = run(root, ["--list-names", "--file", "key.pem"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "")
+        self.assertNotIn("withheld", err)
+
+    def test_09_match_high_bytes(self):
+        root = self.make_repo()
+        write_rel(root, "notes.txt", b"\xc3\x90\n")
+        write_rel(root, "node_modules/names.txt", b"NAME\n")
+        code, out, err = run(
+            root,
+            ["--match-names", "--names-file", "node_modules/names.txt"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("\xc3", out)
+        self.assertEqual(out, "")
+
+    def test_09_bom(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"\xef\xbb\xbfNAME=1\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME\n")
+
+    def test_09_utf16_binary(self):
+        root = self.make_repo()
+        write_rel(root, ".env", "NAME=1\n".encode("utf-16"))
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: skipped binary .env\n")
+
+    def test_09_missing_file(self):
+        root = self.make_repo()
+        code, out, err = run(root, ["--list-names", "--file", "missing.env"])
+        self.assertEqual(code, 1, err)
+        self.assertEqual(out, "")
+        self.assertIn("prepare_record: not a readable file missing.env", err)
+
+    def test_09_long_value(self):
+        root = self.make_repo()
+        payload = b"a" * 4097
+        write_rel(root, ".env", b"LONG=" + payload + b"\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "LONG\n")
+        self.assertNotIn(payload.decode("ascii"), out)
+
+        code, out, err = run(root, ["--hash-name", "LONG", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "LONG {}\n".format(sha256(payload)))
+        self.assertNotIn("hash: absent", out)
+        self.assertNotIn(payload.decode("ascii"), out)
+
+    def test_09_quoted_multiline_pem(self):
+        def file_bytes(middle, ending):
+            parts = [
+                b'KEY="-----BEGIN TEST-----',
+                b"line-one",
+                middle,
+                b"BODY3==",
+                b'-----END TEST-----"',
+            ]
+            return ending.join(parts) + ending
+
+        def expect(middle):
+            parts = [
+                '"-----BEGIN TEST-----',
+                "line-one",
+                middle,
+                "BODY3==",
+                '-----END TEST-----"',
+            ]
+            return sha256("\n".join(parts).encode("ascii"))
+
+        root = self.make_repo()
+        write_rel(root, ".env", file_bytes(b"middle-line", b"\n"))
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY\n")
+        self.assertEqual(err, "")
+        assert_secrets(self, out, err, "middle-line", "BODY3", "line-one")
+
+        code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY {}\n".format(expect("middle-line")))
+        assert_secrets(self, out, err, "middle-line", "BODY3")
+
+        root = self.make_repo()
+        write_rel(root, ".env", file_bytes(b"other-middle", b"\n"))
+        code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY {}\n".format(expect("other-middle")))
+        self.assertNotEqual(expect("other-middle"), expect("middle-line"))
+
+        root = self.make_repo()
+        write_rel(root, ".env", file_bytes(b"middle-line", b"\r\n"))
+        code, out, err = run(root, ["--hash-name", "KEY", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "KEY {}\n".format(expect("middle-line")))
+
+    def test_09_escaped_quote_continues(self):
+        root = self.make_repo()
+        data = b'SA="{\\"a\\": 1,\n\\"b\\": 2}"\n'
+        write_rel(root, ".env", data)
+        expect = sha256(b'"{\\"a\\": 1,\n\\"b\\": 2}"')
+        code, out, err = run(root, ["--hash-name", "SA", "--file", ".env"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "SA {}\n".format(expect))
+        self.assertEqual(err, "")
+        self.assertNotIn("unsupported", err)
+
+    def test_09_unterminated_span(self):
+        root = self.make_repo()
+        data = (
+            b"EARLY=x\n"
+            b'KEY="-----BEGIN TEST-----\n'
+            b"line-one\n"
+            b"BODY3==\n"
+            b"-----END TEST-----\n"
+            b"LATER=x\n"
+        )
+        write_rel(root, ".env", data)
+        write_rel(root, "names.txt", b"EARLY\nKEY\nLATER\n")
+        code, out, err = run(
+            root,
+            ["--hash-names", "--names-file", "names.txt", "--file", ".env"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            out,
+            "EARLY {}\nKEY hash: unterminated\nLATER hash: unread\n".format(sha256(b"x")),
+        )
+        self.assertEqual(err, "prepare_record: possibly reassigned EARLY .env\n")
+        assert_secrets(self, out, err, "BEGIN", "BODY3", "line-one")
+        self.assertNotIn("x", out)
+        self.assertNotIn("x", err)
+
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "EARLY\nKEY\n")
+        self.assertEqual(err, "prepare_record: unterminated span .env:2\n")
+        self.assertNotIn("LATER", out)
+        assert_secrets(self, out, err, "BEGIN", "BODY3", "line-one")
+
+    def test_09_nul_file(self):
+        root = self.make_repo()
+        write_rel(root, "blob.bin", b"\x00NULSENTINEL")
+        code, out, err = run(root, ["--hash-name", "NAME", "--file", "blob.bin"])
+        self.assertEqual(code, 1, err)
+        self.assertEqual(out, "")
+        self.assertIn("prepare_record: not a readable file blob.bin", err)
+        self.assertNotIn("hash: absent", out)
+        self.assertNotIn("hash: absent", err)
+        self.assertNotIn("NULSENTINEL", out)
+        self.assertNotIn("NULSENTINEL", err)
+
+    def test_09_match_line_boundaries(self):
+        root = self.make_repo()
+        write_rel(root, "once.txt", b"EDGE")
+        long_line = (b"-" * 5000) + b"EDGE" + (b"-" * 100)
+        self.assertGreater(len(long_line), 4096)
+        write_rel(root, "long.txt", long_line)
+        write_rel(root, "node_modules/names.txt", b"EDGE\n")
+        code, out, err = run(
+            root,
+            ["--match-names", "--names-file", "node_modules/names.txt"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sorted(out.splitlines()), ["EDGE long.txt", "EDGE once.txt"])
+
+    def test_09_hash_names_two(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"ALPHA=alpha-secret\nBETA=beta-secret\n")
+        write_rel(root, "names.txt", b"ALPHA\nBETA\n")
+        code, out, err = run(
+            root,
+            ["--hash-names", "--names-file", "names.txt", "--file", ".env"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(
+            out,
+            "ALPHA {}\nBETA {}\n".format(sha256(b"alpha-secret"), sha256(b"beta-secret")),
+        )
+        self.assertEqual(len(out.splitlines()), 2)
+        assert_secrets(self, out, err, "alpha-secret", "beta-secret")
+
+    def test_09_directory_file(self):
+        root = self.make_repo()
+        (root / "subdir").mkdir()
+        code, out, err = run(root, ["--hash-name", "NAME", "--file", "subdir"])
+        self.assertEqual(code, 1, err)
+        self.assertEqual(out, "")
+        self.assertIn("prepare_record: not a readable file subdir", err)
+        self.assertNotIn("hash: absent", out)
+        self.assertNotIn("hash: absent", err)
+
+    def test_12_names_sidecar(self):
+        root = self.make_repo()
+        record = root / ".key-rotation" / "incident.md"
+        record.parent.mkdir()
+        body = b"Sign-off (close): open\nSIDECARTOKEN\n"
+        record.write_bytes(body)
+        write_rel(root, ".key-rotation/.names.tmp", b"SIDECARTOKEN\n")
+        code, out, err = run(root, [])
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out.startswith("reused: "), err)
+        self.assertEqual(record.read_bytes(), body)
+        self.assertEqual((root / ".gitignore").read_bytes(), b".key-rotation/\n")
+        printed = path_from("reused: ", out)
+        write_rel(root, "node_modules/names.txt", b"SIDECARTOKEN\n")
+        code, out, err = run(
+            root,
+            [
+                "--match-names",
+                "--names-file",
+                "node_modules/names.txt",
+                "--record-path",
+                printed,
+            ],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertNotIn(".names.tmp", out)
+        self.assertNotIn("incident.md", out)
+        self.assertNotIn("SIDECARTOKEN", out)
+
+        root = self.make_repo()
+        record = root / ".key-rotation" / "incident.md"
+        record.parent.mkdir()
+        body = b"Sign-off (close): open\n"
+        record.write_bytes(body)
+        write_rel(root, ".key-rotation/.env", b"NAME=x\n")
+        printed = os.path.abspath(os.path.realpath(str(record)))
+        write_rel(root, "node_modules/names.txt", b"NAME\n")
+        code, out, err = run(
+            root,
+            [
+                "--match-names",
+                "--names-file",
+                "node_modules/names.txt",
+                "--record-path",
+                printed,
+            ],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "NAME .key-rotation/.env\n")
+        self.assertNotIn("incident.md", out)
+        self.assertNotIn("x", out)
+        self.assertNotIn("x", err)
+
+        before = snapshot(root)
+        code, _out, err = run(root, [])
+        self.assertEqual(code, 1, err)
+        self.assertIn("prepare_record: parent is not a record directory", err)
+        self.assertFalse((root / ".gitignore").exists())
+        self.assertEqual(record.read_bytes(), body)
+        self.assertEqual(snapshot(root), before)
+
+    def test_16_ignore_pattern_rejected(self):
+        root = self.make_repo()
+        before = snapshot(root)
+        code, out, err = run(root, ["--record-path", "record.md"])
+        self.assertEqual(code, 1, err)
+        self.assertIn("prepare_record: ignore pattern rejected", err)
+        self.assertEqual(out, "")
+        self.assertEqual(snapshot(root), before)
+        self.assertFalse((root / ".gitignore").exists())
+        self.assertFalse((root / "record.md").exists())
+
+    def test_16_outside_paths(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"LEAKNAME=INSIDE-VALUE-SENTINEL\n")
+        write_rel(root, "names.txt", b"LEAKNAME\n")
+        outside = Path(tempfile.mkdtemp(prefix="vhs78-out-"))
+        self.addCleanup(shutil.rmtree, str(outside), True)
+        outside_file = outside / "secret.env"
+        outside_file.write_bytes(b"NAME=OUTSIDE-SENTINEL-VALUE\n")
+        outside_names = outside / "names.txt"
+        outside_names.write_bytes(b"OUTSIDE-SENTINEL-VALUE\n")
+        cases = [
+            ["--list-names", "--file", str(outside_file)],
+            ["--match-names", "--names-file", str(outside_names)],
+            ["--hash-name", "NAME", "--file", str(outside_file)],
+            ["--hash-names", "--names-file", str(outside_names), "--file", ".env"],
+            ["--hash-names", "--names-file", "names.txt", "--file", str(outside_file)],
+        ]
+        for args in cases:
+            with self.subTest(args=args[:2]):
+                code, out, err = run(root, args)
+                self.assertEqual(code, 1, err)
+                self.assertEqual(out, "")
+                self.assertIn("prepare_record: path is outside the project", err)
+                self.assertNotIn("OUTSIDE-SENTINEL-VALUE", out)
+                self.assertNotIn("OUTSIDE-SENTINEL-VALUE", err)
+                self.assertNotIn("INSIDE-VALUE-SENTINEL", out)
+                self.assertNotIn("INSIDE-VALUE-SENTINEL", err)
+                self.assertNotIn("LEAKNAME", out)
+
+    def test_16_symlink(self):
+        root = self.make_repo()
+        outside = Path(tempfile.mkdtemp(prefix="vhs78-link-"))
+        self.addCleanup(shutil.rmtree, str(outside), True)
+        (outside / ".env").write_bytes(b"OUTSIDENAME=OUTSIDE-SENTINEL-VALUE\n")
+        link = root / "escape"
+        try:
+            os.symlink(str(outside), str(link), target_is_directory=True)
+        except OSError as exc:
+            self.skipTest("symlink refused: {}".format(exc))
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertIn("prepare_record: skipped outside-root link escape", err)
+        self.assertNotIn("OUTSIDENAME", out)
+        self.assertNotIn("OUTSIDE-SENTINEL-VALUE", out)
+        self.assertNotIn("OUTSIDE-SENTINEL-VALUE", err)
+
+    def test_16_recheck_restore(self):
+        module = load_script()
+        real = module.ignore_checks
+
+        def drive(append):
+            root = self.make_repo()
+            (root / ".gitignore").write_bytes(b"keep\n")
+            calls = {"n": 0, "first_satisfied": None}
+
+            def wrapped(root_arg, parent_rel, file_rel):
+                calls["n"] += 1
+                parent, file_check = real(root_arg, parent_rel, file_rel)
+                if calls["n"] == 1:
+                    calls["first_satisfied"] = parent.satisfied and file_check.satisfied
+                    return parent, file_check
+                if append:
+                    path = Path(root_arg) / ".gitignore"
+                    path.write_bytes(path.read_bytes() + b"extra/\n")
+                parent.satisfied = False
+                file_check.satisfied = False
+                return parent, file_check
+
+            module.ignore_checks = wrapped
+            saved = {}
+            for key in list(os.environ):
+                if key.startswith("GIT_"):
+                    saved[key] = os.environ.pop(key)
+            try:
+                try:
+                    code = module.execute(["--project-root", str(root)])
+                    err = ""
+                except module.Stop as exc:
+                    code = exc.code
+                    err = exc.stderr
+            finally:
+                os.environ.update(saved)
+                module.ignore_checks = real
+            self.assertFalse(calls["first_satisfied"])
+            self.assertGreaterEqual(calls["n"], 2)
+            self.assertEqual(code, 1, err)
+            self.assertIn("prepare_record: ignore check failed", err)
+            self.assertEqual(list((root / ".key-rotation").glob("*.md")), [])
+            return (root / ".gitignore").read_bytes()
+
+        self.assertEqual(drive(False), b"keep\n")
+        changed = drive(True)
+        self.assertIn(b"extra/\n", changed)
+        self.assertIn(b".key-rotation/\n", changed)
+        self.assertNotEqual(changed, b"keep\n")
+
+    def test_16_readonly_leaves_gitignore(self):
+        root = self.make_repo()
+        seeded = b"keep-me\n"
+        (root / ".gitignore").write_bytes(seeded)
+        write_rel(root, ".env", b"NAME=secret-ro\n")
+        write_rel(root, "names.txt", b"NAME\n")
+        modes = [
+            ["--list-names"],
+            ["--match-names", "--names-file", "names.txt"],
+            ["--hash-name", "NAME", "--file", ".env"],
+            ["--hash-names", "--names-file", "names.txt", "--file", ".env"],
+        ]
+        for args in modes:
+            with self.subTest(args=args[0]):
+                code, out, err = run(root, args)
+                self.assertEqual(code, 0, err)
+                self.assertEqual((root / ".gitignore").read_bytes(), seeded)
+                self.assertFalse((root / ".key-rotation").exists())
+                assert_secrets(self, out, err, "secret-ro")
+
+    def test_16_heredoc_and_unexplained(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"KEY=$(cat <<END\nfragment=tail\nEND\n)\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "prepare_record: unsupported syntax .env:1\n")
+        assert_secrets(self, out, err, "fragment", "tail", "KEY")
+
+        root = self.make_repo()
+        write_rel(root, ".env", b"ONE=1\nTWO=2\nnot an assignment\nTHREE=3\n")
+        code, out, err = run(root, ["--list-names"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "ONE\nTWO\n")
+        self.assertEqual(err, "prepare_record: unsupported syntax .env:3\n")
+        self.assertNotIn("THREE", out)
+        self.assertNotIn("not an assignment", err)
 
 
 if __name__ == "__main__":

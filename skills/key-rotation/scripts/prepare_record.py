@@ -9,13 +9,14 @@ Usage:
     prepare_record.py --project-root <dir> --hash-name <name> --file <project-relative>
     prepare_record.py --project-root <dir> --hash-names --names-file <project-relative> --file <project-relative>
 
-Stdlib only. Python 3.8. The read-only name, match, and hash modes are not
-implemented in this copy; each of those flags exits 1.
+Stdlib only. Python 3.8. Read-only modes list names, match paths, and hash
+stored values. A value byte never reaches stdout.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import stat
 import subprocess
@@ -31,6 +32,20 @@ CLOSED_WORD = b"closed:"
 ASCII_WS = b" \t\v\f\r"
 DEFAULT_RECORD = ".key-rotation/record-YYYY-MM-DD.md"
 GIT_TIMEOUT_SECONDS = 30
+SKIP_DIR_NAMES = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "__pycache__",
+}
+BEGIN_MARK = b"-----BEGIN "
+END_MARK = b"-----END"
+BOM = b"\xef\xbb\xbf"
+BINARY_PROBE = 8192
+MAX_NAME_BYTES = 256
 
 
 class Stop(Exception):
@@ -793,6 +808,784 @@ def run_create_or_reuse(args, root, resolved, today):
     return finish_create(root, resolved, body, advisories)
 
 
+class Event(object):
+    """One parser outcome. digest is a hex string or None. No value bytes."""
+
+    def __init__(self, kind, line, name=None, digest=None, withheld=False, span_line=None):
+        self.kind = kind
+        self.line = line
+        self.name = name
+        self.digest = digest
+        self.withheld = withheld
+        self.span_line = line if span_line is None else span_line
+
+
+def is_name_start(byte):
+    return byte == 95 or (65 <= byte <= 90) or (97 <= byte <= 122)
+
+
+def is_name_cont(byte):
+    return is_name_start(byte) or (48 <= byte <= 57)
+
+
+def is_ident_byte(byte):
+    return is_name_cont(byte)
+
+
+def lstrip_ws(value):
+    index = 0
+    while index < len(value) and value[index] in (32, 9):
+        index += 1
+    return value[index:]
+
+
+def is_blank(text):
+    return text.strip(b" \t") == b""
+
+
+def is_comment(text):
+    return text.lstrip(b" \t").startswith(b"#")
+
+
+def is_empty_value(value):
+    """Empty when every byte after = is a space or a tab."""
+    return value.strip(b" \t") == b""
+
+
+def padding_withheld(value):
+    trimmed = value.rstrip(b" \t")
+    if trimmed == b"":
+        return True
+    for byte in trimmed:
+        if byte != 0x3D:
+            return False
+    return True
+
+
+def case_withheld(name):
+    has_upper = False
+    has_lower = False
+    for byte in name:
+        if 65 <= byte <= 90:
+            has_upper = True
+        elif 97 <= byte <= 122:
+            has_lower = True
+    return has_upper and has_lower
+
+
+def is_withheld(name, value):
+    if name is None or len(name) > MAX_NAME_BYTES:
+        return True
+    if case_withheld(name):
+        return True
+    return padding_withheld(value)
+
+
+def has_unsupported(value):
+    return b"$(" in value or b"`" in value or b"<<" in value
+
+
+def continues_backslash(value):
+    count = 0
+    index = len(value) - 1
+    while index >= 0 and value[index] == 92:
+        count += 1
+        index -= 1
+    return count % 2 == 1
+
+
+def find_unescaped_quote(buf, quote, start, honor_backslash):
+    index = start
+    quote_byte = quote[0]
+    while index < len(buf):
+        if buf[index] == quote_byte:
+            if honor_backslash:
+                slashes = 0
+                look = index - 1
+                while look >= 0 and buf[look] == 92:
+                    slashes += 1
+                    look -= 1
+                if slashes % 2 == 1:
+                    index += 1
+                    continue
+            return index
+        index += 1
+    return None
+
+
+def opening_quote(value):
+    """The quote byte when a quoted value runs past this line, else None."""
+    index = 0
+    while index < len(value) and value[index] in (32, 9):
+        index += 1
+    if index >= len(value) or value[index:index + 1] not in (b'"', b"'"):
+        return None
+    quote = value[index:index + 1]
+    if find_unescaped_quote(value, quote, index + 1, quote == b'"') is None:
+        return quote
+    return None
+
+
+def is_armor_header(text):
+    if END_MARK in text:
+        return False
+    return lstrip_ws(text).startswith(BEGIN_MARK)
+
+
+def is_opener1(line, value):
+    if END_MARK in line:
+        return False
+    return lstrip_ws(value).startswith(BEGIN_MARK)
+
+
+def sha_hex(chunks):
+    digest = hashlib.sha256()
+    if isinstance(chunks, (bytes, bytearray)):
+        digest.update(chunks)
+        return digest.hexdigest()
+    for chunk in chunks:
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def iter_lines(data):
+    start = 0
+    index = 0
+    length = len(data)
+    lineno = 1
+    while index < length:
+        if data[index:index + 2] == b"\r\n":
+            yield data[start:index], lineno
+            index += 2
+            start = index
+            lineno += 1
+        elif data[index:index + 1] in (b"\n", b"\r"):
+            yield data[start:index], lineno
+            index += 1
+            start = index
+            lineno += 1
+        else:
+            index += 1
+    if start < length:
+        yield data[start:], lineno
+
+
+def match_assignment(line):
+    """Return (name, value) or None. Value is the bytes after the first =."""
+    index = 0
+    length = len(line)
+    while index < length and line[index] in (32, 9):
+        index += 1
+    if (
+        index + 6 < length
+        and line[index:index + 6] == b"export"
+        and line[index + 6] in (32, 9)
+    ):
+        index += 7
+        while index < length and line[index] in (32, 9):
+            index += 1
+    if index >= length or not is_name_start(line[index]):
+        return None
+    end = index + 1
+    while end < length and is_name_cont(line[end]):
+        end += 1
+    if end >= length or line[end] != 0x3D:
+        return None
+    return line[index:end], line[end + 1:]
+
+
+def finish_armor(lines, start_index, chunks):
+    """Hash from the header already in chunks through the END line."""
+    index = start_index + 1
+    while index < len(lines):
+        text, lineno = lines[index]
+        if has_unsupported(text):
+            return False, index, None, lineno
+        chunks.append(b"\n")
+        chunks.append(text)
+        if END_MARK in text:
+            return True, index, sha_hex(chunks), None
+        index += 1
+    return False, start_index, None, None
+
+
+def consume_armor(lines, header_index):
+    text, _lineno = lines[header_index]
+    chunks = [lstrip_ws(text)]
+    if END_MARK in text:
+        return True, header_index, sha_hex(chunks), None
+    return finish_armor(lines, header_index, chunks)
+
+
+def consume_opener1(lines, index, value):
+    return finish_armor(lines, index, [lstrip_ws(value)])
+
+
+def consume_quote(lines, index, value, quote):
+    honor = quote == b'"'
+    chunks = [value]
+    cursor = index + 1
+    while cursor < len(lines):
+        text, lineno = lines[cursor]
+        pos = find_unescaped_quote(text, quote, 0, honor)
+        if pos is None:
+            if has_unsupported(text):
+                return False, cursor, None, lineno
+            chunks.append(b"\n")
+            chunks.append(text)
+            cursor += 1
+            continue
+        piece = text[:pos + 1]
+        if has_unsupported(piece):
+            return False, cursor, None, lineno
+        chunks.append(b"\n")
+        chunks.append(piece)
+        return True, cursor, sha_hex(chunks), None
+    return False, index, None, None
+
+
+def consume_backslash(lines, index, value):
+    chunks = [value]
+    current = value
+    cursor = index
+    while continues_backslash(current):
+        cursor += 1
+        if cursor >= len(lines):
+            return True, cursor - 1, sha_hex(chunks), None
+        text, lineno = lines[cursor]
+        if has_unsupported(text):
+            return False, cursor, None, lineno
+        chunks.append(b"\n")
+        chunks.append(text)
+        current = text
+    return True, cursor, sha_hex(chunks), None
+
+
+def usable_name(name):
+    if name is None or len(name) > MAX_NAME_BYTES:
+        return None
+    return name
+
+
+def parse_env_bytes(data):
+    """Parse one env file. Stop events end the list. Values stay inside digests."""
+    if data.startswith(BOM):
+        data = data[3:]
+    lines = list(iter_lines(data))
+    events = []
+    index = 0
+    count = len(lines)
+    while index < count:
+        text, lineno = lines[index]
+        if is_blank(text) or is_comment(text):
+            index += 1
+            continue
+        if is_armor_header(text):
+            closed, last, _digest, bad = consume_armor(lines, index)
+            if bad is not None:
+                events.append(Event("unsupported", bad))
+                return events
+            if not closed:
+                events.append(Event("unterminated", lineno, None, None, False, lineno))
+                return events
+            index = last + 1
+            continue
+        matched = match_assignment(text)
+        if matched is None:
+            events.append(Event("unsupported", lineno))
+            return events
+        name, value = matched
+        name_out = usable_name(name)
+        if has_unsupported(value):
+            events.append(Event("unsupported", lineno))
+            return events
+        quote = opening_quote(value)
+        if quote is not None:
+            closed, last, digest, bad = consume_quote(lines, index, value, quote)
+            if bad is not None:
+                events.append(Event("unsupported", bad))
+                return events
+            withheld = is_withheld(name, value)
+            if not closed:
+                events.append(Event("unterminated", lineno, name_out, None, withheld, lineno))
+                return events
+            events.append(Event("assignment", lineno, name_out, digest, withheld))
+            index = last + 1
+            continue
+        if is_opener1(text, value):
+            closed, last, digest, bad = consume_opener1(lines, index, value)
+            if bad is not None:
+                events.append(Event("unsupported", bad))
+                return events
+            withheld = is_withheld(name, value)
+            if not closed:
+                events.append(Event("unterminated", lineno, name_out, None, withheld, lineno))
+                return events
+            events.append(Event("assignment", lineno, name_out, digest, withheld))
+            index = last + 1
+            continue
+        if is_empty_value(value) and index + 1 < count and is_armor_header(lines[index + 1][0]):
+            header_line = lines[index + 1][1]
+            closed, last, digest, bad = consume_armor(lines, index + 1)
+            if bad is not None:
+                events.append(Event("unsupported", bad))
+                return events
+            if not closed:
+                events.append(Event("unterminated", lineno, name_out, None, True, header_line))
+                return events
+            events.append(Event("assignment", lineno, name_out, digest, True))
+            index = last + 1
+            continue
+        if continues_backslash(value):
+            closed, last, digest, bad = consume_backslash(lines, index, value)
+            if bad is not None:
+                events.append(Event("unsupported", bad))
+                return events
+            events.append(Event(
+                "assignment", lineno, name_out, digest, is_withheld(name, value)))
+            index = last + 1
+            continue
+        digest = None if is_empty_value(value) else sha_hex(value)
+        events.append(Event(
+            "assignment", lineno, name_out, digest, is_withheld(name, value)))
+        index += 1
+    return events
+
+
+def is_within(child_real, root):
+    child_n = os.path.normcase(child_real)
+    root_n = os.path.normcase(real_path(root))
+    if child_n == root_n:
+        return True
+    prefix = root_n if root_n.endswith(os.sep) else root_n + os.sep
+    return child_n.startswith(prefix)
+
+
+def display_relative(root, path):
+    rel = os.path.relpath(os.path.abspath(str(path)), os.path.abspath(str(root)))
+    return Path(rel).as_posix()
+
+
+def locate_inside(root, raw):
+    """Return the absolute path. Stop when its real path leaves the project."""
+    if os.path.isabs(raw):
+        absolute = os.path.abspath(raw)
+    else:
+        absolute = os.path.abspath(os.path.join(str(root), raw))
+    if not is_within(real_path(absolute), root):
+        stop("path is outside the project {}".format(raw))
+    return absolute
+
+
+def is_shell_filename(name):
+    return name == ".envrc" or name.endswith(".sh")
+
+
+def is_env_filename(name):
+    if is_shell_filename(name):
+        return False
+    return name == ".env" or name.startswith(".env.") or name.endswith(".env")
+
+
+def is_reparse_point(path):
+    if os.name != "nt":
+        return False
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    kernel.GetFileAttributesW.argtypes = [ctypes.c_wchar_p]
+    kernel.GetFileAttributesW.restype = ctypes.c_uint32
+    attrs = kernel.GetFileAttributesW(str(path))
+    if attrs == 0xFFFFFFFF:
+        return False
+    return bool(attrs & 0x400)
+
+
+def entry_is_link(entry):
+    try:
+        if entry.is_symlink():
+            return True
+    except OSError:
+        return False
+    return is_reparse_point(entry.path)
+
+
+def classify_entry(entry, root):
+    """Return 'dir', 'file', 'outside-link', or 'skip'."""
+    if entry_is_link(entry):
+        try:
+            target = real_path(entry.path)
+        except OSError:
+            return "skip"
+        if not is_within(target, root):
+            return "outside-link"
+        if os.path.isdir(entry.path):
+            return "dir"
+        if os.path.isfile(entry.path):
+            return "file"
+        return "skip"
+    try:
+        if entry.is_dir(follow_symlinks=False):
+            return "dir"
+    except OSError:
+        return "skip"
+    return "file"
+
+
+def holds_pyvenv(path):
+    return os.path.isfile(os.path.join(path, "pyvenv.cfg"))
+
+
+def read_regular_text(path):
+    """Return (data, kind). kind is ok, binary, unreadable, or nonregular."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None, "unreadable"
+    if not stat.S_ISREG(st.st_mode):
+        return None, "nonregular"
+    try:
+        with open(path, "rb") as handle:
+            prefix = handle.read(BINARY_PROBE)
+            if b"\x00" in prefix:
+                return None, "binary"
+            rest = handle.read()
+    except OSError:
+        return None, "unreadable"
+    return prefix + rest, "ok"
+
+
+def skip_record_neighbor(path, record):
+    if record is None:
+        return False
+    parent = os.path.normcase(os.path.abspath(os.path.dirname(str(path))))
+    record_parent = os.path.normcase(os.path.abspath(str(record.parent)))
+    if parent != record_parent:
+        return False
+    if same_path(path, record):
+        return True
+    name = os.path.basename(str(path))
+    return name.endswith(".tmp") or name.startswith(".key-rotation.")
+
+
+def iter_walk_files(root, advisories):
+    """Yield file paths. Outside-root links are reported and not followed."""
+    pending = [str(root)]
+    seen_dirs = set()
+    while pending:
+        current = pending.pop()
+        try:
+            current_real = real_path(current)
+        except OSError:
+            continue
+        if not is_within(current_real, root):
+            continue
+        dir_key = os.path.normcase(current_real)
+        if dir_key in seen_dirs:
+            continue
+        seen_dirs.add(dir_key)
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        files = []
+        dirs = []
+        for entry in entries:
+            kind = classify_entry(entry, root)
+            if kind == "outside-link":
+                advisories.append(
+                    "prepare_record: skipped outside-root link {}".format(
+                        display_relative(root, entry.path)))
+                continue
+            if kind == "dir":
+                dirs.append(entry)
+            elif kind == "file":
+                files.append(entry)
+        for entry in sorted(files, key=lambda item: item.name):
+            yield entry.path
+        children = []
+        for entry in dirs:
+            if entry.name in SKIP_DIR_NAMES:
+                continue
+            if holds_pyvenv(entry.path):
+                continue
+            children.append(entry)
+        for entry in sorted(children, key=lambda item: item.name, reverse=True):
+            pending.append(entry.path)
+
+
+def names_from_bytes(data):
+    if data.startswith(BOM):
+        data = data[3:]
+    found = []
+    seen = set()
+    for line, _lineno in iter_lines(data):
+        if line.strip(b" \t") == b"":
+            continue
+        try:
+            text = line.decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if text not in seen:
+            seen.add(text)
+            found.append(text)
+    return found
+
+
+def load_names_file(root, raw):
+    absolute = locate_inside(root, raw)
+    rel = display_relative(root, absolute)
+    data, kind = read_regular_text(absolute)
+    if kind != "ok":
+        stop("not a readable file {}".format(rel))
+    return names_from_bytes(data)
+
+
+def assignment_name_text(name):
+    if name is None:
+        return None
+    try:
+        return name.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+
+
+def collect_list_names(events, rel, advisories):
+    """Return the names this file contributes. Last assignment in the file wins."""
+    order = []
+    withheld = {}
+    for event in events:
+        if event.kind == "unsupported":
+            advisories.append(
+                "prepare_record: unsupported syntax {}:{}".format(rel, event.line))
+            break
+        if event.kind == "unterminated":
+            text = assignment_name_text(event.name)
+            if text is not None:
+                if text not in withheld:
+                    order.append(text)
+                withheld[text] = event.withheld
+                if event.withheld:
+                    advisories.append(
+                        "prepare_record: withheld line {}:{}".format(rel, event.line))
+            advisories.append(
+                "prepare_record: unterminated span {}:{}".format(rel, event.span_line))
+            break
+        if event.kind != "assignment":
+            continue
+        text = assignment_name_text(event.name)
+        if text is None:
+            continue
+        if text in withheld:
+            advisories.append(
+                "prepare_record: duplicate assignment {}:{}".format(rel, event.line))
+        else:
+            order.append(text)
+        withheld[text] = event.withheld
+        if event.withheld:
+            advisories.append(
+                "prepare_record: withheld line {}:{}".format(rel, event.line))
+    contributed = []
+    for text in order:
+        if not withheld[text]:
+            contributed.append(text)
+    return contributed
+
+
+def apply_hash_events(events, requested, rel, advisories):
+    """Return name -> ('hex', digest) | ('absent',) | ('unterminated',) | ('unread',)."""
+    results = {}
+    seen = set()
+    stopped = False
+    for event in events:
+        if event.kind == "unsupported":
+            advisories.append(
+                "prepare_record: unsupported syntax {}:{}".format(rel, event.line))
+            stopped = True
+            break
+        if event.kind == "unterminated":
+            owner = assignment_name_text(event.name)
+            for text in requested:
+                if text == owner:
+                    results[text] = ("unterminated",)
+                elif text in results:
+                    advisories.append(
+                        "prepare_record: possibly reassigned {} {}".format(text, rel))
+                else:
+                    results[text] = ("unread",)
+            stopped = True
+            break
+        if event.kind != "assignment":
+            continue
+        text = assignment_name_text(event.name)
+        if text is None or text not in requested:
+            continue
+        if text in seen:
+            advisories.append(
+                "prepare_record: duplicate assignment {} {}".format(text, rel))
+        seen.add(text)
+        if event.digest is None:
+            results[text] = ("absent",)
+        else:
+            results[text] = ("hex", event.digest)
+    if not stopped:
+        for text in requested:
+            if text not in results:
+                results[text] = ("absent",)
+    return results
+
+
+def write_hash_lines(requested, results):
+    for text in requested:
+        item = results.get(text, ("absent",))
+        if item[0] == "hex":
+            sys.stdout.write("{} {}\n".format(text, item[1]))
+        else:
+            sys.stdout.write("{} hash: {}\n".format(text, item[0]))
+
+
+def run_list_names(root, record, file_args):
+    advisories = []
+    explicit = []
+    explicit_keys = set()
+    for raw in file_args:
+        absolute = locate_inside(root, raw)
+        rel = display_relative(root, absolute)
+        name = os.path.basename(absolute)
+        if is_shell_filename(name):
+            continue
+        _data, kind = read_regular_text(absolute)
+        if kind in ("unreadable", "nonregular"):
+            stop("not a readable file {}".format(rel))
+        key = os.path.normcase(real_path(absolute))
+        explicit.append(absolute)
+        explicit_keys.add(key)
+    seen = set()
+    contributed = []
+    contributed_set = set()
+
+    def take_file(path, from_walk):
+        if skip_record_neighbor(path, record):
+            return
+        try:
+            key = os.path.normcase(real_path(path))
+        except OSError:
+            advisories.append(
+                "prepare_record: skipped unreadable {}".format(display_relative(root, path)))
+            return
+        if key in seen:
+            return
+        name = os.path.basename(str(path))
+        if is_shell_filename(name):
+            return
+        wanted = key in explicit_keys or (from_walk and is_env_filename(name))
+        if not wanted:
+            return
+        # An explicit file that cannot be opened is a failure, checked above
+        # for --file. A walk file is reported and the walk continues.
+        seen.add(key)
+        rel = display_relative(root, path)
+        data, kind = read_regular_text(path)
+        if kind == "binary":
+            advisories.append("prepare_record: skipped binary {}".format(rel))
+            return
+        if kind == "unreadable":
+            if key in explicit_keys and not from_walk:
+                stop("not a readable file {}".format(rel))
+            advisories.append("prepare_record: skipped unreadable {}".format(rel))
+            return
+        if kind != "ok":
+            if key in explicit_keys and not from_walk:
+                stop("not a readable file {}".format(rel))
+            return
+        for text in collect_list_names(parse_env_bytes(data), rel, advisories):
+            if text not in contributed_set:
+                contributed_set.add(text)
+                contributed.append(text)
+
+    for path in iter_walk_files(root, advisories):
+        take_file(path, True)
+    for path in explicit:
+        take_file(path, False)
+    emit(advisories)
+    for text in contributed:
+        sys.stdout.write(text + "\n")
+    return 0
+
+
+def identifier_runs(data):
+    found = set()
+    start = None
+    length = len(data)
+    index = 0
+    while index < length:
+        if is_ident_byte(data[index]):
+            if start is None:
+                start = index
+        elif start is not None:
+            found.add(data[start:index])
+            start = None
+        index += 1
+    if start is not None:
+        found.add(data[start:])
+    return found
+
+
+def run_match_names(root, record, names):
+    advisories = []
+    encoded = []
+    for text in names:
+        try:
+            encoded.append((text, text.encode("ascii")))
+        except UnicodeError:
+            continue
+    seen = set()
+    hits = []
+    for path in iter_walk_files(root, advisories):
+        if skip_record_neighbor(path, record):
+            continue
+        try:
+            key = os.path.normcase(real_path(path))
+        except OSError:
+            advisories.append(
+                "prepare_record: skipped unreadable {}".format(display_relative(root, path)))
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        rel = display_relative(root, path)
+        data, kind = read_regular_text(path)
+        if kind == "binary" or kind == "nonregular":
+            continue
+        if kind != "ok":
+            advisories.append("prepare_record: skipped unreadable {}".format(rel))
+            continue
+        if data.startswith(BOM):
+            data = data[3:]
+        runs = set()
+        for line, _lineno in iter_lines(data):
+            runs.update(identifier_runs(line))
+        for text, raw in encoded:
+            if raw in runs:
+                hits.append("{} {}".format(text, rel))
+    emit(advisories)
+    for line in hits:
+        sys.stdout.write(line + "\n")
+    return 0
+
+
+def run_hash(root, requested, file_raw):
+    absolute = locate_inside(root, file_raw)
+    rel = display_relative(root, absolute)
+    data, kind = read_regular_text(absolute)
+    if kind != "ok":
+        stop("not a readable file {}".format(rel))
+    advisories = []
+    results = apply_hash_events(parse_env_bytes(data), requested, rel, advisories)
+    emit(advisories)
+    write_hash_lines(requested, results)
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="prepare_record.py")
     parser.add_argument("--project-root", required=True)
@@ -803,7 +1596,6 @@ def build_parser():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--choose", default=None)
     group.add_argument("--new", action="store_true")
-    # Declared for the next run. Behavior is a hard failure until then.
     parser.add_argument("--list-names", action="store_true")
     parser.add_argument("--match-names", action="store_true")
     parser.add_argument("--hash-name", default=None)
@@ -813,15 +1605,60 @@ def build_parser():
     return parser
 
 
-def readonly_requested(args):
-    return bool(
-        args.list_names
-        or args.match_names
-        or args.hash_names
-        or args.hash_name is not None
-        or args.names_file is not None
-        or args.file
-    )
+def readonly_modes(args):
+    modes = []
+    if args.list_names:
+        modes.append("list")
+    if args.match_names:
+        modes.append("match")
+    if args.hash_name is not None:
+        modes.append("hash")
+    if args.hash_names:
+        modes.append("hash-names")
+    return modes
+
+
+def reject_readonly_usage(parser, args, modes):
+    if args.status and modes:
+        parser.error("read-only modes cannot be combined with --status")
+    if len(modes) > 1:
+        parser.error("read-only modes are mutually exclusive")
+    if not modes:
+        if args.file or args.names_file:
+            parser.error("--file and --names-file require a read-only mode")
+        return
+    if args.new or args.choose is not None or args.reuse_only or args.template:
+        parser.error("read-only modes do not take record-creation flags")
+    mode = modes[0]
+    files = args.file or []
+    if mode == "list":
+        if args.names_file:
+            parser.error("--list-names does not take --names-file")
+        return
+    if mode == "match":
+        if not args.names_file:
+            parser.error("--match-names requires --names-file")
+        if files:
+            parser.error("--match-names does not take --file")
+        return
+    if mode == "hash":
+        if args.hash_name == "":
+            parser.error("--hash-name requires a name")
+        if args.names_file:
+            parser.error("--hash-name does not take --names-file")
+        if len(files) != 1:
+            parser.error("--hash-name requires one --file")
+        return
+    if not args.names_file:
+        parser.error("--hash-names requires --names-file")
+    if len(files) != 1:
+        parser.error("--hash-names requires one --file")
+
+
+def resolved_record(args, root):
+    today = date.today().isoformat()
+    raw = args.record_path if args.record_path is not None else DEFAULT_RECORD
+    return validate_record_path(root, raw, today), today
 
 
 def execute(argv):
@@ -829,20 +1666,30 @@ def execute(argv):
     args = parser.parse_args(argv)
     if args.new and args.reuse_only:
         parser.error("--new and --reuse-only are mutually exclusive")
-    if readonly_requested(args):
-        sys.stderr.write("prepare_record: not implemented\n")
-        return 1
+    modes = readonly_modes(args)
+    reject_readonly_usage(parser, args, modes)
     if args.project_root is None or args.project_root.strip() == "":
         stop("path is outside the project")
     root = Path(real_path(args.project_root))
     if not root.is_dir():
         stop("not a git work tree")
-    today = date.today().isoformat()
-    raw = args.record_path if args.record_path is not None else DEFAULT_RECORD
-    resolved = validate_record_path(root, raw, today)
+    if modes:
+        mode = modes[0]
+        if mode == "hash":
+            return run_hash(root, [args.hash_name], args.file[0])
+        if mode == "hash-names":
+            # Reject an outside path before either file is opened.
+            locate_inside(root, args.file[0])
+            locate_inside(root, args.names_file)
+            return run_hash(root, load_names_file(root, args.names_file), args.file[0])
+        record, _today = resolved_record(args, root)
+        if mode == "list":
+            return run_list_names(root, record, args.file or [])
+        return run_match_names(root, record, load_names_file(root, args.names_file))
+    record, today = resolved_record(args, root)
     if args.status:
-        return run_status(root, resolved)
-    return run_create_or_reuse(args, root, resolved, today)
+        return run_status(root, record)
+    return run_create_or_reuse(args, root, record, today)
 
 
 def main(argv=None):
