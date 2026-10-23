@@ -490,7 +490,6 @@ def ensure_ignore(root, target, state):
     parent_check, file_check = ignore_checks(root, parent_rel, file_rel)
     checks = (parent_check, file_check)
     if parent_check.satisfied and file_check.satisfied:
-        recheck_ignore(root, parent_rel, file_rel, state)
         return state
     if not parent_is_records_and_temps(parent):
         stop("parent is not a record directory")
@@ -1313,17 +1312,36 @@ def iter_walk_files(root, advisories):
             pending.append(entry.path)
 
 
+def is_name_text(text):
+    """True when text is one variable name under the assignment grammar."""
+    try:
+        raw = text.encode("ascii")
+    except UnicodeError:
+        return False
+    if not raw or len(raw) > MAX_NAME_BYTES or not is_name_start(raw[0]):
+        return False
+    return all(is_name_cont(byte) for byte in raw[1:])
+
+
 def names_from_bytes(data):
+    """Names from a names file: one per line, grammar-checked, anything else dropped.
+
+    A line that is not a name is never echoed, so a value file passed by
+    mistake as the names file puts nothing on stdout.
+    """
     if data.startswith(BOM):
         data = data[3:]
     found = []
     seen = set()
     for line, _lineno in iter_lines(data):
-        if line.strip(b" \t") == b"":
+        line = line.strip(b" \t")
+        if line == b"":
             continue
         try:
             text = line.decode("ascii")
         except UnicodeDecodeError:
+            continue
+        if not is_name_text(text):
             continue
         if text not in seen:
             seen.add(text)
@@ -1530,6 +1548,41 @@ def identifier_runs(data):
     return found
 
 
+def match_file(path, encoded):
+    """Return (hit texts in request order, kind). Reads the file line by line.
+
+    kind is ok, binary, unreadable, or nonregular. Identifier runs never span
+    a line ending, so a line at a time sees every run the whole file would.
+    Stops early once every requested name has hit.
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None, "unreadable"
+    if not stat.S_ISREG(st.st_mode):
+        return None, "nonregular"
+    wanted = set(raw for _text, raw in encoded)
+    found = set()
+    try:
+        with open(path, "rb") as handle:
+            prefix = handle.read(BINARY_PROBE)
+            if b"\x00" in prefix:
+                return None, "binary"
+            handle.seek(0)
+            first = True
+            for line in handle:
+                if first:
+                    first = False
+                    if line.startswith(BOM):
+                        line = line[3:]
+                found.update(wanted.intersection(identifier_runs(line)))
+                if len(found) == len(wanted):
+                    break
+    except OSError:
+        return None, "unreadable"
+    return [text for text, raw in encoded if raw in found], "ok"
+
+
 def run_match_names(root, record, names):
     advisories = []
     encoded = []
@@ -1553,20 +1606,14 @@ def run_match_names(root, record, names):
             continue
         seen.add(key)
         rel = display_relative(root, path)
-        data, kind = read_regular_text(path)
+        hit, kind = match_file(path, encoded)
         if kind == "binary" or kind == "nonregular":
             continue
         if kind != "ok":
             advisories.append("prepare_record: skipped unreadable {}".format(rel))
             continue
-        if data.startswith(BOM):
-            data = data[3:]
-        runs = set()
-        for line, _lineno in iter_lines(data):
-            runs.update(identifier_runs(line))
-        for text, raw in encoded:
-            if raw in runs:
-                hits.append("{} {}".format(text, rel))
+        for text in hit:
+            hits.append("{} {}".format(text, rel))
     emit(advisories)
     for line in hits:
         sys.stdout.write(line + "\n")
@@ -1642,7 +1689,7 @@ def reject_readonly_usage(parser, args, modes):
             parser.error("--match-names does not take --file")
         return
     if mode == "hash":
-        if args.hash_name == "":
+        if not args.hash_name or not is_name_text(args.hash_name):
             parser.error("--hash-name requires a name")
         if args.names_file:
             parser.error("--hash-name does not take --names-file")

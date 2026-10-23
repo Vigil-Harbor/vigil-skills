@@ -1196,6 +1196,33 @@ class TestKeyRotationRecord(unittest.TestCase):
         self.assertEqual(len(out.splitlines()), 2)
         assert_secrets(self, out, err, "alpha-secret", "beta-secret")
 
+    def test_09_hash_names_non_name_lines_never_echo(self):
+        root = self.make_repo()
+        write_rel(root, ".env", b"API_TOKEN=token-secret\nDB_PASS=pass-secret\n")
+        write_rel(root, "names.txt", b"API_TOKEN\n")
+        # The two project-relative flags swapped: the value file as the names file.
+        code, out, err = run(
+            root,
+            ["--hash-names", "--names-file", ".env", "--file", "names.txt"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "")
+        self.assertNotIn("=", out)
+        assert_secrets(self, out, err, "token-secret", "pass-secret")
+        # A names file with one real name and one junk line hashes only the name.
+        write_rel(root, "mixed.txt", b"junk=line\n  API_TOKEN  \nnot a name\n")
+        code, out, err = run(
+            root,
+            ["--hash-names", "--names-file", "mixed.txt", "--file", ".env"],
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "API_TOKEN {}\n".format(sha256(b"token-secret")))
+        # --hash-name with something that is not a name is a usage error.
+        code, out, err = run(root, ["--hash-name", "X=not_a_name", "--file", ".env"])
+        self.assertEqual(code, 2)
+        self.assertNotIn("not_a_name", out)
+        self.assertNotIn("not_a_name", err)
+
     def test_09_directory_file(self):
         root = self.make_repo()
         (root / "subdir").mkdir()
