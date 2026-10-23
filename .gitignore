@@ -8,3 +8,7 @@ CLAUDE.md
 .claude/
 .hermes/
 .talaria-review-hermes/
+
+# Spec-lifecycle artifacts (briefs, specs, reviews, test output) stay local.
+# Lessons are harvested to the knowledge layer by /spec-close before removal.
+docs/specs/
