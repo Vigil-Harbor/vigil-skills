@@ -51,6 +51,10 @@ Each agent emits a `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...` last line.
 
 Standalone skill for triaging CodeRabbit review comments. Reads findings, verifies against current code, fixes real issues, pushes, posts per-thread commit-hash replies (`Resolved in <sha>`), conditionally waits for CodeRabbit's incremental re-review, and polls for auto-approval. Non-fix findings (skip/duplicate/already-fixed/defer) get a per-thread reply with the reasoning; threads that stay unresolved are left open for CodeRabbit and the user to handle naturally. Checks `.coderabbit.yaml` for `request_changes_workflow: true` to determine whether auto-approval is expected.
 
+### /key-rotation
+
+Process guide for a credential-exposure response. The operator performs every provider action. The record lives in the target project and is gitignored by the preflight script. The optional project section is documented in `docs/customizing.md`.
+
 ### File layout
 
 - `skills/<name>/SKILL.md` — Skill definitions (YAML frontmatter + markdown body). Installed to `~/.claude/skills/<name>/SKILL.md`.
@@ -58,6 +62,9 @@ Standalone skill for triaging CodeRabbit review comments. Reads findings, verifi
 - `agents/<name>.md` — Subagent definitions (YAML frontmatter + markdown body). Installed to `~/.claude/agents/<name>.md`.
 - `sync.py` — Bidirectional file sync. Stdlib only, cross-platform via `pathlib`.
 - `skills/spec-close/SKILL.md` — Post-merge close skill (reconciliation + wiki harvest + archive in one pass). Installed to `~/.claude/skills/spec-close/SKILL.md`.
+- `skills/key-rotation/SKILL.md` — credential-exposure process guide.
+- `skills/key-rotation/reference/record-template.md` — record shape, read by the preflight script on create.
+- `skills/key-rotation/scripts/prepare_record.py` — gitignore, record preflight, and the read-only name, path, and hash modes.
 - `docs/customizing.md` — How downstream projects configure these skills via their own `AGENTS.md` / `CLAUDE.md`.
 - `docs/portability-contract.md` — What makes a skill portable across harnesses (VHS-17); the contract every cross-harness item targets.
 - `docs/authoring-portable-skills.md` — Authoring discipline for portable skills + the `lint.py` portability lint (VHS-18).
