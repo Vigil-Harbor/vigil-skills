@@ -1,6 +1,6 @@
 ---
 name: ship-spec
-description: Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Pair with /spec-cycle which produces the spec. After the PR merges, run /spec-close to reconcile and retire the spec.
+description: Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Pair with /spec-cycle which produces the spec. After the PR merges, run /spec-close to reconcile and retire the spec.
 user_invocable: true
 requires:
   shell: true
@@ -103,7 +103,7 @@ Print a one-line preflight summary naming the verdict state from step 1b (and, f
 
 ## Phase 1 — Worktree setup
 
-Implementation runs in an isolated git worktree, not in the user's primary working tree. This sidesteps stash-and-restore ceremony, leaves the user's tree untouched (uncommitted changes, branch state, untracked files all preserved), and enables parallel `/ship-spec` invocations on different tickets.
+Implementation runs in an isolated git worktree, not in the user's primary working tree. This sidesteps stash-and-restore ceremony, leaves the user's tree untouched (uncommitted changes, branch state, untracked files all preserved), except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes, and enables parallel `/ship-spec` invocations on different tickets.
 
 1. Form branch name: `<type>/<ticket-id-lower>-<slug>`.
    - `<type>` — derive from the spec's commit-style prefix or from the ticket type. Default: `fix` for bug-class tickets, `feat` for new features, `chore` for refactors. If unsure, ask the user.
@@ -131,9 +131,18 @@ Implementation runs in an isolated git worktree, not in the user's primary worki
    git fetch origin <default-branch>
    git worktree add -b <branch> <worktree-path> origin/<default-branch>
    ```
-   Creates a fresh checkout at `<worktree-path>`, on the new branch `<branch>`, based on the up-to-date remote tip of `<default-branch>`. The user's primary checkout is never modified.
+   Creates a fresh checkout at `<worktree-path>`, on the new branch `<branch>`, based on the up-to-date remote tip of `<default-branch>`. The user's primary checkout is never modified, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
 
 5. **All subsequent phases run with `<worktree-path>` as the working directory.** Use `cd <worktree-path>` for shell commands, or absolute paths for tool calls. The spec at `<project-root>/<spec-path>` is read by absolute path — the spec stays in the user's primary tree throughout (it's metadata about the work, not part of the code change).
+
+6. **Classify each spec-artifact path.** Working directory is the worktree. For each of `docs/specs/TODO/<TICKET-ID>.test-output.txt` and `docs/specs/TODO/<TICKET-ID>.review.md`, run `git check-ignore -q -- <path>` once. The paths need not exist yet. A harness reports only pass or fail, so capture the integer:
+
+   ```bash
+   if git check-ignore -q -- <path>; then rc=0; else rc=$?; fi
+   echo "classify: <path> exit $rc"
+   ```
+
+   Exit 0 holds `ignored`. Exit 1 holds `not-ignored`. Exit 1 with no output is the ordinary not-ignored result, not a failed command. Any exit other than 0 or 1, or a command that cannot be run, is a failed classification: print the exit code and the output, and stop before staging or moving any artifact. Hold `ignored` or `not-ignored` for the rest of the run. Do not run the check again in Phase 4. `<project-root>` for later copies is the absolute primary checkout captured before `cd <worktree-path>`. A destination relative to the worktree cwd is the worktree file. The worktree copy is removed with the worktree. The primary copy is the one `/spec-close` archives.
 
 ## Phase 2 — Implement + author tests
 
@@ -149,7 +158,7 @@ Do not commit yet. Implementation and tests are one logical unit; the test gate 
 
 ## Phase 3 — Test gate loop (≤5 iterations)
 
-Working directory: `<worktree-path>`. The test command runs against worktree files. The captured output path `docs/specs/TODO/<TICKET-ID>.test-output.txt` is relative to cwd, so it lands inside the worktree and gets staged in Phase 4. When the resolved test command is `N/A`, this phase is skipped and Phase 3b still runs.
+Working directory: `<worktree-path>`. The test command runs against worktree files. The captured output path `docs/specs/TODO/<TICKET-ID>.test-output.txt` is relative to cwd, so it lands inside the worktree and Phase 4 stages it when the held result is not-ignored, and copies it to the primary checkout when the held result is ignored. When the resolved test command is `N/A`, this phase is skipped and Phase 3b still runs.
 
 Loop:
 
@@ -168,7 +177,7 @@ for iter in 1..5:
         continue
 ```
 
-**Redaction (VHS-31).** Before the captured file is staged, replace every occurrence of `<worktree-path>` in it with the literal `<worktree>` — the forward-slash form and, on Windows, the backslash form (`C:/Users/<user>/…/<TICKET-ID>-worktree` and `C:\Users\<user>\…\<TICKET-ID>-worktree`) — so a test runner's banner (`RUN  v3 <worktree>/pkg`) no longer commits a username and a local filesystem layout. One substitution over the file and nothing else: apart from that prefix the artifact stays a verbatim gate run. *(e.g., `sed -i "s|<forward-slash path>|<worktree>|g; s|<backslash path, escaped>|<worktree>|g" docs/specs/TODO/<TICKET-ID>.test-output.txt` in a POSIX shell, or the equivalent in your host.)* The placeholder is part of the artifact's convention; a later `/spec-close` reconciliation does not read it as drift.
+**Redaction (VHS-31).** Before Phase 4 stages or copies the captured file, replace every occurrence of `<worktree-path>` in it with the literal `<worktree>` — the forward-slash form and, on Windows, the backslash form (`C:/Users/<user>/…/<TICKET-ID>-worktree` and `C:\Users\<user>\…\<TICKET-ID>-worktree`) — so a test runner's banner (`RUN  v3 <worktree>/pkg`) no longer commits a username and a local filesystem layout. One substitution over the file and nothing else: apart from that prefix the artifact stays a verbatim gate run. *(e.g., `sed -i "s|<forward-slash path>|<worktree>|g; s|<backslash path, escaped>|<worktree>|g" docs/specs/TODO/<TICKET-ID>.test-output.txt` in a POSIX shell, or the equivalent in your host.)* The placeholder is part of the artifact's convention; a later `/spec-close` reconciliation does not read it as drift.
 
 If after 5 iterations tests are still red:
 ```
@@ -284,7 +293,7 @@ The skip exits in steps 1 to 3 apply to `big` and an absent spec line. `small` h
 
    Nothing is committed while tests are red. The dispositions in the review file describe the tree that is committed.
 
-8. **Write the review file.** Write `docs/specs/TODO/<TICKET-ID>.review.md` in the worktree, beside the test output. Phase 4 stages it.
+8. **Write the review file.** Write `docs/specs/TODO/<TICKET-ID>.review.md` in the worktree, beside the test output. Phase 4 stages it when the held result is not-ignored, and copies it to the primary checkout when the held result is ignored.
 
    ```markdown
    # Review gate: <TICKET-ID>
@@ -312,13 +321,24 @@ The skip exits in steps 1 to 3 apply to `big` and an absent spec line. `small` h
    - A `vetoed` finding counts as recorded in the `Fix or record` line. An unusable finding labelled as a blocker is tagged `Blocks` and counted there.
    - `overridden by operator` is written with its reason after a colon: why the finding was unresolved (step 5), or `fix broke <test>` (step 7).
 
-   Keep the PR-body line for Phase 5: `- [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (docs/specs/TODO/<TICKET-ID>.review.md)`, with ` — <ov> overridden by operator` appended when that count is above zero.
+   Keep the PR-body line for Phase 5. Choose it from the held result and from whether a review file was written. Do not choose it from the copy having already finished: the copy has not run yet. A skipped-form file is what steps 2 and 3 write.
+
+   - Skipped, no review file: `- [ ] Review gate: skipped — <reason>`.
+   - Skipped, and a skipped-form file was written: `- [ ] Review gate: skipped — <reason>`. When the held result is `ignored`, append ` (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`.
+   - The review ran and the held result is `not-ignored`: `- [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (docs/specs/TODO/<TICKET-ID>.review.md)`, with ` — <ov> overridden by operator` appended when that count is above zero.
+   - The review ran and the held result is `ignored`: that same success line, with the kept-locally path in place of the in-commit path, and the same override suffix when the count is above zero:
+
+     `- [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`
 
 ## Phase 4 — Commit
 
-Working directory: `<worktree-path>`. All `git` operations are scoped to the worktree (it has its own HEAD; the user's primary tree is unaffected).
+Working directory: `<worktree-path>`. All `git` operations stay scoped to the worktree, except one read-only check: `git -C <project-root> ls-files --error-unmatch -- <dest>`, run with the shell still in the worktree. That check does not update the primary index and does not change the shell's working directory. Do not `cd` to the primary checkout. The user's primary tree is unaffected, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
 
-Stage the changed files explicitly (do not `git add -A` or `.`). For each modified file in the diff, `git add <file>`. Stage `docs/specs/TODO/<TICKET-ID>.review.md` when it exists.
+Stage each modified file in the diff with `git add <file>`. Do not `git add -A` or `.`. Then, for each of `docs/specs/TODO/<TICKET-ID>.test-output.txt` and `docs/specs/TODO/<TICKET-ID>.review.md` that exists in the worktree: held `not-ignored` means `git add <path>` in the worktree. Held `ignored` means copy the file to the absolute path `<project-root>/docs/specs/TODO/<same-name>`, and do not `git add` that path in either checkout. Do not `git add -f`. A path that was never written (test command `N/A`, or a review skip that writes no file) is left alone. Leave the worktree copy in place. The copy happens before `git commit`.
+
+Before writing, the shell stays in the worktree. Capture `git -C <project-root> ls-files --error-unmatch -- <dest>` with stderr discarded, using the same integer capture as `git check-ignore`. `<dest>` is the absolute primary path. Exit 0 means the destination is tracked: print the source and the destination and stop before the commit. Do not write. Exit 1 means it is not tracked: create parent directories if they are absent, write the bytes to a temporary file in that directory, then rename the temporary file over the destination. Any other exit is a failed check: print it and stop before the commit. Do not write. If the copy fails, print the source and destination paths and stop before the commit. `git ls-files --error-unmatch` of an absolute path in the primary checkout, run from the worktree without `-C`, exits 128. That form is not this check.
+
+`<project-root>` is the primary checkout the worktree was cut beside. The spec is already read from there.
 
 Form the commit body using this pattern:
 
@@ -382,11 +402,13 @@ or
 
 (When the resolved test command is `N/A`, replace the first bullet with `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced` and omit the test-output file link.)
 - [x] `<combined test command>` — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)
+(When the test-output file exists and the held result is `not-ignored`, use the bullet above. When it exists and the held result is `ignored`, the bullet is:)
+- [x] `<combined test command>` — <N>/<N> pass (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.test-output.txt; not in this commit)
 - [x] `<build command, if separate>` — clean
 - [x] Spec verdict: green (<kind>, <date>)
 (This is the line Phase 0 step 1b kept. When the operator confirmed through a non-green state, use its unchecked line instead: `- [ ] Spec verdict: <state> — proceeded on operator confirmation`.)
 - [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (docs/specs/TODO/<TICKET-ID>.review.md)
-(Append ` — <ov> overridden by operator` to the review line when that count is above zero. When Phase 3b skipped the review, use its unchecked skip line instead: `- [ ] Review gate: skipped — <reason>`.)
+(This bullet is the line Phase 3b step 8 kept. Append ` — <ov> overridden by operator` to the review line when that count is above zero. When Phase 3b skipped the review, use its unchecked skip line instead: `- [ ] Review gate: skipped — <reason>`. When that skip wrote a skipped-form file and the held result is `ignored`, append ` (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`. When the review ran and the held result is `ignored`, the bullet is `- [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`, with the same override suffix when the count is above zero.)
 - [x] [smoke check on real data, if applicable]
 - [x] [post-merge verification step, if applicable]
 
@@ -428,15 +450,19 @@ Print final summary:
 
 PR:       <pr-url>
 Spec:     docs/specs/TODO/<TICKET-ID>.spec.md
-Tests:    docs/specs/TODO/<TICKET-ID>.test-output.txt  (omit this line when test command is N/A)
-Review:   docs/specs/TODO/<TICKET-ID>.review.md  (or: skipped — <reason>)
+Tests:    docs/specs/TODO/<TICKET-ID>.test-output.txt (staged in this commit)  (omit this line when the test command is N/A; when Phase 4 copied the file, print this shape instead:)
+Tests:    kept locally — worktree: <worktree-path>/docs/specs/TODO/<TICKET-ID>.test-output.txt
+          primary:  <project-root>/docs/specs/TODO/<TICKET-ID>.test-output.txt
+Review:   docs/specs/TODO/<TICKET-ID>.review.md (staged in this commit)  (a skipped review that wrote no file keeps: skipped — <reason>; when Phase 4 copied the file, print this shape instead:)
+Review:   kept locally — worktree: <worktree-path>/docs/specs/TODO/<TICKET-ID>.review.md
+          primary:  <project-root>/docs/specs/TODO/<TICKET-ID>.review.md
 Branch:   <branch>
 Worktree: <worktree-path> (kept alive for review fixes)
 
 Plane: <ticket-id> → <new state>
        <pr-url> commented on ticket
 
-User's primary working tree: untouched.
+User's primary working tree: untouched.  (When this run copied at least one artifact, print this line instead: User's primary working tree: untouched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes. When it copied none, print the short line above.)
 
 To address PR review comments:
   cd <worktree-path>
@@ -472,3 +498,4 @@ Do not auto-update any project wiki — that happens post-merge once the merge S
 - **Blocking finding unresolved.** A Blocks finding whose fix was vetoed, contradicts the spec, falls outside its scope, or could not be made, or one the agent believes is inaccurate. Print Phase 3b's halt block and wait. Nothing is committed until the operator chooses.
 - **Plane state mismatch.** If no state matches review-equivalent, skip the state flip and report. Don't fail the whole skill.
 - **Stale worktree from prior run.** Phase 1 checks for worktree path conflicts. If the path exists, it's likely a leftover from a previous `/ship-spec` whose PR already merged. Halt with the cleanup command — don't auto-remove, since it might hold uncommitted review fixes.
+- **Ignored spec artifact.** `git add` on a path a gitignore rule matches exits 1 and prints `The following paths are ignored by one of your .gitignore files:`. That includes `git add` of a path `git mv` already staged onto an ignored destination: the add exits 1 and the staged rename stays. Phase 1 holds the captured `git check-ignore -q` integer per artifact path. Exit 0 copies the file to the absolute primary path and does not stage it. Exit 1 is the ordinary not-ignored result and stages it as before. A harness pass or fail is not that integer (`skills/spec-close/SKILL.md:428`). Do not `git add -f` an ignored artifact.

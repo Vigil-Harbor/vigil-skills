@@ -24,9 +24,22 @@ The skill preserves the read-only-analysis-then-confirmed-mutations split intern
 ## Phase 0 — Preflight
 
 1. Resolve `<spec-path>`. Expected shapes: `docs/specs/TODO/<TICKET-ID>.spec.md` or `docs/specs/DONE/<TICKET-ID>/spec.md`. Extract `ticket_id` (uppercase): from TODO paths, the filename stem before `.spec.md`; from DONE paths, the parent directory name. Derive `project_prefix` (portion before the first hyphen, e.g., `ADA` from `ADA-17`) and `issue_number` (integer portion after the hyphen, e.g., `17`). Set `project_root` to the repo root (the directory containing `CLAUDE.md`). Confirm the spec exists. Halt if not.
-2. Check tracking status: `git ls-files --error-unmatch <spec-path> 2>/dev/null`. If exit ≠ 0 (file is untracked/gitignored), print:
-   `Note: Spec file is untracked (gitignored). Archive step will use mv + git add instead of git mv.`
-   Continue regardless — the file exists on disk, which is sufficient.
+2. The resolved spec exists on disk. Classify destination paths once, in the target repo, with `git check-ignore -q -- <path>`. A harness reports only pass or fail, so capture the integer:
+
+   ```bash
+   if git check-ignore -q -- <path>; then rc=0; else rc=$?; fi
+   echo "classify: <path> exit $rc"
+   ```
+
+   Exit 0 holds `ignored`. Exit 1 holds `not-ignored`. Exit 1 with no output is the ordinary not-ignored result, not a failed command. Any exit other than 0 or 1, or a command that cannot be run, is a failed classification: print the exit code and the output, and stop before staging or moving any artifact.
+
+   The destination set is fixed at this step. Each entry is one full path, and that same string is what `git check-ignore -q` classifies and what the archive step uses as `<destination>` for `git mv`, `mv`, and `git add`. Do not pass a bare filename. A bare filename is a path the `docs/specs/` rule does not match, and that shape exits 1. The set is `docs/specs/DONE/<TICKET-ID>/spec.md`, `docs/specs/DONE/<TICKET-ID>/brief.md`, `docs/specs/DONE/<TICKET-ID>/reconciliation.md`, `docs/specs/DONE/<TICKET-ID>/reviews`, `docs/specs/DONE/<TICKET-ID>/test-output.txt`, `docs/specs/DONE/<TICKET-ID>/review.md`, and `docs/specs/DONE/<TICKET-ID>/<stripped-name>` for every other `docs/specs/TODO/<TICKET-ID>.*` companion that already exists (the mapping in the archive step). `spec.md` is not prefixed twice. `docs/specs/DONE/<TICKET-ID>/reconciliation.md` is in the set even when Phase 2 has not written it yet. Hold each destination's `ignored` or `not-ignored`. The archive step reads the held result and does not run `git check-ignore` again.
+
+   For each source that already exists, print one line:
+
+   `archive: <source> → <destination> — <state>`
+
+   `<state>` is `tracked` when `git ls-files --error-unmatch <source> 2>/dev/null` exits 0, `untracked, destination not ignored` when that command exits 1 and the held destination result is `not-ignored`, and `untracked, destination ignored` when it exits 1 and the held result is `ignored`. Keep the `2>/dev/null`, and capture the integer the same way as `git check-ignore`. Exit 1 is the ordinary untracked result (the pathspec error on stderr); it is not a failed command and not a stop. Any other exit from this tracking command: print it and stop before moving. Those are the three states. Continue on exit 0 and exit 1. A source written later (the reconciliation report) is absent from this note; its destination class is already held.
 3. Read `<project_root>/CLAUDE.md`. Resolve the wiki path (resolve username-bearing paths per spec-cycle convention: replace the username segment with the current user — Windows: `$env:USERNAME`; Unix: `$USER` — and re-check). Set `wiki_available` = the wiki directory exists. A missing wiki here is a **warning**, not a halt — Phase 1 applies the per-mode behavior (rows 7–8).
 4. Read `<config-dir>/skills/ship-spec/states.json`, where `<config-dir>` is `$CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude/` on Unix and `%USERPROFILE%\.claude\` on Windows (the same resolution order `sync.py` installs with, and the one Phase 5 step 4 resolves the log script through). Handle failure modes — all warn and set `force_partial_close = true` (Plane lookups cannot proceed without `project_id`):
    - **File missing or unreadable:** Warn: `states.json missing or unreadable — skipping Plane state gate, entering partial-close mode.`
@@ -363,8 +376,11 @@ All post-report file operations happen here, after user approval.
    Per artifact:
    - If the source path no longer exists, skip it and print `already archived: <name>` — this is what makes an interrupted run re-runnable.
    - Check tracking status: `git ls-files --error-unmatch <file> 2>/dev/null`
-   - Tracked files: `git mv <source> <destination>`
-   - Untracked files: `mv <source> <destination>` then `git add <destination>`
+   - Tracked source (`git ls-files --error-unmatch` exits 0): `git mv <source> <destination>`. `<destination>` is the full path from the destination set, never the stripped filename. Do not consult the destination class. A tracked file, and a tracked directory, moved onto a destination the gitignore matches, exits 0 and stays staged when that destination does not exist yet. When the destination already exists, `git mv` exits 128 and prints `fatal: destination exists`; the source stays and nothing is staged. Do not count that artifact as staged.
+   - Untracked source, held destination `not-ignored`: filesystem `mv <source> <destination>`, then `git add <destination>`. This is the only `git add` of that destination.
+   - Untracked source, held destination `ignored`: filesystem `mv <source> <destination>` only. Do not `git add`.
+
+   A directory follows the same three branches. `git add` of an ignored directory is the failing add named in Failure modes; the third branch is what avoids it. The commit suggestion does not `git add` again. A later `git add` of a destination `git mv` already staged, when a gitignore rule matches that destination, exits 1 and leaves the staged rename in place.
 
 4. **Log.md** (skipped when Phase 1 row 8 dropped it). Write the approved entry to the **top** of `<wiki_root>/log.md`, above the newest existing dated entry — the file is newest-first, and an entry at the bottom is out of contract. The byte work belongs to `scripts/prepend_log_entry.py`, which owns anchor location, the idempotency guard, and an atomic write; this step supplies the entry and reads the result. `<PROJECT>` is `project_prefix` from Phase 0 step 1. Format:
    ```markdown
@@ -438,13 +454,16 @@ Wiki (<wiki_root>):
   Status: uncommitted — review with `git diff --stat` then commit.
 
 Suggested commits:
-  (in target repo)  git add docs/specs/DONE/<TICKET-ID>/ && git commit -m "close(<ticket-lower>): archive spec to DONE/"
+  (in target repo)  git commit -m "close(<ticket-lower>): archive spec to DONE/"
+  Staged: <destination> <destination>
   (in wiki)         git add <each wiki file this run wrote, by name, from the Wiki block above> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 
-Stage by name in both repos. `git add docs/specs/` (or `-A`) in the target repo sweeps
-other tickets' untracked TODO/ artifacts into the close commit; `git add -A` in the wiki
-sweeps whatever unrelated edits that tree is carrying.
+The suggestion does not `git add`. Do not `git add docs/specs/` and do not `git add -A`.
 ```
+
+When this run staged at least one destination (`git mv` that exited 0, or the archive-step `git add`), those paths are already staged. Name them, and no others, on the `Staged:` line, then print the target-repo commit with no `git add` and no pathspec. Do not `git add` those paths in the suggestion. A later `git add` of a destination `git mv` already staged exits 1 when a gitignore rule matches that destination and does not drop the rename, so a second add is not runnable. Do not pass the destinations as a commit pathspec.
+
+When this run staged nothing, omit the `(in target repo)` line only. Keep one warning line: do not `git add -A` in the wiki. Leave the wiki suggestion unchanged. Set the target-repo status line to `Status: local-only — nothing staged.` Print, in place of the target-repo suggestion: `Archive is local-only. Nothing was staged in the target repo.`
 
 The wiki suggestion names only the files this run wrote: each `decisions/` and `comprehension/` file under `Created:`, `projects/<project>/state.md` only when it is under `Updated:`, and `log.md` only when the step 4 script wrote it (`outcome=prepended`, `=fresh` or `=created`) — never on the skipped or not-written rows. Naming a file this run left alone stages whatever unrelated edit it carries, and naming one that does not exist fails the whole `git add`. When the run wrote no wiki file, omit the `(in wiki)` line.
 
@@ -457,7 +476,7 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 - Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data (`vcs-host?`; the SHA path needs no `gh`).
 - MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup.
 - plane-proxy's state-list and work-item-lookup capabilities (e.g., `mcp__plane__list_states` and `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalents in your host's Plane integration) for the mode gate.
-- Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
+- Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git check-ignore -q`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
 - Write for the reconciliation report and wiki entries. Edit for state.md updates (surgical line replacement). `log.md` is deliberately **not** a Write target: `scripts/prepend_log_entry.py` owns it, which makes the duplicate check and the insert one operation rather than a check this skill could read and then write anyway.
 - **Mutation boundary:** no file mutation before the Phase 4 confirmation except the reconciliation report (generated audit-trail output, Phase 2c). All other writes — wiki entries, state.md, archive moves, log.md — happen in Phase 5, after explicit user approval.
 - This skill never commits. Do not push. Do not open PRs.
@@ -475,6 +494,6 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 - **Partial-then-full re-run.** A prior partial-close wrote a `close |` log entry; the later full-close's idempotency guard matches it and skips a second entry by design — the wiki-harvest event is visible in the created entry files and state.md, not in a second log line.
 - **Log-guard encoding.** The `--guard` substring compare depends on the literal em dash (`—`) in the entry format; tools that normalize it to `--`/`-` will break dedup and produce duplicate entries on re-run. The script pins UTF-8 on every file open, on stdin, and on both output streams, which is what makes that compare reliable on platforms whose default encoding is not UTF-8.
 - **`state.md` evidence incomplete.** Skip the `state.md` update, warn, and suggest `/wiki-state-update` as a follow-up. Don't block the rest of the close.
-- **Untracked spec files.** Some spec artifacts may not be committed yet. Use `mv` + `git add` instead of `git mv` for untracked files. Detect via `git ls-files --error-unmatch <file> 2>/dev/null`.
-- **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print an explicit commit suggestion for each repo this run wrote to — the wiki one names only the files this run wrote and is omitted when it wrote none — staging by name — never `git add docs/specs/` or `git add -A`, which sweep in other tickets' untracked artifacts or unrelated wiki edits. The user controls when and how to commit.
+- **Spec artifact tracking.** Three states, per artifact. Tracked source: `git mv` of the full destination path, and the result stays staged even when the destination matches a gitignore rule and that destination does not exist yet. When the destination already exists, `git mv` exits 128 and that artifact is not staged. Untracked source, destination not ignored: filesystem `mv`, then `git add`. Untracked source, destination ignored: filesystem `mv` only. `git add` on that ignored path exits 1 and prints `The following paths are ignored by one of your .gitignore files:`, including when the path is already staged by `git mv`. Source tracking is `git ls-files --error-unmatch` with stderr discarded; exit 1 is untracked. Destination class is the Phase 0 captured `git check-ignore -q` integer: exit 0 ignored, exit 1 not ignored.
+- **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print a target-repo suggestion only when this run staged at least one destination. That suggestion is the commit of what is already staged, with those paths named beside it, and no `git add`. Omit it when nothing was staged. A filesystem move into an ignored destination is a write, and it is not a reason to print a target-repo `git add`. The wiki one names only the files this run wrote and is omitted when it wrote none. Never `git add docs/specs/` or `git add -A`. The user controls when and how to commit.
 - **Cross-repo specs.** The skill runs in the target repo (where the spec lives). Wiki path comes from that repo's CLAUDE.md. No cross-repo file access is needed during reconciliation.

@@ -92,6 +92,8 @@ Skills assume:
 
 Adjust the layout in your fork if needed; the skills hardcode the spec/reviews/test-output paths today (brief location is tolerant on input per the bullet above).
 
+A project may gitignore `docs/specs/`. The lifecycle still runs: the skills resolve those paths from the repo root on disk. `/ship-spec` classifies the test output and the review record per path; an ignored one is kept locally and copied into the primary checkout beside the spec, and the PR body says so. `/spec-close` archives on disk, and it prints a target-repo commit suggestion only for paths it staged. The wiki, or whatever knowledge layer the project uses, is the durable record.
+
 ## Plane.so integration
 
 `/spec-cycle` and `/ship-spec` use the plane-proxy MCP server for ticket lookup and state updates. Configure it per Plane's docs.
