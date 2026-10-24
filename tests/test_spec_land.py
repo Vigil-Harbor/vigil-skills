@@ -8,8 +8,8 @@ portable script without package boilerplate.
 Cases pass stdin strings, or subprocess bytes for the invalid-UTF-8 row.
 They do not create a git repo and do not call GitHub.
 
-The VHS-57 test plan's states.json Post-merge Checklists assertions are not
-in this module. That CLT entry is added by a later piece.
+The VHS-57 test plan's states.json Post-merge Checklists assertions are
+TestCltPostMergeChecklists below.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import subprocess
 import sys
 import unittest
@@ -270,6 +271,24 @@ class TestLandCheck(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertEqual(out, "clear\n")
         self.assertEqual(err, "")
+
+
+CLT_CHECKLISTS_UUID = "5bbbab1a-bb0e-41b1-b40f-bdd761e0273b"
+
+
+class TestCltPostMergeChecklists(unittest.TestCase):
+    """Repo states.json: CLT gained Post-merge Checklists (VHS-83). No Plane call."""
+
+    def test_clt_post_merge_checklists(self):
+        path = REPO_ROOT / "skills" / "ship-spec" / "states.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        clt = data["CLT"]
+        self.assertEqual(
+            clt["states"]["Post-merge Checklists"], CLT_CHECKLISTS_UUID)
+        self.assertIn("Post-merge Checklists", clt["state_groups"])
+        self.assertEqual(clt["state_groups"]["Post-merge Checklists"], "started")
+        for key in clt["states"]:
+            self.assertIn(key, clt["state_groups"])
 
 
 if __name__ == "__main__":

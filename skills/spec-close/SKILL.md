@@ -66,7 +66,7 @@ One Plane lookup decides the mode. Rows are evaluated **top-down and the first m
 | 2 | `force_partial_close` (from `--partial` or a states.json failure) | **partial-close** — print: `Entering partial-close mode: archiving spec artifacts only, skipping reconciliation and wiki decomposition.` |
 | 3 | Plane lookup succeeds; state group `completed` or `cancelled` | **full-close** |
 | 4 | Plane lookup succeeds; ticket's state UUID absent from the state map, or `state` is null | Prompt, never infer a group — **missing UUID:** name the unmatched UUID and suggest a states.json refresh; **null state:** report that the ticket has no state UUID and suggest a states.json refresh. Either branch: `1. Partial-close  2. Abort` |
-| 5 | Plane lookup succeeds; any other resolvable group | Print the current state name and group, then the same partial-or-abort prompt ("I invoked this prematurely" exits via Abort) |
+| 5 | Plane lookup succeeds; any other resolvable group | Print the current state name and group, then the same partial-or-abort prompt ("I invoked this prematurely" exits via Abort). `/spec-land` is the step that moves the ticket to Done or Post-merge Checklists. |
 | 6 | Plane unreachable or ticket not found | Warn, then the same partial-or-abort prompt (the safer path) |
 | 7 | Resolved mode would be full-close but `wiki_available` is false | Same partial-or-abort prompt with reason `wiki not found at <path>` — checked after rows 3–6, before any reconciliation work |
 | 8 | Partial-close (via any row) and `wiki_available` is false | Proceed; the log.md entry is dropped from the close plan with a printed notice: `wiki not found — skipping log.md entry; archive only` |
@@ -242,7 +242,7 @@ If the reconciliation report has no `## Wiki-ready` section (sed produces empty 
 
 Note: `log.md` is not included in the coverage model. The close log entry is a distinct event from the merge log entry that wiki-after-merge writes. Phase 3c always compiles a close log entry, and Phase 5's idempotency guard (`scripts/prepend_log_entry.py --guard "close | <PROJECT> — <TICKET-ID>:"`) prevents duplicates while allowing the close entry to coexist with wiki-after-merge's merge entry.
 
-Note: `filemap.md` is intentionally **out of scope** for spec-close. File add/delete/move deltas are `/wiki-after-merge`'s responsibility — spec-close derives close-event wiki entries (comprehension, decisions, state.md, log.md) but never edits the filemap. If this close added or removed files, run `/wiki-after-merge <merge-sha>` from the wiki (or update `filemap.md` by hand) to capture them.
+Note: `filemap.md` is intentionally **out of scope** for spec-close. `/spec-land` is the step that writes the filemap delta. `/wiki-after-merge` remains the fallback for everything else. spec-close derives close-event wiki entries (comprehension, decisions, state.md, log.md) but never edits the filemap.
 
 **Stage 2 — Check existing coverage.**
 
@@ -442,6 +442,7 @@ All post-report file operations happen here, after user approval.
 Print at the end:
 ```text
 === CLOSE COMPLETE: <TICKET-ID> ===
+Land: /spec-land already ran
 
 Target repo (<project_root>):
   Reconciliation: docs/specs/DONE/<TICKET-ID>/reconciliation.md

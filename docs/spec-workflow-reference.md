@@ -1,6 +1,6 @@
 # Spec Workflow — Clean-Room Reference
 
-Four AI-driven skills, plus one optional stage: an interview stage that produces the brief, two that split spec authoring from implementation into separate sessions, and a post-merge close. The optional stage, spec-tickets, sits between authoring and implementation and breaks a green-lit spec into dependency-linked tickets. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
+Five AI-driven skills, plus one optional stage: an interview stage that produces the brief, two that split spec authoring from implementation into separate sessions, `/spec-land` as the post-merge step before `/spec-close`, and the close. The optional stage, spec-tickets, sits between authoring and implementation and breaks a green-lit spec into dependency-linked tickets. The split is load-bearing: spec context grows with review rounds, implementation context grows with the codebase — combining them risks hitting the context window ceiling mid-flight. The session boundary also means a green-lit spec on disk is a stable artifact: if implementation aborts, you re-run without re-reviewing.
 
 ---
 
@@ -281,13 +281,23 @@ Move the ticket to a review/in-review state. Comment on the ticket with the PR U
 
 ### Phase 7 — Summary
 
-Print the PR URL, spec path, branch, worktree path. The worktree stays alive for review fixes (the user can `cd` into it and push follow-up commits). Remind the user to clean up the worktree after merge and run any post-merge wiki/docs update workflow.
+Print the PR URL, spec path, branch, worktree path. The worktree stays alive for review fixes (the user can `cd` into it and push follow-up commits). After the PR merges, `/spec-land` is the post-merge step.
+
+---
+
+## Skill 2b: spec-land
+
+**Purpose:** the post-merge step, after the PR is already merged and before `/spec-close`. On one confirmation it checks the landed tree against the head, base, and patch-id last recorded on the PR, moves the ticket to Done or to Post-merge Checklists, writes the wiki merge line and the filemap delta when a wiki is configured, then removes the worktree and the local and remote feature branch and runs the project's post-land command. It never merges, never commits, and never pushes anything except the remote branch delete.
+
+**Invocation:** `/spec-land <PR-number | PR-URL | spec-path>`. No argument uses the current branch's PR. The working directory is the target repo.
+
+The ordered steps, the marker read, and the cleanup rules are in `skills/spec-land/SKILL.md`. Marker parsing, the patch-id decision, and path overlap are `skills/spec-land/scripts/land_check.py`. The skill invokes that script and does not reimplement it.
 
 ---
 
 ## Skill 3: spec-close
 
-**Purpose:** retire the spec once its PR has merged. In one pass it reconciles the spec against the code that actually shipped (a reconciliation report — the lone write before the confirmation checkpoint), proposes wiki entries from the difference (decisions, comprehension notes, state updates), archives the spec artifacts from `docs/specs/TODO/` to `docs/specs/DONE/<TICKET-ID>/`, and prepends an entry to the wiki's newest-first `log.md`. The issue tracker's state gates the mode: a completed ticket permits a full close, anything else offers a partial close. `--report-only` writes just the reconciliation report; `--partial` forces archive-only. See `skills/spec-close/SKILL.md` for the phase-by-phase detail.
+**Purpose:** the close and harvest. `/spec-land` is the post-merge step; spec-close remains the close and harvest, once that step has run. In one pass it reconciles the spec against the code that actually shipped (a reconciliation report — the lone write before the confirmation checkpoint), proposes wiki entries from the difference (decisions, comprehension notes, state updates), archives the spec artifacts from `docs/specs/TODO/` to `docs/specs/DONE/<TICKET-ID>/`, and prepends an entry to the wiki's newest-first `log.md`. The issue tracker's state gates the mode: a completed ticket permits a full close, anything else offers a partial close. `--report-only` writes just the reconciliation report; `--partial` forces archive-only. See `skills/spec-close/SKILL.md` for the phase-by-phase detail.
 
 ---
 
