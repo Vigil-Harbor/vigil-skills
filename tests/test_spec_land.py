@@ -296,5 +296,25 @@ class TestCltPostMergeChecklists(unittest.TestCase):
             self.assertIn(key, clt["state_groups"])
 
 
+class TestMarkerReadCommand(unittest.TestCase):
+    """gh rejects --slurp combined with --jq (VHS-84). No skill may print that command."""
+
+    def test_no_gh_api_line_combines_slurp_and_jq(self):
+        offenders = []
+        for path in sorted((REPO_ROOT / "skills").rglob("SKILL.md")):
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for number, line in enumerate(lines, 1):
+                if "gh api" in line and "--slurp" in line and "--jq" in line:
+                    offenders.append("{}:{}".format(path.relative_to(REPO_ROOT), number))
+        self.assertEqual(offenders, [])
+
+    def test_marker_readers_use_slurp(self):
+        for name in ("spec-land", "ship-spec", "review-pr"):
+            text = (REPO_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+            with self.subTest(skill=name):
+                self.assertIn(
+                    "gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments\n", text)
+
+
 if __name__ == "__main__":
     unittest.main()
