@@ -460,10 +460,10 @@ The heredoc is quoted so the shell does not expand or swallow the comment. Do no
 Latest marker. Use the owner and repo from Step 1. Read issue comments only:
 
 ```bash
-gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments --jq 'add'
+gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments
 ```
 
-`--paginate` requests every page. `--slurp` wraps those pages in one array, and `add` flattens one level. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array, including an empty one. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error and the body, and do not post.
+`--paginate` requests every page. `--slurp` wraps those pages in one array. Do not add `--jq`: gh rejects `--slurp` combined with `--jq` and exits 1. Flatten the pages one level to get the comments. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array whose every element is a JSON array, including `[]` and `[[]]`. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error and the body, and do not post.
 
 A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
 

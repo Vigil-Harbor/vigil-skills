@@ -104,10 +104,10 @@ The interpreter probe tests executability, not presence. All three assignments a
 Read issue comments only. Same command `/ship-spec` and `/review-pr` use:
 
 ```bash
-gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments --jq 'add'
+gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments
 ```
 
-`--paginate` requests every page. `--slurp` wraps those pages in one array, and `add` flattens one level. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array, including an empty one. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a hard halt: no wiki write, no Plane write, and no cleanup. Do not treat a failed or truncated read as an absent marker. This halt still applies after `state` is `MERGED`.
+`--paginate` requests every page. `--slurp` wraps those pages in one array. Do not add `--jq`: gh rejects `--slurp` combined with `--jq` and exits 1. Flatten the pages one level to get the comments. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array whose every element is a JSON array, including `[]` and `[[]]`. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a hard halt: no wiki write, no Plane write, and no cleanup. Do not treat a failed or truncated read as an absent marker. This halt still applies after `state` is `MERGED`.
 
 A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker and is ignored, not malformed. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
 
