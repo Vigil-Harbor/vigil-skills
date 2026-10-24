@@ -426,7 +426,7 @@ Otherwise `git branch -d "$branch"`. A squash or rebase leaves the original comm
 
 ### 9.5 Remote branch delete
 
-`git push --force-with-lease="refs/heads/$branch:<headRefOid>" origin --delete "$branch"` only when `git ls-remote --heads origin "$branch"` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). The lease refuses the delete if the tip moved after that check; report a lease rejection as skipped. A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
+`git push --force-with-lease="refs/heads/$branch:<headRefOid>" origin --delete "$branch"` only when `git ls-remote --heads origin "$branch"` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). Empty output means gone only when `ls-remote` exited 0. A non-zero `ls-remote` skips the delete and is reported as a lookup failure. The lease refuses the delete if the tip moved after that check; report a lease rejection as skipped. A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
 
 This is the only remote git mutation.
 
