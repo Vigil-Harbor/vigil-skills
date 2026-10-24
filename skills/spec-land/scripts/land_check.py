@@ -124,7 +124,8 @@ def _overlap(text: str) -> tuple[int, list[str]]:
     except ValueError:
         # shortcut: missing "--" exits 2, upgrade when Decision 16 names this input
         return 2, []
-    shared = sorted(set(lines[:split_at]).intersection(lines[split_at + 1:]))
+    # A blank line is not a path, so trailing newlines in pasted git output never count as shared.
+    shared = sorted(set(filter(None, lines[:split_at])).intersection(filter(None, lines[split_at + 1:])))
     if not shared:
         return 0, []
     return 1, shared

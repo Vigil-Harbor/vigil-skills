@@ -272,6 +272,11 @@ class TestLandCheck(unittest.TestCase):
         self.assertEqual(out, "clear\n")
         self.assertEqual(err, "")
 
+    def test_overlap_blank_lines_are_not_paths(self):
+        code, out, err = run_main(self.mod, ["overlap"], "a.py\n\n--\nb.py\n\n")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "clear\n")
+
 
 CLT_CHECKLISTS_UUID = "5bbbab1a-bb0e-41b1-b40f-bdd761e0273b"
 

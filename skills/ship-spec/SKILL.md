@@ -14,7 +14,7 @@ requires:
 
 Invoked as: `/ship-spec <spec-path>` (e.g., `/ship-spec docs/specs/TODO/PROJ-123.spec.md`).
 
-This skill assumes `/spec-cycle` has already produced a converged spec. It implements, tests, pushes a PR, and updates Plane. It does **not** update any project wiki — that happens post-merge via your own wiki-update workflow, which the final summary will remind you to run. After the PR merges, run `/spec-land` first, then `/spec-close`.
+This skill assumes `/spec-cycle` has already produced a converged spec. It implements, tests, pushes a PR, and updates Plane. It does **not** update any project wiki — that happens post-merge in `/spec-land`, which the final summary will remind you to run. After the PR merges, run `/spec-land` first, then `/spec-close`.
 
 ## Phase 0 — Preflight
 
@@ -451,7 +451,7 @@ Do every check below before `gh pr comment`. Any refusal prints what that check 
 1. Head and base come from `gh pr view --json headRefOid,baseRefOid` after `gh pr create`. If that command fails, print the error and do not post.
 2. If the base object is missing (`git cat-file -e <baseRefOid>` exits non-zero), run `git fetch origin` once. If it is still missing, do not post a marker with a bad id. Print the error and the body.
 3. The patch-id is the first field of `git diff <baseRefOid>...<headRefOid> | git patch-id --stable` (three dots). A second field on that same line is not recorded. The first field must be 40 lowercase hex. If either command exits non-zero, or the first field is missing, or a second line is present, that is a bad id: print the error and the body, and do not post.
-4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. If they are not, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
+4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. GitHub can lag in updating a PR's head right after a push: when they differ, wait about 5 seconds and re-read `headRefOid` once. If they still differ, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
 5. Read the latest marker (below). If its `head:` line is `head: ` plus 40 lowercase hex and that value equals this head, do not post again. That is not a failed post, and Phase 7 does not print `SHA marker: NOT posted`. If a marker comment exists but has no such line, print its `id` and raw body. That is not an absent marker and it is not the same head: when the checks above passed, post the new body so the new comment is the latest.
 6. Write the six lines to a temporary file outside the repository, UTF-8, no BOM (no leading U+FEFF). Do not stage that file and do not commit it. A single trailing newline after `-->` is fine. No blank line inside the comment. Post with `gh pr comment <N> --body-file <path>`. Do not pass the body inline: the shell eats the HTML comment. Substitute the resolved values, then run:
 
@@ -523,9 +523,8 @@ To address PR review comments:
   cd <worktree-path>
   /review-pr
 
-After merge, clean up:
-  git worktree remove <worktree-path>
-  # Then run /spec-land <pr-number>, then /spec-close <spec-path> to reconcile and retire the spec
+After merge:
+  # Run /spec-land <pr-number> (it removes this worktree), then /spec-close <spec-path> to reconcile and retire the spec
 ```
 
 When the SHA marker comment failed twice after `gh pr create` succeeded, print these lines in this summary. Do not claim the record exists. The PR stays open.
@@ -537,7 +536,7 @@ SHA marker: NOT posted
 
 When the marker was not posted for any other reason, the SHA marker step already printed the mismatch or the error and the body. Do not claim the record exists. When the comment was posted, or was not posted because the latest marker already has this head, do not print `SHA marker: NOT posted`.
 
-Do not auto-update any project wiki — that happens post-merge once the merge SHA exists on `<default-branch>`. Run your project's post-merge wiki/docs update flow if you have one.
+Do not auto-update any project wiki — that happens post-merge once the merge SHA exists on `<default-branch>`. `/spec-land` writes the merge log line and the filemap delta; run your project's own post-merge wiki/docs flow for anything else.
 
 ## Tool-use notes
 
