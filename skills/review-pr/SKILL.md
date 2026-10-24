@@ -83,6 +83,8 @@ gh api repos/{owner}/{repo}/pulls/<N>/comments \
 
 If the latest review body contains infrastructure errors — look for `"Failed to clone"`, `"🔥 Problems"`, or `"Please run the @coderabbitai full review"` — then post `@coderabbitai full review` as a PR comment to re-trigger the review, report "CodeRabbit hit an infrastructure error — re-triggered full review", and stop.
 
+Before either of the two stops below, and only when you are about to take that stop, post the SHA marker with review state `not-run` (see SHA marker). Do this when no marker exists or `git rev-parse HEAD` differs from the latest marker head. When that head equals `git rev-parse HEAD`, do not post again. Do not post this on a run that continues past both stops. A failed post still stops.
+
 If the latest review state is `APPROVED` and there are no unresolved comments, report "Nothing to review — PR is approved" and stop.
 
 If there are no CodeRabbit reviews at all, report "No CodeRabbit reviews found" and stop.
@@ -148,7 +150,7 @@ Only if fixes were made:
    ```bash
    HEAD_SHORT_SHA=$(git rev-parse --short HEAD)
    ```
-   For each fix-categorized finding from this round, post an inline reply on the originating review-comment thread (see Step 6c for the reply mechanism and error handling). Then post non-fix replies for all skip/duplicate/already-fixed/defer findings from this round (see Step 6c). Then continue to Step 6a.
+   For each fix-categorized finding from this round, post an inline reply on the originating review-comment thread (see Step 6c for the reply mechanism and error handling). Then post non-fix replies for all skip/duplicate/already-fixed/defer findings from this round (see Step 6c). Then continue to Step 6a. Do not post the SHA marker for this push here. Post it only after `REVIEW_SIGNAL` is set for this HEAD. Do not post a provisional marker while 6a will still run for this HEAD.
 
 **Note:** Pushing triggers CodeRabbit's auto-incremental review of the new commit. Step 6 waits for it before attempting thread resolution.
 
@@ -176,13 +178,13 @@ FAST_PATH = (round1_finding_count <= 2
              AND step 5 pushed successfully)
 ```
 
-If `FAST_PATH` is true, skip Steps 6a and 6b entirely — proceed directly to Step 6d. Log: `Fast path triggered — skipping incremental review wait (≤2 fix-only findings)`. The rationale: on trivial PRs (1–2 fix-only findings), CodeRabbit's incremental review of the resulting small fix almost never surfaces new actionable findings. The 30s–5min wait in 6a has near-zero expected value. If CodeRabbit does post new findings, re-running `/review-pr` on the same PR picks them up naturally.
+If `FAST_PATH` is true, set `REVIEW_SIGNAL=fast-path`, post the SHA marker for the pushed HEAD with review state `passed` (see SHA marker), and skip Steps 6a and 6b — proceed directly to Step 6d. That post is the fast-path post, not a provisional marker posted before 6a. A failed post does not skip 6d. Do not post again from 6a for this HEAD. Log: `Fast path triggered — skipping incremental review wait (≤2 fix-only findings)`. The rationale: on trivial PRs (1–2 fix-only findings), CodeRabbit's incremental review of the resulting small fix almost never surfaces new actionable findings. The 30s–5min wait in 6a has near-zero expected value. If CodeRabbit does post new findings, re-running `/review-pr` on the same PR picks them up naturally.
 
 ### 6a. Wait for CodeRabbit's incremental review (only if fixes were pushed)
 
-If no fixes were pushed (all skips/duplicates/already-fixed/deferred), skip to 6d.
+If no fixes were pushed (all skips/duplicates/already-fixed/deferred), post the SHA marker with review state `not-run` when no marker exists or `git rev-parse HEAD` differs from the latest marker head (same head: do not post again), then skip to 6d. The same post is made before the non-fix replies; do not post a second marker for this head.
 
-**If FAST_PATH is true**, set `REVIEW_SIGNAL=fast-path` and skip to 6d. (Per-thread replies were already posted in Step 5.)
+**If FAST_PATH is true**, skip to 6d. Do not set `REVIEW_SIGNAL` here and do not post the SHA marker on this line. The fast-path predicate already set `REVIEW_SIGNAL=fast-path` and posted the marker for this HEAD. (Per-thread replies were already posted in Step 5.)
 
 **Otherwise, capture push time and check for pre-existing approval:**
 
@@ -198,7 +200,7 @@ Capture that review's `id` as `PREV_REVIEW_ID` — the new-findings predicate be
 
 `PUSH_TIME` and `PREV_REVIEW_ID` are conversational state — the LLM captures their values from the Bash output and substitutes them literally into subsequent Bash commands. Individual Bash tool calls do not share shell variables.
 
-If the latest verdict's `state` is `APPROVED` **and its `submitted_at` is after `PUSH_TIME`**, skip 6a/6b and go straight to 6e. Set `REVIEW_SIGNAL=pre-existing-approval`. (This skips 6d — the existing behavior, preserved from the current SKILL.md; `APPROVED` implies threads are resolved or will be imminently.) A pre-push `APPROVED` verdict must not short-circuit: the incoming incremental review may flip it back to `CHANGES_REQUESTED`.
+If the latest verdict's `state` is `APPROVED` **and its `submitted_at` is after `PUSH_TIME`**, set `REVIEW_SIGNAL=pre-existing-approval`, post the SHA marker for this HEAD with review state `passed` (see SHA marker), then skip 6a/6b and go straight to 6e. (This skips 6d — the existing behavior, preserved from the current SKILL.md; `APPROVED` implies threads are resolved or will be imminently.) A pre-push `APPROVED` verdict must not short-circuit: the incoming incremental review may flip it back to `CHANGES_REQUESTED`.
 
 **Otherwise, poll for new findings directly. This is the primary signal.**
 
@@ -218,9 +220,9 @@ gh api repos/<OWNER>/<REPO>/pulls/<N>/comments \
 
 Run that probe under the waiting rule with a 9-minute deadline (a host without background execution makes up to 10 individual probe calls instead). Outcomes:
 
-- **Count > 0:** new findings exist. Capture their review id and proceed to 6b. Set `REVIEW_SIGNAL=new-findings`.
-- **Count stays 0 for all attempts:** proceed to 6d, but set `REVIEW_SIGNAL=inconclusive` — see the honesty rule in 6e. CodeRabbit may have had nothing to add, or may simply not have finished.
-- **A verdict review lands (`state != "COMMENTED"`, `submitted_at > PUSH_TIME`) with count 0:** CodeRabbit finished and found nothing. Set `REVIEW_SIGNAL=verdict-landed` and proceed to 6d. This is the only *positive* "nothing new" signal available; check for it alongside the count.
+- **Count > 0:** new findings exist. Capture their review id. Set `REVIEW_SIGNAL=new-findings`, post the SHA marker for this HEAD with review state `passed` (see SHA marker), then proceed to 6b.
+- **Count stays 0 for all attempts:** set `REVIEW_SIGNAL=inconclusive` — see the honesty rule in 6e. Post the SHA marker for this HEAD with review state `inconclusive` (see SHA marker), then proceed to 6d. CodeRabbit may have had nothing to add, or may simply not have finished.
+- **A verdict review lands (`state != "COMMENTED"`, `submitted_at > PUSH_TIME`) with count 0:** CodeRabbit finished and found nothing. Set `REVIEW_SIGNAL=verdict-landed`, post the SHA marker for this HEAD with review state `passed` (see SHA marker), then proceed to 6d. This is the only *positive* "nothing new" signal available; check for it alongside the count.
 
 **Advisory only — CodeRabbit's CI check:**
 
@@ -229,7 +231,7 @@ gh pr checks <N> --json name,state \
   --jq '[.[] | select(.name | test("coderabbit"; "i")) | .state] | if length == 0 then "NONE" elif any(. == "PENDING") then "PENDING" elif all(. == "SUCCESS") then "SUCCESS" else "FAILURE" end'
 ```
 
-Fold this into the same Bash calls as the findings poll, for observability only. `FAILURE` is the one state worth acting on: CodeRabbit errored, so no incremental findings are coming and polling further is pointless — proceed to 6d immediately with `REVIEW_SIGNAL=ci-check (FAILURE)`. `SUCCESS` corroborates a count of 0. `PENDING` and `NONE` mean nothing either way and must not extend polling.
+Fold this into the same Bash calls as the findings poll, for observability only. `FAILURE` is the one state worth acting on: CodeRabbit errored, so no incremental findings are coming and polling further is pointless. Set `REVIEW_SIGNAL=ci-check (FAILURE)`, post the SHA marker for this HEAD with review state `inconclusive` (see SHA marker), then proceed to 6d immediately. `SUCCESS` corroborates a count of 0. `PENDING` and `NONE` mean nothing either way and must not extend polling.
 
 **Re-entry from 6b (round 2+ guard):** the findings predicate handles this for free — advance `PREV_REVIEW_ID` to the review just triaged before looping back, and `pull_request_review_id > PREV_REVIEW_ID` cannot re-match the prior round. No check-transition dance is needed.
 
@@ -249,19 +251,20 @@ Without `in_reply_to_id == null` this returns CodeRabbit's own `✅ Review threa
 If the new review has NEW findings not present in the original review:
 
 - Triage using Step 3 logic
-- If any are categorized as `fix`: apply fixes, run tests, commit, push, capture `HEAD_SHORT_SHA=$(git rev-parse --short HEAD)`, post per-thread replies for this round's fix-categorized findings (same mechanism as Step 6c), then loop back to 6a
-- **Cap at 3 fix-push-review cycles.** After 3 rounds, warn the user and proceed to 6d:
-  ```text
-  3 fix-push-review cycles completed. Remaining findings:
-    - <list>
-  Proceeding to check thread resolution status. Re-run /review-pr if needed.
-  ```
+- If any are categorized as `fix`: apply fixes, run tests, commit, push, capture `HEAD_SHORT_SHA=$(git rev-parse --short HEAD)`, and post per-thread replies for this round's fix-categorized findings (same mechanism as Step 6c). Do not post the SHA marker for this new HEAD in this bullet.
+  - When this push is not the third fix-push-review cycle, loop back to 6a. That following 6a posts the marker for this new HEAD only after it sets `REVIEW_SIGNAL`. Do not copy an older HEAD's signal onto the new HEAD, and do not post a provisional marker while that 6a will still run.
+  - **Cap at 3 fix-push-review cycles.** The push that hits the cap does not loop back to 6a and does not keep the previous HEAD's signal. Set `REVIEW_SIGNAL=inconclusive` for this pushed HEAD, post its SHA marker with review state `inconclusive`, then warn the user and proceed to 6d. A failed post does not skip 6d. The push stands. This `inconclusive` is the marker review state for the capped push. It is not the polling-exhausted case in the 6e honesty rule.
+    ```text
+    3 fix-push-review cycles completed. Remaining findings:
+      - <list>
+    Proceeding to check thread resolution status. Re-run /review-pr if needed.
+    ```
 
 If the incremental review has no new actionable findings (or only duplicates/already-fixed), proceed to 6d.
 
 ### 6c. Per-thread replies (mechanism)
 
-Step 6c is not a standalone post-loop step — per-thread replies are posted immediately after each push (Step 5 and each Step 6b fix-push cycle). Fix replies are posted first (they reference the push SHA), then non-fix replies. If no fixes were pushed (all non-fix), non-fix replies are still posted after Step 3 triage completes.
+Step 6c is not a standalone post-loop step — per-thread replies are posted immediately after each push (Step 5 and each Step 6b fix-push cycle). Fix replies are posted first (they reference the push SHA), then non-fix replies. If no fixes were pushed (all non-fix), post the SHA marker with review state `not-run` before those replies when no marker exists or `git rev-parse HEAD` differs from the latest marker head (same head: do not post again), then post non-fix replies after Step 3 triage completes.
 
 **Fix reply mechanism:**
 
@@ -397,10 +400,79 @@ Review round complete for PR #<N>:
 
 This distinction is not pedantry. On PR #51 round 1, polling ended reporting "no new findings"; a `CHANGES_REQUESTED` review carrying a real Major-adjacent finding landed about three minutes later and was caught only because the user pasted it in. A round that ends `inconclusive` is a round that is not finished.
 
+## SHA marker
+
+This is the procedure for a post a step above already named. Reaching this heading is not itself a post. Do not post unless that step said to. `HEAD_SHORT_SHA` and `HEAD_SHA` stay what those steps assign. The marker captures `git rev-parse HEAD` separately and checks it against `headRefOid`.
+
+Review-pr does not emit `skipped`. The marker `review` field is one of `passed`, `inconclusive`, and `not-run`:
+
+| Caller | `REVIEW_SIGNAL` | Marker `review` |
+| --- | --- | --- |
+| Fast-path predicate | `fast-path` | `passed` |
+| 6a, count > 0 | `new-findings` | `passed` |
+| 6a, verdict landed | `verdict-landed` | `passed` |
+| 6a, pre-existing approval | `pre-existing-approval` | `passed` |
+| 6a, count stays 0 | `inconclusive` | `inconclusive` |
+| 6a, CI check FAILURE | `ci-check (FAILURE)` | `inconclusive` |
+| 3-cycle cap | `inconclusive` | `inconclusive` |
+| No push (the two early stops, and the no-fix path) | leave it unchanged | `not-run` |
+
+A no-push post does not set `REVIEW_SIGNAL`. A later push in this run posts its own marker after its own `REVIEW_SIGNAL` is set, so the marker for the HEAD that push replaced does not stay the latest.
+
+The body is one HTML comment. After one leading and one trailing whitespace run is removed, it is exactly these six lines, in this order, and no other line. One space after each colon. Each id is 40 lowercase hex digits. The review line is `review: ` plus the token from the table and nothing more.
+
+```text
+<!-- vigil-spec-land
+head: <40 lowercase hex>
+base: <40 lowercase hex>
+patch-id: <40 lowercase hex>
+review: <passed|skipped|inconclusive|not-run>
+-->
+```
+
+Do not put the payload in the PR body. `<N>` is the PR number from Input parsing.
+
+Do every check below before `gh pr comment`. Any refusal prints what that check names and does not post. Then continue the caller's next step. Do not post when an earlier check in this procedure already refused. The body uses `headRefOid` and `baseRefOid`, never a local SHA that differs from `headRefOid`.
+
+1. Head and base come from `gh pr view --json headRefOid,baseRefOid` after the push, or, on a no-push post, before the stop or the replies. If that command fails, print the error and do not post.
+2. If the base object is missing (`git cat-file -e <baseRefOid>` exits non-zero), run `git fetch origin` once. If it is still missing, do not post a marker with a bad id. Print the error and the body.
+3. The patch-id is the first field of `git diff <baseRefOid>...<headRefOid> | git patch-id --stable` (three dots). A second field on that same line is not recorded. The first field must be 40 lowercase hex. If either command exits non-zero, or the first field is missing, or a second line is present, that is a bad id: print the error and the body, and do not post.
+4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. If they are not, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
+5. Read the latest marker (below). Do not post when a check above refused.
+   - No-push caller: post only when no marker exists, or the latest marker's `head:` line is `head: ` plus 40 lowercase hex and that value differs from `git rev-parse HEAD`. The same head: do not post again. If a marker exists but has no such line, print its `id` and raw body, and do not post. A marker that exists is not an absent marker.
+   - Any other caller: if that `head:` line equals this head, do not post again. If a marker exists but has no such line, print its `id` and raw body. That is not the same head: when the checks above passed, post so the new comment is the latest.
+6. Write the six lines to a temporary file outside the repository, UTF-8, no BOM (no leading U+FEFF). Do not stage that file and do not commit it. A single trailing newline after `-->` is fine. No blank line inside the comment. Post with `gh pr comment <N> --body-file <path>`. Do not pass the body inline: the shell eats the HTML comment (see the shell note). Substitute the resolved values, then run:
+
+```bash
+cat > <path> <<'EOF'
+<!-- vigil-spec-land
+head: <head>
+base: <base>
+patch-id: <patch-id>
+review: <token>
+-->
+EOF
+gh pr comment <N> --body-file <path>
+```
+
+The heredoc is quoted so the shell does not expand or swallow the comment. Do not retry a failed comment in this run.
+
+Latest marker. Use the owner and repo from Step 1. Read issue comments only:
+
+```bash
+gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments --jq 'add'
+```
+
+`--paginate` requests every page. `--slurp` wraps those pages in one array, and `add` flattens one level. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array, including an empty one. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error and the body, and do not post.
+
+A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
+
+Host failure: the post runs only after `REVIEW_SIGNAL` is set, except the no-push post, which has no signal. A failed post does not skip the rest of the round. On a path that still enters 6a, the failure does not skip 6a. On the fast path and the 3-cycle cap, 6a is not entered and the failure does not skip 6d. The push stands. Print the error and the body. A later run posts under the no-push rule when `git rev-parse HEAD` differs from the latest marker head, or when no marker exists. If that head equals the latest marker head, do not duplicate.
+
 ## Edge cases
 
 - **No new comments**: report "Nothing to review" and exit
-- **All findings are non-fix (skip/duplicate/already-fixed/defer)**: no push, but replies are posted with reasoning for each inline finding (body-level findings without a comment ID are skipped per the guard in 6c)
+- **All findings are non-fix (skip/duplicate/already-fixed/defer)**: no push. Before the replies, post the SHA marker with review state `not-run` when no marker exists or `git rev-parse HEAD` differs from the latest marker head (same head: do not post again). Replies are still posted with reasoning for each inline finding (body-level findings without a comment ID are skipped per the guard in 6c)
 - **CodeRabbit review pending**: "Review in progress — wait and retry"
 - **CI failing from unrelated issue**: warn user but still process review findings (the review may contain the fix)
 - **Branch protection blocks push**: report the error, don't retry
@@ -421,7 +493,7 @@ This distinction is not pedantry. On PR #51 round 1, polling ended reporting "no
 - **Fast path triggered, no incremental review observed**: expected behavior — the fast path intentionally skips 6a/6b. If CodeRabbit posts new findings after the run, re-run `/review-pr` to pick them up.
 - **Fast path triggered but CodeRabbit posts new findings before 6d completes**: 6d's thread-resolution polling may observe unresolved threads from the new findings. The report will show them as unresolved with the manual resolve command. Re-run `/review-pr` to triage.
 - **CodeRabbit check stuck `PENDING` indefinitely**: common, and harmless now that the check is advisory. Observed on Vigil-Harbor/petland PR #51 for the full duration of two rounds while reviews, replies, and thread resolutions all landed normally. Never extend polling on it.
-- **CodeRabbit check `FAILURE`**: CodeRabbit errored and posted no findings. The one check state worth acting on — proceed to 6d (skip 6b), `REVIEW_SIGNAL=ci-check (FAILURE)`.
+- **CodeRabbit check `FAILURE`**: CodeRabbit errored and posted no findings. The one check state worth acting on — set `REVIEW_SIGNAL=ci-check (FAILURE)`, post the SHA marker with review state `inconclusive` before 6d (as in 6a), then proceed to 6d (skip 6b).
 - **Empty `COMMENTED` reviews flood the reviews endpoint**: CodeRabbit posts one per thread reply, so a run that answers five threads adds five bodiless reviews within a minute. Any query that takes `last` off an unfiltered review list — verdict checks especially — returns one of these instead of the real verdict. Always `select(.state != "COMMENTED")`.
 - **CodeRabbit replies look like findings**: its `✅ Review thread resolved` acknowledgements are inline comments from `coderabbitai[bot]` carrying a *newer* `pull_request_review_id` than the findings they answer. Only `in_reply_to_id == null` separates them.
 - **Polling ends before the incremental review lands**: report `inconclusive`, never "no new findings" — see the honesty rule in 6e. Re-running `/review-pr` is the remedy and costs one round.

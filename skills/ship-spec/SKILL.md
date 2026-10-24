@@ -1,6 +1,6 @@
 ---
 name: ship-spec
-description: Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Pair with /spec-cycle which produces the spec. After the PR merges, run /spec-close to reconcile and retire the spec.
+description: Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Pair with /spec-cycle which produces the spec. After the PR merges, run /spec-land first, then /spec-close to reconcile and retire the spec.
 user_invocable: true
 requires:
   shell: true
@@ -14,7 +14,7 @@ requires:
 
 Invoked as: `/ship-spec <spec-path>` (e.g., `/ship-spec docs/specs/TODO/PROJ-123.spec.md`).
 
-This skill assumes `/spec-cycle` has already produced a converged spec. It implements, tests, pushes a PR, and updates Plane. It does **not** update any project wiki — that happens post-merge via your own wiki-update workflow, which the final summary will remind you to run.
+This skill assumes `/spec-cycle` has already produced a converged spec. It implements, tests, pushes a PR, and updates Plane. It does **not** update any project wiki — that happens post-merge via your own wiki-update workflow, which the final summary will remind you to run. After the PR merges, run `/spec-land` first, then `/spec-close`.
 
 ## Phase 0 — Preflight
 
@@ -410,7 +410,8 @@ or
 - [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (docs/specs/TODO/<TICKET-ID>.review.md)
 (This bullet is the line Phase 3b step 8 kept. Append ` — <ov> overridden by operator` to the review line when that count is above zero. When Phase 3b skipped the review, use its unchecked skip line instead: `- [ ] Review gate: skipped — <reason>`. When that skip wrote a skipped-form file and the held result is `ignored`, append ` (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`. When the review ran and the held result is `ignored`, the bullet is `- [x] Review gate: <command> — <b> blocking fixed, <s> other fixed, <r> recorded (kept locally at <project-root>/docs/specs/TODO/<TICKET-ID>.review.md; not in this commit)`, with the same override suffix when the count is above zero.)
 - [x] [smoke check on real data, if applicable]
-- [x] [post-merge verification step, if applicable]
+- [ ] Post-merge verification
+(Always write this line, unchecked.)
 
 [Optional trailing line:]
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -424,7 +425,61 @@ EOF
 )"
 ```
 
-Capture the returned PR URL.
+Capture the returned PR URL. `<N>` is the PR number in that URL. If the URL has no number, use `gh pr view --json number --jq .number`.
+
+### SHA marker
+
+Post one hidden SHA marker on the PR after `gh pr create` returns and before Phase 6. Post whether or not Phase 3b wrote a review file. The `small` skip and the no-review-command skip still post. This comment is not the spec verdict marker. This step never writes that marker. This step never skips Phase 6.
+
+The review field is `passed` when the review file from this run has a line whose text is `- Result: ran`. Every other path that reaches this step uses `skipped`, including a skip that wrote no review file and a skipped-form file whose `Result:` line is not `- Result: ran`. Do not write `inconclusive` or `not-run`.
+
+The body is one HTML comment. After one leading and one trailing whitespace run is removed, it is exactly these six lines, in this order, and no other line. One space after each colon. Each id is 40 lowercase hex digits.
+
+```text
+<!-- vigil-spec-land
+head: <40 lowercase hex>
+base: <40 lowercase hex>
+patch-id: <40 lowercase hex>
+review: <passed|skipped|inconclusive|not-run>
+-->
+```
+
+This step writes `review: passed` or `review: skipped` and nothing after the token. Do not put the payload in the PR body.
+
+Do every check below before `gh pr comment`. Any refusal prints what that check names and does not post. Phase 6 still runs. The body uses `headRefOid` and `baseRefOid`, never a local SHA that differs from `headRefOid`.
+
+1. Head and base come from `gh pr view --json headRefOid,baseRefOid` after `gh pr create`. If that command fails, print the error and do not post.
+2. If the base object is missing (`git cat-file -e <baseRefOid>` exits non-zero), run `git fetch origin` once. If it is still missing, do not post a marker with a bad id. Print the error and the body.
+3. The patch-id is the first field of `git diff <baseRefOid>...<headRefOid> | git patch-id --stable` (three dots). A second field on that same line is not recorded. The first field must be 40 lowercase hex. If either command exits non-zero, or the first field is missing, or a second line is present, that is a bad id: print the error and the body, and do not post.
+4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. If they are not, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
+5. Read the latest marker (below). If its `head:` line is `head: ` plus 40 lowercase hex and that value equals this head, do not post again. That is not a failed post, and Phase 7 does not print `SHA marker: NOT posted`. If a marker comment exists but has no such line, print its `id` and raw body. That is not an absent marker and it is not the same head: when the checks above passed, post the new body so the new comment is the latest.
+6. Write the six lines to a temporary file outside the repository, UTF-8, no BOM (no leading U+FEFF). Do not stage that file and do not commit it. A single trailing newline after `-->` is fine. No blank line inside the comment. Post with `gh pr comment <N> --body-file <path>`. Do not pass the body inline: the shell eats the HTML comment. Substitute the resolved values, then run:
+
+```bash
+cat > <path> <<'EOF'
+<!-- vigil-spec-land
+head: <head>
+base: <base>
+patch-id: <patch-id>
+review: <passed-or-skipped>
+-->
+EOF
+gh pr comment <N> --body-file <path>
+```
+
+The heredoc is quoted so the shell does not expand or swallow the comment.
+
+Latest marker. Resolve owner and repo with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'`. Read issue comments only:
+
+```bash
+gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments --jq 'add'
+```
+
+`--paginate` requests every page. `--slurp` wraps those pages in one array, and `add` flattens one level. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array, including an empty one. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error, do not post, do not retry `gh pr comment`, do not claim the record exists, and continue to Phase 6.
+
+A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
+
+Host failure: if `gh pr create` succeeded and `gh pr comment` exits non-zero, retry that comment once with the same body file. A zero exit is the one post; do not post a second comment. On the second failure, Phase 6 still runs and the PR stays open. Phase 7 prints `SHA marker: NOT posted`, prints the exact body, and does not claim the record exists.
 
 ## Phase 6 — Plane update
 
@@ -470,8 +525,17 @@ To address PR review comments:
 
 After merge, clean up:
   git worktree remove <worktree-path>
-  # Then run /spec-close <spec-path> to reconcile and retire the spec
+  # Then run /spec-land <pr-number>, then /spec-close <spec-path> to reconcile and retire the spec
 ```
+
+When the SHA marker comment failed twice after `gh pr create` succeeded, print these lines in this summary. Do not claim the record exists. The PR stays open.
+
+```text
+SHA marker: NOT posted
+<exact body>
+```
+
+When the marker was not posted for any other reason, the SHA marker step already printed the mismatch or the error and the body. Do not claim the record exists. When the comment was posted, or was not posted because the latest marker already has this head, do not print `SHA marker: NOT posted`.
 
 Do not auto-update any project wiki — that happens post-merge once the merge SHA exists on `<default-branch>`. Run your project's post-merge wiki/docs update flow if you have one.
 
