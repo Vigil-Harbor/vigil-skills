@@ -20,7 +20,7 @@ Flags: `--dry-run`, `--verbose`, `--prune` (install only), `--claude-dir <path>`
 
 ### Workflow: spec lifecycle
 
-Five skills form the spec lifecycle; the third is optional. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
+Six skills form the spec lifecycle; the third is optional. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
 
 1. **`/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`** — Produces the brief. Resolves the ticket (tracker optional — degrades to conversation), grounds against repo + wiki, runs the bounded `grilling` interview (round cap 3, seven items per round, brief-altitude fence), runs or explicitly skips a fresh-context cross-model doubt pass (at most two cycles), confirms, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. Reads tickets; never creates or transitions them. `grilling` is the shared model-invocable primitive (also behind `/grill-me` and `/spec-cycle`'s option 4 on the halt that follows the first invocation's `round_cap` passes — 2 when the tier is `small`, 4 otherwise — or a delta halt at cumulative round `C`); it is never fired unprompted. The interview's own cap of 3 stays.
 
@@ -30,7 +30,9 @@ Five skills form the spec lifecycle; the third is optional. The interview stage 
 
 4. **`/ship-spec <spec-path>`** — Reads the spec's verdict marker in preflight (green passes, red halts, anything else asks for confirmation), then takes the spec through implementation in an isolated git worktree, test gate (up to 5 iterations), an optional pre-commit review gate that runs when the project declares a review command, commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
 
-5. **`/spec-close <spec-path> [--report-only | --partial]`** — After ship-spec's PR merges, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
+5. **`/spec-land <PR-number | PR-URL | spec-path>`** — After the PR is merged and before spec-close, confirm the landed code matches the recorded head and patch-id, move the Plane ticket to Done or Post-merge Checklists, write the wiki merge line and the filemap delta when a wiki is configured, then remove the worktree and the local and remote feature branch and run the project's post-land command. Never merges and never commits. One confirmation. No argument uses the current branch's PR.
+
+6. **`/spec-close <spec-path> [--report-only | --partial]`** — After `/spec-land`, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write), propose wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` (ticket prefix stripped from filenames), and prepend an entry to the wiki's newest-first `log.md`. Partial-close is detected and offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
 
 **Stakes tier.** The operator sets a tier in `/spec-brief`, and ceremony follows it. `tweak` stops in spec-brief with nothing written. `small` is the three standing lenses, `round_cap` 2, and `/ship-spec` skips the review gate while keeping the test gate; spec-brief skips the doubt pass unless the operator runs it from Confirm. `big` is today's behaviour and is what an absent tier means; spec-brief offers the doubt pass when a reviewer is eligible, and skipping it needs a reason. `irreversible` is `big` plus the tier on every reviewer prompt plus a review gate that halts on the three skip cases (no command declared, command not available, command failed) instead of skipping; spec-brief requires a doubt pass, halts before the interview when no reviewer is eligible, and never skips a failed dispatch. Scale stays its own `## Scale` declaration and never follows from the tier.
 
@@ -61,7 +63,7 @@ Process guide for a credential-exposure response. The operator performs every pr
 - `skills/ship-spec/states.json` — Committed config mapping project identifiers to state UUIDs, MCP namespaces, and review-state IDs. Synced alongside SKILL.md by `sync.py`.
 - `agents/<name>.md` — Subagent definitions (YAML frontmatter + markdown body). Installed to `~/.claude/agents/<name>.md`.
 - `sync.py` — Bidirectional file sync. Stdlib only, cross-platform via `pathlib`.
-- `skills/spec-close/SKILL.md` — Post-merge close skill (reconciliation + wiki harvest + archive in one pass). Installed to `~/.claude/skills/spec-close/SKILL.md`.
+- `skills/spec-close/SKILL.md` — Post-land close skill (reconciliation + wiki harvest + archive in one pass). Installed to `~/.claude/skills/spec-close/SKILL.md`.
 - `skills/key-rotation/SKILL.md` — credential-exposure process guide.
 - `skills/key-rotation/reference/record-template.md` — record shape, read by the preflight script on create.
 - `skills/key-rotation/scripts/prepare_record.py` — gitignore, record preflight, and the read-only name, path, and hash modes.
@@ -121,7 +123,9 @@ the upstream copy before installing.
 
 ## Post-merge wiki update
 
-After a PR merges, run `/wiki-after-merge <commit-sha>` **from the wiki directory**. It prepends to `log.md`, deltas the filemap, scaffolds comprehension entries for large changes, and chains to `/wiki-state-update` for status flips. Idempotent — safe to re-run for the same SHA. Manual edits are fine for trivial single-file fixes; the skill handles everything else.
+After a PR merges, run `/spec-land` from the target repo. It writes the merge log line and the filemap delta.
+
+For the fallback, run `/wiki-after-merge <commit-sha>` **from the wiki directory**. It prepends to `log.md`. That command remains the fallback for comprehension stubs, state.md header notes, sibling Plane tickets, and merges outside the lifecycle. Idempotent — safe to re-run for the same SHA. Manual edits are fine for trivial single-file fixes; the skill handles everything else.
 
 State.md edits require an evidence triple (Plane ID, date, commit hash) — the wiki's pre-commit hook enforces this. See the wiki's `CLAUDE.md` § "Editing state.md safely" for field rules per section.
 
@@ -139,3 +143,15 @@ State.md edits require an evidence triple (Plane ID, date, commit hash) — the 
 ## Machine-local config
 
 Absolute paths specific to your machine — your installed-config dir and the `vigil-harbor-wiki` checkout location (the latter is what the skills' preflight resolves as `wiki_root`) — live in your local, gitignored `CLAUDE.md`, which points here for everything else.
+
+## Wiki
+
+Slug: vigil-skills
+Log: on
+Filemap: on
+
+The wiki path stays in gitignored `CLAUDE.md`. This section does not copy it.
+
+## Post-land command
+
+python sync.py install

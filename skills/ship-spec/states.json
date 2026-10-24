@@ -109,6 +109,7 @@
     }
   },
   "CLT": {
+    "_note": "CLT gained a Post-merge Checklists state under VHS-57 (absorbs VHS-44); its group is started.",
     "project_id": "897ad6dc-67c0-465b-8b43-45ddf74b7011",
     "namespace": "clients",
     "review_state_id": "df29d743-ab03-4467-8563-6a3845f9ad57",
@@ -120,6 +121,7 @@
       "Spec Authoring": "4ac1e53d-6d9c-41d1-9000-97206c8439c2",
       "Spec Review": "a2ef464f-78e4-4489-9cc3-70856d89bbe1",
       "In Review": "df29d743-ab03-4467-8563-6a3845f9ad57",
+      "Post-merge Checklists": "5bbbab1a-bb0e-41b1-b40f-bdd761e0273b",
       "Done": "d9e28e6b-b673-4f99-b98d-83c33eae84eb",
       "Cancelled": "18ea9a49-436a-4047-9810-3b0c77999b61"
     },
@@ -131,6 +133,7 @@
       "Spec Authoring": "started",
       "Spec Review": "started",
       "In Review": "started",
+      "Post-merge Checklists": "started",
       "Done": "completed",
       "Cancelled": "cancelled"
     }
