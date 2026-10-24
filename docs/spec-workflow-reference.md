@@ -218,7 +218,7 @@ The steps are in `skills/spec-tickets/SKILL.md`.
 
 ## Skill 2: ship-spec
 
-**Purpose:** Take a green-lit spec through implementation, test gate, commit, PR, and issue-tracker update. Uses an isolated git worktree so the user's primary working tree is never touched.
+**Purpose:** Take a green-lit spec through implementation, test gate, commit, PR, and issue-tracker update. Uses an isolated git worktree so the user's primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
 
 **Invocation:** `/ship-spec <path-to-spec>`
 
@@ -253,7 +253,7 @@ If still red after 5 iterations, halt and ask the user: continue with more itera
 
 ### Phase 3b — Review gate
 
-One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file — except on the `irreversible` tier, where that case halts before the commit. A declared command that is unavailable or fails is also skipped, and recorded, for `big` and an absent tier. For `irreversible` those two cases halt with the Phase 3b case text, keep the worktree, and do not commit. `small` skips the review gate before the three cases, prints `review gate: skipped (small tier)`, writes no review file, and still runs the test gate. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change. With an `N/A` test command the review gate still runs for `big`, `irreversible`, and an absent tier, and there is no test re-run. `small` skips the review gate even then.
+One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file — except on the `irreversible` tier, where that case halts before the commit. A declared command that is unavailable or fails is also skipped, and recorded, for `big` and an absent tier. For `irreversible` those two cases halt with the Phase 3b case text, keep the worktree, and do not commit. `small` skips the review gate before the three cases, prints `review gate: skipped (small tier)`, writes no review file, and still runs the test gate. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change when that path is not ignored; when it is ignored, the file is kept locally and copied to the primary checkout beside the spec, and the PR body says so. With an `N/A` test command the review gate still runs for `big`, `irreversible`, and an absent tier, and there is no test re-run. `small` skips the review gate even then.
 
 ### Phase 4 — Commit
 
@@ -273,7 +273,7 @@ Don't skip pre-commit hooks.
 
 ### Phase 5 — Push and open PR
 
-`git push -u origin <branch>`, then `gh pr create` with a structured body: summary bullets, files-changed table, test plan section linking the captured test output.
+`git push -u origin <branch>`, then `gh pr create` with a structured body: summary bullets, files-changed table, test plan section linking the captured test output, or naming it as kept locally when that path is ignored.
 
 ### Phase 6 — Issue tracker update
 
