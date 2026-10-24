@@ -15,7 +15,7 @@ User-invoked after a pull request is already merged and before `/spec-close`. On
 
 The working directory is the target repo. Steps 1–8 have no side effects except the step 3 fetch, which updates remote-tracking refs and `FETCH_HEAD`. A halt in those steps writes nothing else, moves nothing, and deletes nothing. "No side effects" below means the same.
 
-**Shell note.** Command examples use bash (single quotes, `$()`). Use your host's shell. Write `$HOME` and `$CLAUDE_CONFIG_DIR`, never a tilde inside double quotes: bash does not expand a tilde there, and the pre-checks below then report a file that is installed as missing.
+**Shell note.** Command examples use bash (single quotes, `$()`). Use your host's shell. Write `$HOME` and `$CLAUDE_CONFIG_DIR`, never a tilde inside double quotes: bash does not expand a tilde there, and the pre-checks below then report a file that is installed as missing. `<branch>` is PR metadata and may contain `$` or parentheses: set it from `gh` output (`branch=$(gh pr view <N> --json headRefName --jq .headRefName)`) and pass `"$branch"`. Never paste a branch name into command text.
 
 ## What this skill must not do
 
@@ -422,11 +422,11 @@ If the branch is checked out only in the main checkout, skip remove and skip the
 
 Skip when this action was skipped above, or when the branch is already gone (report it as skipped, not as a failure). Skip when `git rev-list --count <headRefOid>..<local-tip>` is greater than 0. Those are commits on the local branch that are not in the merged PR head. A failed `rev-list` skips the delete and is reported. Do not use `-D` on that failure.
 
-Otherwise `git branch -d <branch>`. A squash or rebase leaves the original commits unmerged into the landed commit, so `-d` refuses even when the tip equals `headRefOid`. When the SHA check passed and the tip equals `headRefOid`, retry `git branch -D` and report `local branch deleted (-D; squash or rebase, tip matched the recorded head)`. When the SHA check was skipped because no marker existed, do not use `-D`. If `-d` refuses, skip and report.
+Otherwise `git branch -d "$branch"`. A squash or rebase leaves the original commits unmerged into the landed commit, so `-d` refuses even when the tip equals `headRefOid`. When the SHA check passed and the tip equals `headRefOid`, retry `git branch -D` and report `local branch deleted (-D; squash or rebase, tip matched the recorded head)`. When the SHA check was skipped because no marker existed, do not use `-D`. If `-d` refuses, skip and report.
 
 ### 9.5 Remote branch delete
 
-`git push --force-with-lease=refs/heads/<branch>:<headRefOid> origin --delete <branch>` only when `git ls-remote --heads origin <branch>` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). The lease refuses the delete if the tip moved after that check; report a lease rejection as skipped. A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
+`git push --force-with-lease="refs/heads/$branch:<headRefOid>" origin --delete "$branch"` only when `git ls-remote --heads origin "$branch"` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). The lease refuses the delete if the tip moved after that check; report a lease rejection as skipped. A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
 
 This is the only remote git mutation.
 
