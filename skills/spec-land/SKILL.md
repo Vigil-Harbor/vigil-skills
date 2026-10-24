@@ -13,7 +13,7 @@ requires:
 
 User-invoked after a pull request is already merged and before `/spec-close`. On one confirmation it checks the landed tree against the head, base, and patch-id last recorded on the PR, moves the issue-tracker ticket to Done or to Post-merge Checklists, writes the wiki merge line and the filemap delta when a wiki is configured, then removes the worktree and the local and remote feature branch and runs the project's post-land command.
 
-The working directory is the target repo. Steps 1–8 have no side effects. A halt in those steps writes nothing, moves nothing, and deletes nothing.
+The working directory is the target repo. Steps 1–8 have no side effects except the step 3 fetch, which updates remote-tracking refs and `FETCH_HEAD`. A halt in those steps writes nothing else, moves nothing, and deletes nothing. "No side effects" below means the same.
 
 **Shell note.** Command examples use bash (single quotes, `$()`). Use your host's shell. Write `$HOME` and `$CLAUDE_CONFIG_DIR`, never a tilde inside double quotes: bash does not expand a tilde there, and the pre-checks below then report a file that is installed as missing.
 
@@ -21,7 +21,7 @@ The working directory is the target repo. Steps 1–8 have no side effects. A ha
 
 - Run `gh pr merge`. The operator merges (Decision 4).
 - Run `git commit` or `git add`. The wiki suggestion in step 10 is text. Do not execute it (Decision 12).
-- Run `git push` except `git push origin --delete <branch>` in step 9.5. No other `--force`. No content push.
+- Run `git push` except the leased remote branch delete in step 9.5. No other `--force`. No content push.
 - Stash, or run a merge that is not `git merge --ff-only`.
 - Fetch again after the one fetch window in step 3 (Decision 3).
 - Post or edit the SHA marker. This skill only reads it.
@@ -46,7 +46,7 @@ Classify the argument:
 
 - No argument: the number from `gh pr view --json number`.
 - An argument that is only digits: that PR number.
-- An argument that contains `/pull/<digits>`: that number. This is the GitHub PR URL form `/review-pr` accepts.
+- An argument that contains `/pull/<digits>`: that number. This is the GitHub PR URL form `/review-pr` accepts. The `<owner>/<repo>` before `/pull/` must equal the resolved owner and repo, compared case-insensitively. A URL for another repository halts. Do not look up its number here.
 - Anything else is a spec path. The ticket id is the anchored filename prefix `^[A-Z][A-Z0-9]*-[0-9]+` on the last path segment (`VHS-57.spec.md` yields `VHS-57`). A filename that does not start with that prefix halts. Print the invocation. Do not select a PR.
 
 Selecting the PR is not the ticket search. A PR number selects that number. A PR URL selects the number in the URL. A spec path sets the ticket from the filename, then selects the PR. Do not clean up a PR this rule did not select.
@@ -426,7 +426,7 @@ Otherwise `git branch -d <branch>`. A squash or rebase leaves the original commi
 
 ### 9.5 Remote branch delete
 
-`git push origin --delete <branch>` only when `git ls-remote --heads origin <branch>` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
+`git push --force-with-lease=refs/heads/<branch>:<headRefOid> origin --delete <branch>` only when `git ls-remote --heads origin <branch>` prints a tip equal to `headRefOid`, or the ref is already gone (report `already deleted`). The lease refuses the delete if the tip moved after that check; report a lease rejection as skipped. A different remote tip is skipped and reported. Extra local-only commits do not block the remote delete when the remote tip equals the merged PR head. The local branch stays in that case. No other `--force`. A failed remote delete does not skip the fast-forward. A re-run retries the delete.
 
 This is the only remote git mutation.
 
