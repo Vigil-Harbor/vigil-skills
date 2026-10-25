@@ -26,7 +26,7 @@ The brief is the one lifecycle artifact nothing downstream challenges: `/spec-cy
 
 - `<TICKET-ID>` must match `^[A-Z][A-Z0-9]*-[0-9]+$` — `/spec-cycle`'s Phase 0 ticket-ID pattern, anchored at both ends because here it is the whole argument, not a filename prefix.
 - `--rounds N`: integer, `1 ≤ N ≤ 10`. `--questions N`: integer, `1 ≤ N ≤ 15`. Defaults 3 and 7. The ceilings exist so a flag cannot defeat the fatigue bound this skill adds; there is no `0` alias, because a zero-width round is a stall, not a bound.
-- `--no-grill` wins over any cap flag. If both are given, warn `--rounds/--questions ignored under --no-grill` and continue — they are ignored for the interview, but the default question cap (7) still bounds Phase 1's grounding batch.
+- `--no-grill` wins over any cap flag. If both are given, warn `--rounds/--questions ignored under --no-grill` and continue — they are ignored for the interview, but the default question cap (7) still bounds Phase 1's grounding batch. The flag skips the interview only. It does not skip premise listing, flag confirmation, the Confirm gate, or `check_premises.py`.
 - Anything else — a malformed ID, a non-integer, an out-of-range value, an unknown flag — halts with: `Usage: /spec-brief <TICKET-ID> [--no-grill] [--rounds 1-10] [--questions 1-15]`.
 
 ## Phase 0 — Preflight
@@ -144,7 +144,7 @@ Tier: tweak
 No lifecycle — ship as a chore PR citing the ticket; the ticket's state and closing comment are yours to set, since no lifecycle stage will touch it.
 ```
 
-The tweak path creates no brief temp and deletes nothing. `small`, `big`, or `irreversible` resolves the reviewer (§ Doubt-pass reviewer, below), then continues to the interview, or under `--no-grill` to Phase 3 — Doubt pass. The chosen tier is kept for Phases 3 to 5.
+The tweak path creates no brief temp and deletes nothing. `tweak` does not list premises. `small`, `big`, or `irreversible` resolves the reviewer (§ Doubt-pass reviewer, below). An `irreversible` tier with no eligible reviewer still halts there, before any premise is listed, and writes nothing. Otherwise continue to § Premise listing, then the interview, or under `--no-grill` to Phase 3 — Doubt pass. The chosen tier is kept for Phases 3 to 5.
 
 ### Tweak-floor heuristic
 
@@ -191,11 +191,65 @@ Resolve this after a non-tweak tier is chosen and before the interview. Phase 3 
 - **Identity probe.** You may send one probe through the selected mechanism, in its read-only mode, carrying no draft or repository content, solely to read its identity. Its output is runtime evidence.
 - Hold the mechanism, model, and family evidence, and set `reviewer_eligible`. When nothing is eligible, print every candidate with its first failed check, to the console only.
 
-If the tier is `irreversible` and no reviewer is eligible, print `irreversible needs an eligible cross-model reviewer — not available on this host` and the candidate diagnostics, then halt here, before the interview. Nothing is written. No tier ever substitutes a same-family review.
+If the tier is `irreversible` and no reviewer is eligible, print `irreversible needs an eligible cross-model reviewer — not available on this host` and the candidate diagnostics, then halt here, before the interview. Nothing is written. No tier ever substitutes a same-family review. That halt lists no premises.
+
+## Premise listing
+
+Runs after reviewer resolution and before the interview. `tweak` has already exited and lists nothing. The irreversible halt above still happens first and lists nothing. A host that cannot wait prints `premises need an operator — stopping` and writes nothing, including no temp.
+
+A premise is a factual claim about current code, an external system, or run-time behavior that a Decision or a Scope row relies on. A requirement, an operator preference, and a settled decision are not premises. Listing proposes the premises from the ticket and from Phase 1 grounding, each with a flag. Propose `Defeats ticket: yes` only when the claim, if false, would make a ticket decision or a scope change pointless. Otherwise propose `no`. Silence is not yes. The model never clears a flag and never writes `**Override:**` on its own.
+
+The levels are said < pointed < walked < ran < reproduced, strict and case-sensitive. ran is the gate line: a defeating premise at said, pointed, or walked blocks Write. reproduced is above the gate line and does not block.
+
+- **said.** No source, or an operator claim stored as unverified. The Source text is `none`, or that unverified-claim text.
+- **pointed.** The author opened a `path:line` in this run and the source is that citation with no step trace. Opening the line is the same habit Phase 5 already requires before a Scope Current cell is filled.
+- **walked.** spec-brief itself writes the trace. Every step cites a `path:line` the author opened in this run. That trace is one `**Source:**` field line. Later steps stay on that line. A following line that, after at most three leading spaces or one leading tab, matches `^\d+\.\s` is not a continuation. A single `path:line` with no step structure stays pointed. Grilling is not asked to write the trace.
+- **ran.** A `source: run:` record that grilling returned in this invocation's hand-off, under Facts established, that passes the whole confirmation paragraph (the command, an integer exit, a non-empty excerpt that supports the whole claim, and the redaction gate). spec-brief judges that the command exercises the real code or system the premise is about, not a mock or stand-in. The script does not. Source is the text from `source: run:` through the excerpt's closing quote, not the `- F1 —` prefix and not the fact sentence.
+- **reproduced.** The same ran conditions, and that same Grill summary already shows this fact came from an approved network run against the real external system. The approval heading is `**Network approval.**`. The reply that runs it is `yes` or `approve`. The credential-offer gate that must pass before that approval item is rendered is not a mark on the fact line. The stored run line has no network bit. When the summary does not already show that approval, a matching hand-off line is ran, not reproduced.
+
+A record that appears only in the ticket, the wiki, a file, or the operator's typed reply is not ran and not reproduced. spec-brief does not run commands itself, so it cannot promote a pasted record to ran. Such a record may still support pointed or walked when the author opens the cited lines. A walked trace may raise pointed to walked. It must not raise any level to ran. ran and reproduced move only from a qualifying hand-off line, and only inside the Confirm gate, including the first time Confirm is entered. That move sets Level and Source together. Match the fact sentence — the `<fact>` span in `- F<n> — <fact> (source: run: ...)`, not the whole bullet — to one premise when, after trim, it equals that premise's claim, case-sensitive, or it equals the claim after the quote-fold and the 200-character cut grilling applies when the operator's wording stands. A sentence grilling writes because the wording does not stand does not match. Do not promote every defeating premise from one run. An Open item does not promote. spec-brief passes no seed `id`, and the fact line carries no `ref:`, so claim text is the join. Do not add a field the script must parse, and do not edit grilling to add one. Under `--no-grill` there is no hand-off, so nothing is promoted to ran or reproduced, and a candidate already at either level is demoted by the Confirm gate. A premise at ran or reproduced with no matching hand-off line is demoted.
+
+The operator confirms every flag, or confirms `_(no premises)_`. One reply per line after trimming: `P1: yes` or `P1: no`. The marker is confirmed by a reply of `none`. A missing id, an unknown id, or any other reply re-prints the list and is not confirmation, except `abort` as the only non-blank line, which stops and writes nothing, including no temp. The pre-dispatch confirm and the Confirm gate use this same yes/no shape. They list only premises that are new, whose claim or level changed, or that a Decision newly cites or a Scope row newly relies on. Every flag confirm — here, at the pre-dispatch confirm, and at the Confirm gate — writes each confirmed reply onto that item's `**Defeats ticket:**` line before anything else reads the candidate, including the doubt-pass draft and the script. In the Confirm gate that write happens before the override-or-abort gate reads the flags, so the override gate sees the flags just confirmed.
+
+A defeating premise below ran that needs a run is added to the grilling seed, labelled `needs a run`, unless Phase 1 already added that same claim (compare the claim text after trim, case-sensitive). One seed clause, not two. spec-brief does not also run the command. On a host with no read-only sandbox, do not dispatch an exploration in place of a run, and do not treat a file that states a result as a run. The premise stays at pointed or walked when the author opened lines, otherwise said.
+
+Ids are append-only for the whole run, including the operator. A premise is not dropped, and ids are not renumbered. The operator changes a premise through revise or through the doubt-pass replies, not by deleting its id.
+
+A premise item, and the no-premises marker, have this shape. The same edit that writes the first item deletes the marker. When items exist, the marker is absent before the script runs.
+
+```markdown
+## Premises
+
+1. **P1.** The vendor SDK injects the clock.
+   **Level:** pointed
+   **Source:** vendor/sdk.py:12
+   **Defeats ticket:** no
+
+2. **P2.** The job writes the ledger before it returns.
+   **Level:** walked
+   **Source:** 1. skills/app/SKILL.md:10 opens the job. 2. skills/app/SKILL.md:40 opens the write.
+   **Defeats ticket:** yes
+   **Override:** operator accepts the trace for this brief
+
+3. **P3.** The ledger file appears after the job command.
+   **Level:** ran
+   **Source:** source: run: "python -m app.job"; exit: 0; excerpt: "wrote ledger"
+   **Defeats ticket:** yes
+```
+
+```markdown
+## Premises
+
+_(no premises)_
+```
+
+Every numbered item under `## Decisions carried forward` carries `**Rests on:** none` or `**Rests on:** P1 (said); P2 (ran)`. Citations are separated by a semicolon and one space. The level in parentheses is the premise's level and must match the item. When the cited set is non-empty and every cited premise is said, pointed, or walked, that item also contains a line which, after at most three leading spaces, equals `**Below ran:** yes`. Otherwise that line is absent. `**Rests on:** none` does not take `**Below ran:**`. `**Rests on:**` and `**Below ran:**` are derived lines, not settled rationale. Rewrite them whenever a premise's level or id changes, before the gate runs. A level-only finding stays a fact/anchor fold. Moving these two lines does not make that finding a settled-target finding. The placeholder `_(none settled — see Risks / decisions)_` is not a Decision and carries no `Rests on`. Out-of-scope fences and Scope rows do not carry `Rests on`. A premise that only a Scope row relies on still appears in `## Premises` and still gates when its flag is yes.
+
+An override is a line `**Override:** <reason>` on that premise item. The level is not raised to make the gate pass. A change to the claim text or to the level clears the override. Tell the operator that the override was cleared. An override whose reason is empty after trim is not an override.
 
 ## Phase 2 — Interview
 
-Skipped entirely under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: invoke it through the skill-invocation tool, or the equivalent in your host) with `seed` from Phase 1, brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — and `round_cap` / `question_cap` from the flags. The primitive waits for the operator each round; this skill does nothing until the Grill summary comes back.
+Skipped entirely under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: invoke it through the skill-invocation tool, or the equivalent in your host) with `seed` from Phase 1, brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — and `round_cap` / `question_cap` from the flags. Premise listing has already added each defeating below-ran `needs a run` clause that Phase 1 did not already carry. This phase does not add those clauses again and does not run the command. The primitive waits for the operator each round; this skill does nothing until the Grill summary comes back.
 
 **If this host cannot invoke a nested skill**, halt: `grilling is unavailable in this host — re-run with --no-grill to write the brief from the ticket alone, or run the interview by hand.` Never write a silently ungrilled brief.
 
@@ -205,7 +259,9 @@ Runs once the interview path ends, including under `--no-grill`: that flag skips
 
 ### Render and hold the candidate
 
-On the first entry to this phase, apply Phase 5's mapping rules and `## Scale` emission once to render the complete brief, every section except `## Doubt pass`. Under `--no-grill`, Decisions come only from decisions the ticket states explicitly (Phase 4's `--no-grill` rule). Hold that text in context as the **candidate**. From then on the candidate is the source of truth: reconciliation edits it in place, and displaying it, re-entering this phase, or writing it never re-derives it from the Grill summary or the ticket.
+On the first entry to this phase, apply Phase 5's mapping rules and `## Scale` emission once to render the complete brief, every section except `## Doubt pass`. Under `--no-grill`, Decisions come only from decisions the ticket states explicitly (Phase 4's `--no-grill` rule). That first render includes `## Premises`, `**Rests on:**` on each numbered Decision, and `**Below ran:** yes` when every cited premise is below ran. Premises that new Decisions or Scope rows rely on, and that were not listed in premise listing, are added here. When the first premise is added, delete `_(no premises)_` in that same edit. When any item exists, the marker is absent. Hold that text in context as the **candidate**. From then on the candidate is the source of truth: reconciliation edits it in place, and displaying it, re-entering this phase, or writing it never re-derives it from the Grill summary or the ticket. The Confirm gate's Level and Source assignment, and its rewrite of derived `**Rests on:**` and `**Below ran:**` lines, edit those lines only. The never-re-derive rule stays for every other section.
+
+Before the doubt-pass dispatch, the operator confirms flags on premises that are new, whose claim or level changed, or that a Decision newly cites or a Scope row newly relies on. Use the premise-listing reply rule. Write each confirmed reply onto that item's `**Defeats ticket:**` line before the doubt-pass draft reads the candidate. A host that cannot wait prints `premises need an operator — stopping` and writes nothing, including no temp. The doubt pass does not ask the flag question again.
 
 ### Gate
 
@@ -277,20 +333,21 @@ Classify every kept finding before editing anything. You own the classification;
 - a numbered `## Decisions carried forward` item or its rationale;
 - an `## Out of scope` fence the operator set;
 - an explicit ticket decision used under `--no-grill`;
-- an acceptance statement transcribed into `## Done when`.
+- an acceptance statement transcribed into `## Done when`;
+- a `Defeats ticket` flag on a premise. For that finding, including one that also challenges the level, the whole finding goes to the operator batch. Do not split it. The model does not fold the flag. For that finding the batch accepts only `F-<n>: keep` and `F-<n>: replace: <non-empty text>`. `reopen` is not accepted: it must not remove the premise or move it into `## Risks / decisions`. The general batch's `reopen` verb stays for other settled targets. `replace` may change the flag and must leave a well-formed item in `## Premises`. If the flag becomes `yes` and the level is below ran, clear `**Override:**` only when the claim or the level also changed, and re-arm the Confirm gate before Write. `abort` as the only non-blank line still writes nothing. This adds no pass, no cycle, and no reviewer.
 
 Verify its factual claims first and show the result in the batch. Never fold or move it on your own. Model-inferred prose and existing `## Risks / decisions` items are not settled.
 
 **Then, in order:**
 
 1. **Contract misread** — asks for something outside the ticket or brief contract, or misreads the draft. Reject with one line of evidence. Narrowing recorded in Origin or a settled Out of scope is not a missing requirement; a challenge to it is a settled target.
-2. **Fact or anchor** — a fact, count, path, anchor, current-behavior statement, or claimed omission. Open the live source and check it; reviewer prose is a lookup hint, never evidence. True: fold it, citing `path:line`. A valid `source: run:` record is one that passes the full confirmation gate: the command, an integer exit code, a non-empty excerpt that is not only redaction markers, a fact sentence that is not only those markers, and an excerpt that supports the whole claim. An excerpt or a fact sentence whose every non-whitespace run is made only of `[redacted]` and `.` does not pass, including `[redacted]...`, `...`, and repeated `[redacted]` markers. A fold must not delete a record that passes that gate. A `path:line` may be added beside it and is data: it must not add a Scope row or fill Current. "Cannot be established" does not apply to a record that passes that gate. A record that fails the gate is not protected and may be moved to Risks. Disproved: reject. Cannot be established: add a `## Risks / decisions` item ending "spec author pins this". A fold must not turn a run-time gap, or a `needs a run` Risks item, into a References fact that has only `path:line`. A file citation may sit beside a valid `source: run:` record and must not delete that Risks item. A `## Risks / decisions` item is not a settled target.
+2. **Fact or anchor** — a fact, count, path, anchor, current-behavior statement, or claimed omission. A finding that challenges a premise's level, claim, or source, and does not challenge the flag, is this class. Open the live source and check it; reviewer prose is a lookup hint, never evidence. True: fold it, citing `path:line`. A valid `source: run:` record is one that passes the full confirmation gate: the command, an integer exit code, a non-empty excerpt that is not only redaction markers, a fact sentence that is not only those markers, and an excerpt that supports the whole claim. An excerpt or a fact sentence whose every non-whitespace run is made only of `[redacted]` and `.` does not pass, including `[redacted]...`, `...`, and repeated `[redacted]` markers. A fold must not delete a record that passes that gate. A `path:line` may be added beside it and is data: it must not add a Scope row or fill Current. "Cannot be established" does not apply to a record that passes that gate. A record that fails the gate is not protected and may be moved to Risks. Disproved: reject. Cannot be established: add a `## Risks / decisions` item ending "spec author pins this". A fold must not turn a run-time gap, or a `needs a run` Risks item, into a References fact that has only `path:line`. A file citation may sit beside a valid `source: run:` record and must not delete that Risks item. A `## Risks / decisions` item is not a settled target. A premise fold may edit that premise's claim, level, and source. It must not edit `Defeats ticket` and must not write `**Override:**`. If the fold changes the claim or the level, clear `**Override:**`. A fold that changes a level also rewrites every `**Rests on:**` parenthetical and adds or removes `**Below ran:** yes` in the same edit, before the gate. A fold that raises the level to ran or reproduced sets Source to the run record on the matching this-invocation hand-off line in that same edit. It must not raise the level without that record, and it must not leave Level at ran or reproduced while Source is not that record. Set both together, or demote per the Confirm gate. The reviewer's suggested level is not that record. Those two Decision lines are derived, not settled rationale. The fold still must not edit the Decision's rationale. A level-only finding does not become a settled-target finding because those derived lines move. A demotion of a defeating premise below ran does not block inside the pass. It re-arms the Confirm gate.
 3. **Trade-off** — operator batch; never fold.
 4. **Noise or duplicate** — reject with the duplicate id or a one-line reason.
 
 A Tier finding is advisory evidence shown at Confirm; only Confirm's option 4 changes the tier. A Scale finding becomes a `## Risks / decisions` item ending "spec author pins this", or is resolved through Phase 5's four `## Scale` cases. Neither takes a free-text replacement in the batch.
 
-Folds may edit Problem, Why it matters, Scope, Done when, Risks / decisions, and References, including their metadata and factual anchors — never a settled target, even inside those sections. Record the source for every correction.
+Folds may edit Problem, Why it matters, Scope, Done when, Risks / decisions, References, and `## Premises`, including their metadata and factual anchors — never a settled target, even inside those sections. Record the source for every correction.
 
 Work in this order: classify all; verify every actionable fact; compose findings that target the same text into one intended result; edit; run the operator batch; update `## Risks / decisions`; then re-read every changed section and every section that consumes a changed decision, so the next cycle and Confirm get one consistent candidate.
 
@@ -333,7 +390,21 @@ Print `Doubt pass dispatch failed: cycle <n>; class <reason>; last line: <last n
 
 ## Phase 4 — Confirm
 
-Show the full candidate exactly as Phase 5 will write it, with its `## Doubt pass` block in place, then `Tier: <level>`, the basis line, any Tier finding from the pass as advisory evidence, and:
+The Confirm gate runs on every entry to Confirm, before Write is offered. That includes the first entry, a return from a non-zero or did-not-run script, `--no-grill`, a skipped doubt pass, and tier `small`. It also runs again after a candidate change (option 2 revise, an added decision under `--no-grill`, or a doubt-pass fold), before Write is offered again. One procedure:
+
+1. Before flags, overrides, and the script, assign Level and Source together from one matching hand-off line. This is not a promotion-only pass. On one Facts-established line whose fact sentence matches that premise's claim, including the quote-fold and 200-character cut when the wording stands, and whose record qualifies, set Level to ran or reproduced and set Source to that run record. That record is the text from `source: run:` through the excerpt's closing quote. Do not promote from an Open item. Do not apply one run to every defeating premise. If Level is already ran or reproduced and no hand-off line matches, demote it. Drop Source text that contains `source: run:` and is not this invocation's matching hand-off line. Walked when what remains is one Source field line and every step cites a `path:line` the author opened. Otherwise pointed when a `path:line` the author opened remains. Otherwise said, with Source `none`. A premise that was never ran or reproduced keeps its non-run level when nothing matches. Under `--no-grill` there is no summary, so nothing is promoted, and a candidate already at ran or reproduced is demoted the same way. A premise at ran or reproduced with no matching hand-off line is demoted.
+2. This assignment rewrites that premise's level and source. It clears an override whose claim or level changed, including a demotion, and says so. It rewrites the derived `**Rests on:**` and `**Below ran:**` lines. It does not re-derive the rest of the candidate. The never-re-derive rule stays for every other section.
+3. Append premises the current Decisions or Scope rows rely on and that are not yet items. When the first premise is added, delete _(no premises)_ in that same edit. When items exist, the marker is absent before the script runs.
+4. Rewrite every `**Rests on:**` parenthetical to the premise's current level, and add or remove `**Below ran:** yes` per the citation rule, before flags are confirmed and before the script runs. A level-only change does not edit the Decision's rationale.
+5. Show the candidate those rewrites produced, including its `## Doubt pass` block, before flags, overrides, and the script. The operator confirms flags and overrides against that shown text. Do not show a pre-rewrite preview and then write the rewrite.
+6. The operator confirms flags on premises that are new, whose claim or level changed, or that are newly cited by `Rests on` or newly relied on by a Scope row. Silence is not yes. A partial set of replies is re-prompted and is not confirmation. `abort` as the only non-blank line stops and writes nothing, including no temp. If the host cannot wait, print `premises need an operator — stopping` and write nothing.
+7. Write each confirmed flag reply onto that item's `**Defeats ticket:**` line before the override-or-abort gate reads the flags. The override gate sees the flags just confirmed.
+8. Then the override-or-abort gate. Every defeating premise at said, pointed, or walked needs a non-empty override, or the operator aborts. Do not offer Write while one is missing. The operator replies `P1: <reason>` for each such premise. A reason that is empty after trim is re-prompted and is not an override. A partial set of reasons is re-prompted and is not done. `abort` as the only non-blank line writes nothing, including no temp. If the host cannot wait, print `premise override needs an operator — stopping` and write nothing. ran and reproduced need no override. A non-defeating premise below ran needs no override.
+9. Apply each non-empty override reply onto `**Override:**` on that item. The model still does not write `**Override:**` on its own. If a reply changed the text, show that updated candidate once. The gate ends here. No temp exists while the menu below waits, so Abort, Revise, Change the tier, the doubt pass, and a host stop at the menu act with nothing on disk.
+
+Write is offered only now. On a non-zero exit or a did-not-run result from `check_premises.py`, delete the temp, print the error, and return to this gate. Do not offer Write. If a flag confirm or an override prompt is pending, that prompt is the wait, and its abort rule applies. If neither prompt is pending, show Revise and Abort and do not show Write. `abort` as the only non-blank line still writes nothing, including no temp. Do not run the script again until that post-reply candidate changes. The reply write happens before the first run, so it is not a second run. A revise changes the candidate and re-enters this gate, which may run the script again only after that change.
+
+When the gate offers Write, show `Tier: <level>`, the basis line, any Tier finding from the pass as advisory evidence, and:
 
 ```text
 Doubt pass: <completed in N cycle(s) | completed at cap (N cycle(s)) | skipped — <reason>>
@@ -383,6 +454,7 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md`: the exact candidate the operator c
 ## Why it matters
 ## Scope (verified against current files, <date>)
 ## Decisions carried forward
+## Premises
 ## Done when
 ## Out of scope
 ## Tier
@@ -423,7 +495,27 @@ A skipped pass:
 
 The reason is one of `tier small; operator did not request the pass`, `operator declined — <reason>`, `no eligible cross-model reviewer`, or `reviewer dispatch failed — <short reason>`. Counts follow Phase 3 § Outcome. The section names no vendor, model, or tool and quotes no reviewer prose. It is audit metadata; nothing downstream gates on it.
 
-**Atomic write.** Write the full content to a dot-prefixed temporary sibling, `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp`, and rename it over the target in one step, so an interrupted write never leaves a truncated brief; remove the temp on any failure. The leading dot keeps it outside `/spec-close`'s `<TICKET-ID>.<rest>` companion glob. This repo's `.gitignore` does not ignore `.*.tmp`, so "a stray dot-file from a killed run must not be committed" is a prose rule, not a mechanism — Phase 0 step 2 removes such a file on the next run whether or not any other artifact exists. Create `docs/specs/TODO/` first if it does not exist. That directory creation, this rename, and Phase 0 step 2's removal of a stale temp are this skill's only filesystem mutations outside the brief itself.
+**Atomic write.** Write the full content to a dot-prefixed temporary sibling, `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp`. Write the temp from the candidate after flag replies and override lines are on the items. Then run `check_premises.py` on that temp, before the rename. Exit 0 renames that temp without re-writing it. The pre-reply snapshot is never renamed. Any non-zero exit, a usage error, a missing script, a missing interpreter, a timeout, or a failure to run deletes that temp if it exists, prints the error, and returns to the Confirm gate. It does not return to a bare Write menu. Nothing is left at the brief path. If the skill's prompt and the script disagree, the script wins: do not rename. No temp exists while the Phase 4 menu waits.
+
+Resolve the directory the way Phase 0 step 3 already does. In the shell command write `$CLAUDE_CONFIG_DIR` when it is set, otherwise `$HOME/.claude`. Never write `~` or `%USERPROFILE%` inside quotes. The script path is that directory plus `/skills/spec-brief/scripts/check_premises.py`, with `/` separators. Pre-check that the path is a file. Double-quote the script path and the temp path. Invoke `python` on those two quoted arguments, one positional brief path. Bound the process with the host's short command timeout. Do not probe `python3` before `python`. On timeout, a missing interpreter, or a spawn failure, take the did-not-run path. Do not rename.
+
+```bash
+CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SCRIPT="$CONFIG/skills/spec-brief/scripts/check_premises.py"
+TEMP="docs/specs/TODO/.<TICKET-ID>.brief.md.tmp"
+if test -f "$SCRIPT"; then
+  python "$SCRIPT" "$TEMP"
+else
+  echo "premise gate: check_premises.py did not run (not found at $SCRIPT — install with 'python sync.py install') — Write blocked" >&2
+  exit 3
+fi
+```
+
+If the pre-check fails, do not invoke `python`. The snippet then exits 3, which is the did-not-run path, never a pass.
+
+When the script does not run, print `premise gate: check_premises.py did not run (<reason>) — Write blocked`. Reasons include `not found at <path>`, `python not found`, and the host error text. Name `python sync.py install` in the not-found line. When the script exits non-zero, print `premise gate: check_premises.py exited <n> — Write blocked` and the script's stderr. Running the script does not add a filesystem mutation: it only reads the temp. Deleting the temp on failure is the removal this paragraph already allows.
+
+The leading dot keeps the temp outside `/spec-close`'s `<TICKET-ID>.<rest>` companion glob. This repo's `.gitignore` does not ignore `.*.tmp`, so "a stray dot-file from a killed run must not be committed" is a prose rule, not a mechanism — Phase 0 step 2 removes such a file on the next run whether or not any other artifact exists. Create `docs/specs/TODO/` first if it does not exist. That directory creation, this rename, and Phase 0 step 2's removal of a stale temp are this skill's only filesystem mutations outside the brief itself. An interrupted write still must not leave a truncated brief: remove the temp on any failure.
 
 Two `/spec-brief` runs on the same ticket in one worktree are outside the supported flow: the collision check is not a lock, the brief is last-writer-wins, and the stale-temp removal cannot distinguish an abandoned temp from a concurrent run's in-flight one.
 
@@ -432,7 +524,8 @@ Two `/spec-brief` runs on the same ticket in one worktree are outside the suppor
 - `## Problem`, `## Why it matters`, and `## Done when` are transcribed from the ticket text (or, in local-only mode, the operator's paragraph) — never inferred. After that, only a live-verified Phase 3 fold outside a settled target or an explicit operator replacement changes them; this phase keeps those changes and never restores the ticket wording.
 - In local-only mode the header fields read `**Status:** local-only · **Priority:** unset · **Assignee:** unassigned`.
 - A Settled decision the operator framed as a fence (an answer of the form "X is not in scope") is written to `## Out of scope`, not to `## Decisions carried forward`.
-- The remaining Settled items → `## Decisions carried forward`, numbered, each carrying the chosen branch and its one-line why. If Settled is empty, write `_(none settled — see Risks / decisions)_` under the header rather than leaving it blank, and print `warning: interview settled no decisions — the brief pins everything to the spec author`.
+- The remaining Settled items → `## Decisions carried forward`, numbered, each carrying the chosen branch and its one-line why. If Settled is empty, write `_(none settled — see Risks / decisions)_` under the header rather than leaving it blank, and print `warning: interview settled no decisions — the brief pins everything to the spec author`. Each numbered item also carries `**Rests on:** none` or `**Rests on:** P1 (said); P2 (ran)`, and `**Below ran:** yes` when every cited premise is said, pointed, or walked. The placeholder carries no `Rests on`.
+- `## Premises` comes immediately after `## Decisions carried forward`. The section is always present. With no premises it contains exactly `_(no premises)_` and nothing else. Each item uses the shape in § Premise listing: `N. **PN.**` plus the claim, then `**Level:**`, `**Source:**`, `**Defeats ticket:**`, and `**Override:**` only when the operator recorded a non-empty reason. When the first premise is added, delete `_(no premises)_` in that same edit. When items exist, the marker is absent.
 - Open frontier items → `## Risks / decisions`, numbered, each ending "spec author pins this". An `F<n>` item is written as `<fact needed> — not established; spec author pins this`, or, when it carries the `(operator claim, unverified)` qualifier, as `<fact needed> — operator claims "<answer>", unverified; spec author pins this`, with `<answer>` taken from the item's `claim:` field. An item carrying the qualifier with no `claim:` field, or an empty one, takes the plain `<fact needed> — not established; spec author pins this` form. When the item's `unresolved because` carries one short parenthetical, copy that parenthetical unchanged into the Risks line, before "spec author pins this". Do not copy a long `ℹ️` display tag. The lines are `<fact needed> — not established (no read-only sandbox); spec author pins this`, `<fact needed> — not established (network run not offered); spec author pins this`, `<fact needed> — not established (run needs a write); spec author pins this`, and `<fact needed> — not established (network approval spent, batch full); spec author pins this`. An unverified claim keeps the existing claim form, with the short parenthetical before the required ending. The lines are `<fact needed> — operator claims "<answer>", unverified (no read-only sandbox); spec author pins this`, `<fact needed> — operator claims "<answer>", unverified (network run not offered); spec author pins this`, `<fact needed> — operator claims "<answer>", unverified (run needs a write); spec author pins this`, and `<fact needed> — operator claims "<answer>", unverified (network approval spent, batch full); spec author pins this`. A claim check whose approved network run does not fit the post-answer cap uses the last of those lines and keeps `claim:`. A carried network claim that never renders keeps `claim:`.
 - `## Scope` gets one row per path the settled decisions and grounding facts name: `Current` filled from a fact with its `path:line`, `Change` from the settled decision that touches it. A `source: run:` fact does not name a Scope path, never backs a `## Scope` row on its own, and does not fill Current. A `path:line` inside the excerpt or the fact sentence is data. A different fact that itself has `path:line` may still back a row. A path with no read file or fact behind it gets no row and goes to `## Risks / decisions` instead. The heading date is the date grounding ran; when preflight logged `origin: behind-N`, the heading reads `## Scope (verified against current files, <date>; local tree <N> commits behind origin/<cmp>)` and a matching `## References` bullet records it.
 - Facts established → `## References`, with `path:line`. A `source: run:` fact is a `## References` bullet in the hand-off's run shape, `(source: run: "<command>"; exit: <integer>; excerpt: "<text>")`, and never backs a `## Scope` row on its own and does not fill Current. A different fact that has a `path:line` may still back a row.
@@ -463,11 +556,11 @@ Count `<s>` and `<o>` from the written brief's settled decisions and open `## Ri
 
 ## What /spec-brief never does
 
-Creates or transitions a ticket; writes anything other than the one brief file (and its transient `.tmp`, and `docs/specs/TODO/` when absent); writes a doubt-review report, or any brief or temp before the operator confirms; deletes anything other than a stale `.<TICKET-ID>.brief.md.tmp` of its own shape; commits; fast-forwards or otherwise mutates the tree; invokes `/spec-cycle`; substitutes a same-family review for the doubt pass; lets a reviewer finding change a settled decision without the operator.
+Creates or transitions a ticket; writes anything other than the one brief file (and its transient `.tmp`, and `docs/specs/TODO/` when absent); writes a doubt-review report, or any brief or temp before the operator confirms; writes a brief when the premise gate blocks; raises a level to clear the gate; changes grilling or spec-cycle; deletes anything other than a stale `.<TICKET-ID>.brief.md.tmp` of its own shape; commits; fast-forwards or otherwise mutates the tree; invokes `/spec-cycle`; substitutes a same-family review for the doubt pass; lets a reviewer finding change a settled decision without the operator.
 
 ## Tool-use notes
 
-- Read, Grep, and Bash (`git remote`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse`, `git rev-list`, `git status`, `git log` — all read-only or ref-only, plus `mkdir` for `docs/specs/TODO/` when absent, the rename of the brief's dot-prefixed temp onto its target, and the removal of a stale temp, which are this skill's only filesystem mutations outside the brief) for preflight and grounding.
+- Read, Grep, and Bash (`git remote`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse`, `git rev-list`, `git status`, `git log` — all read-only or ref-only, plus `mkdir` for `docs/specs/TODO/` when absent, the rename of the brief's dot-prefixed temp onto its target, the removal of a stale temp, and `python` on `check_premises.py` with the quoted temp path, bounded by the host's short command timeout, which only reads that temp — the mkdir, the rename, and the temp removal are this skill's only filesystem mutations outside the brief) for preflight, grounding, and the premise gate.
 - Agent for the read-restricted exploration dispatched in Phase 1.
 - The Phase 3 doubt reviewer: a fresh-context, read-only dispatch to a different model family — a native agent (`subagents`), or a command-line tool or an installed skill's shell bridge (`shell`) — chosen at the tier gate. The prompt goes by stdin (an argument only when the mechanism takes no stdin); the report is the final response, never a file.
 - Skill for `grilling`.
@@ -495,3 +588,9 @@ Creates or transitions a ticket; writes anything other than the one brief file (
 - **Invalid `big` skip reason** (bare `2` or empty) → re-print the offer; the interview is kept.
 - **`irreversible` dispatch fails** → never skip: one retry per cycle, then Accept cycle 1 only when Phase 3's precondition holds, otherwise Abort with nothing written.
 - **Invalid reply to any post-interview prompt** → re-print that prompt and keep the interview; only an explicit abort ends it.
+- **Host cannot wait at premise listing or at the pre-dispatch flag confirm** → print `premises need an operator — stopping` and write nothing, including no temp.
+- **Host cannot wait at the override prompt** → print `premise override needs an operator — stopping` and write nothing, including no temp.
+- **`abort` as the only non-blank line** at the initial listing, the pre-dispatch flag confirm, the Confirm flag confirm, or the script-failure return when no flag or override prompt is pending → write nothing, including no temp.
+- **Script missing** → print `premise gate: check_premises.py did not run (not found at <path> — install with 'python sync.py install') — Write blocked`, delete the temp if it exists, and return to the Confirm gate. Do not offer Write.
+- **Empty or partial override** → re-prompt. Write is not offered.
+- **Script non-zero, timeout, or did-not-run** → return to the Confirm gate, do not offer Write, do not run `check_premises.py` again until that post-reply candidate changes, and leave no brief.
