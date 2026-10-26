@@ -28,6 +28,24 @@ The stage is optional. Not invoking it is the skip: a spec with no child tickets
 
 `<PARENT-ID>` below is the ticket id taken from the file name.
 
+## Operator replies
+
+Read every operator reply for intent. The numbered lines in a prompt are the fast path. A headless caller or another agent may answer with those lines. A person may answer in their own words.
+
+Before you act, print one line: `Reading: <what you will do>.`
+
+Act only when the reply has one meaning. When it has more than one meaning, ask again. Name what is ambiguous. Do not print the grammar again. Keep every clear part of the reply. Do not invent an answer for an item the reply does not address. The prompt stays pending until the reply is clear or the operator aborts.
+
+Silence is never yes. An empty reply is not a yes.
+
+`abort` as the only non-blank line, after trim, still stops and writes nothing further. The compare is case-sensitive. Do not treat any other word as abort.
+
+An override still needs a stated reason. The reason may be free-form. A reason that is empty after trim is not an override.
+
+A host that cannot wait keeps its current stop. That stop is not a reply.
+
+Where a prompt below says an empty reply stops, that stop wins over the "ask again" sentence. Those prompts are the approval block and the integration pick. An empty reply there is the headless stop, not a human sentence to clarify.
+
 ## Phase 0 — Preflight
 
 1. Resolve the repo root and the spec path as above.
@@ -78,7 +96,7 @@ Read-only. Decide, once, where the graph will be written. One integration per ru
 Rules:
 
 - **`halt` is not `local`.** An optional service that is unavailable would normally warn and proceed. Here it halts, because local files beside a live tracker would be a second graph.
-- **More than one candidate.** If more than one connected integration can create a work item with a parent, stop before the approval block, print their names, and wait for the operator to name one. A reply that is not one of those names, an empty reply, or a host that cannot wait halts with no writes. The chosen name is part of the approved draft.
+- **More than one candidate.** If more than one connected integration can create a work item with a parent, stop before the approval block, print their names, and wait for the operator to name one. A non-empty reply that names one printed integration selects it. A non-empty reply that names none asks again and names them. `abort` stops and writes nothing. An empty reply, end of input, a timeout, or a host that cannot wait still halts with no writes. The chosen name is part of the approved draft.
 - **Relation direction.** A `native` edge is one relation, created on the dependent child, of the blocked-by kind, with the blocker child as its target. An integration that offers only the inverse kind (a blocker pointing at what it blocks) is `text`.
 - **Parent.** On `native` and `text`, resolve the parent with the integration's retrieve-by-identifier capability. Keep the parent reference, and the project reference when a create needs one, in the form that integration's own create operation takes. If the retrieve fails, or lacks a reference the create needs, the mode is `halt`. Do not consult shared memory and do not read any state-id config file for this.
 - **Existing work.** On every mode except `halt`, make one read for work an earlier run may have left: the parent's children when the integration can list them, and the files matching `docs/specs/TODO/<PARENT-ID>.ticket-*.md`. Keep the two counts. If the children read is unavailable or fails, that count is `unknown`; it does not change the mode. The counts are a notice, not a census.
@@ -132,9 +150,9 @@ Done-when assigned: <bullet → slug>
 Done-when assembled-only: <bullets>
 Unassigned: <bullets or none>
 
-1. Approve and file
-2. Revise — say what to merge, split, or re-edge
-3. Abort — nothing filed
+1. Approve and file. This files the pieces above.
+2. Revise. Say what to merge, split, or re-edge. This does not file.
+3. Abort. Nothing is filed.
 ```
 
 **Option 1 is omitted** while any of these holds:
@@ -147,16 +165,18 @@ Unassigned: <bullets or none>
 
 **Replies.**
 
-- Exactly `1`, after trimming, and only when option 1 was printed: file.
-- Exactly `3`: abort and write nothing.
-- Any other non-empty reply, including a longer line that starts with `1`: revise. Re-render the block. Do not file. A revision never changes the storage mode; only a fresh run of Phase 1 can leave `halt`.
+- When option 1 was printed, a clear yes files, after the echo, with no second confirm. Clear yes includes `1` alone, "approve", "file them", and "go ahead" when the reply does not also ask for a change.
+- A yes while option 1 is omitted asks again and says filing is not offered.
+- A reply that asks for a change to the draft — merge, split, re-edge, rename a slug, reassign a Done-when unit or Test plan row, or add or edit a criterion — revises, even if it also says yes. `2: <change>` is the fast path. A bare `2` asks what to change. Re-render the block. Do not file. A revision never changes the storage mode; only a fresh run of Phase 1 can leave `halt`.
+- `3` or `abort`: abort and write nothing.
+- A non-empty reply that is neither a clear yes nor a clear revise nor abort asks again. Do not file it and do not treat it as revise.
 - An empty reply, end of input, a timeout, or a host that cannot wait: print `approval required — this skill does not file headless` and write nothing.
 
 The block that was printed is what approval freezes — its pieces, edges, criteria, and anchors — not a later re-read of the spec.
 
 ## Phase 4 — File
 
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here.
+1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. The new approval is this same block and the same reply map. Do not add a second confirm on top of it.
 2. Work only from the frozen draft. Do not redraft from the spec.
 3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
 4. **Per piece.**
@@ -206,9 +226,9 @@ Edits the spec. Edits or changes the behaviour of `/ship-spec`, `/spec-cycle`, o
 - **Red verdict** → halt in preflight with the `SPEC VERDICT: red` block; no draft, no writes.
 - **Tracker connected but failing, or unable to create with a parent** → `halt`; the draft is shown, filing is not offered, no local files are written.
 - **Parent does not resolve** → `halt`.
-- **Two capable integrations and no name given** → halt with no writes.
+- **Two capable integrations and no name given** → a non-empty reply that names none is asked again; an empty reply halts with no writes.
 - **Draft not approvable** (cycle, bad slug, unassigned unit) → option 1 omitted until a revision fixes it.
-- **No operator** → `approval required — this skill does not file headless`.
+- **No operator** → `approval required — this skill does not file headless`. A non-empty unclear reply to the approval block is asked again; it is not filed and not treated as revise.
 - **Spec changed after approval** → halt; ask for a new approval.
 - **Verdict changed while approval waited** → halt in Phase 4 with no writes; ask for a new approval.
 - **A write fails mid-run** → stop report; no `FILED`; no retry.

@@ -14,7 +14,7 @@ from pathlib import Path
 
 LEVELS = ("said", "pointed", "walked", "ran", "reproduced")
 BELOW_RAN = ("said", "pointed", "walked")
-KNOWN_FIELDS = ("Level", "Source", "Defeats ticket", "Override")
+KNOWN_FIELDS = ("Level", "Source", "Defeats ticket", "Override", "Kind")
 PREMISES_TITLE = "## Premises"
 DECISIONS_TITLE = "## Decisions carried forward"
 NO_PREMISES = "_(no premises)_"
@@ -183,12 +183,23 @@ def _check_item(item, position, problems):
         if bad:
             _emit(problems, "source-invalid", p_label)
 
+    # VHS-86: a claim about a file's words, opened at pointed or walked,
+    # passes without an override. said is not exempt.
+    if "Kind" in fields and fields["Kind"].strip() != "text":
+        _emit(problems, "kind-invalid", p_label)
+    text_exempt = (
+        "Kind" in fields
+        and fields["Kind"].strip() == "text"
+        and level in ("pointed", "walked")
+    )
+
     override_empty = False
     has_override = False
     if "Override" in fields:
         if fields["Override"].strip() == "":
             override_empty = True
-            _emit(problems, "override-empty", p_label)
+            if not text_exempt:
+                _emit(problems, "override-empty", p_label)
         else:
             has_override = True
 
@@ -197,6 +208,7 @@ def _check_item(item, position, problems):
         and level in BELOW_RAN
         and not override_empty
         and not has_override
+        and not text_exempt
     ):
         _emit(problems, "below-ran", p_label)
 
