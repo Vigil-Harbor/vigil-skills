@@ -117,7 +117,7 @@ If `--attest` is present, do step 1 only (the ticket id from the path), then go 
    `[A-Z0-9]*` tail admits digit-bearing project prefixes like `WEB3-12`).
    If the filename has no match, ask the user for the ticket ID before
    continuing. Find id tokens matching `[A-Z][A-Z0-9]*-[0-9]+` that are not
-   preceded by a letter or a digit. Take the id only when the reply asserts
+   preceded by a letter or a digit and not followed by a letter or a digit. Take the id only when the reply asserts
    that one id and does not negate it. A reply that is only the id is the
    fast path. A negated mention, such as "not VHS-86" or "don't use
    VHS-86", asks again and does not bind the id. A reply whose only meaning
