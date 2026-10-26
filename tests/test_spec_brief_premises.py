@@ -40,10 +40,14 @@ def codes(err):
     return CODE_RE.findall(err)
 
 
-def premise(pid, claim, level, source, flag, override=None):
+def premise(pid, claim, level, source, flag, override=None, kind=None):
     lines = [
         "{}. **P{}.** {}".format(pid, pid, claim),
         "   **Level:** {}".format(level),
+    ]
+    if kind is not None:
+        lines.append("   **Kind:** {}".format(kind))
+    lines += [
         "   **Source:** {}".format(source),
         "   **Defeats ticket:** {}".format(flag),
     ]
@@ -145,6 +149,155 @@ class CheckPremisesTests(unittest.TestCase):
                 )
                 code, _err = self.run_text(text)
                 self.assertEqual(code, 0)
+
+    # Regression for VHS-86: Kind: text at pointed or walked passes without an override.
+    def test_kind_text_pointed_and_walked_skip_below_ran(self):
+        for level, source in (
+            ("pointed", "vendor/sdk.py:12"),
+            ("walked", "1. skills/app/SKILL.md:10 opens the job."),
+        ):
+            with self.subTest(level=level):
+                text = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The file says the gate rejects any other reply.", level, source, "yes", kind="text"),
+                )
+                code, err = self.run_text(text)
+                self.assertEqual(code, 0)
+                self.assertEqual(err, "")
+
+    # Regression for VHS-86: said is not exempt.
+    def test_kind_text_said_still_below_ran(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "said", "none", "yes", kind="text"),
+        )
+        code, err = self.run_text(text)
+        self.assertEqual(code, 1)
+        self.assertEqual(codes(err), ["below-ran"])
+
+    # Regression for VHS-86: only the exact value text is accepted.
+    def test_kind_invalid_value(self):
+        for value in ("execution", "Text", ""):
+            with self.subTest(value=value):
+                text = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", kind=value),
+                )
+                code, err = self.run_text(text)
+                self.assertEqual(code, 1)
+                self.assertIn("kind-invalid", codes(err))
+
+    # Regression for VHS-86: the exemption does not cover a bad source.
+    def test_kind_text_does_not_exempt_bad_source(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "pointed", "no line here", "yes", kind="text"),
+        )
+        code, err = self.run_text(text)
+        self.assertEqual(code, 1)
+        self.assertIn("source-invalid", codes(err))
+        self.assertNotIn("below-ran", codes(err))
+
+    # Regression for VHS-86: a non-defeating text premise still passes.
+    def test_kind_text_non_defeating_still_passes(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "no", kind="text"),
+        )
+        code, _err = self.run_text(text)
+        self.assertEqual(code, 0)
+
+    # Regression for VHS-86: Kind: text at ran is a valid field.
+    def test_kind_text_ran_without_override_still_passes(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The ledger file appears after the job command.", "ran", RUN_RECORD, "yes", kind="text"),
+        )
+        code, err = self.run_text(text)
+        self.assertEqual(code, 0)
+        self.assertNotIn("kind-invalid", codes(err))
+
+    # Regression for VHS-86: a second Kind line is a duplicate field.
+    def test_kind_duplicate(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "no", kind="text"),
+            "   **Kind:** text",
+        )
+        code, err = self.run_text(text)
+        self.assertEqual(code, 1)
+        self.assertIn("field-duplicate", codes(err))
+
+    # Regression for VHS-86: a stated override stays legal on a text premise.
+    def test_kind_text_with_override_still_passes(self):
+        text = brief_with(
+            "## Premises",
+            "",
+            premise(
+                1,
+                "The file says the gate rejects any other reply.",
+                "pointed",
+                "vendor/sdk.py:12",
+                "yes",
+                override="operator accepts the reading for this brief",
+                kind="text",
+            ),
+        )
+        code, _err = self.run_text(text)
+        self.assertEqual(code, 0)
+
+    # Regression for VHS-86: an empty Override on a text-exempt premise does not block; said still does.
+    def test_kind_text_empty_override_does_not_block(self):
+        exempt = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", override="", kind="text"),
+        )
+        code, err = self.run_text(exempt)
+        self.assertEqual(code, 0)
+        self.assertNotIn("override-empty", codes(err))
+        self.assertNotIn("below-ran", codes(err))
+        said = brief_with(
+            "## Premises",
+            "",
+            premise(1, "The file says the gate rejects any other reply.", "said", "none", "yes", override="", kind="text"),
+        )
+        code, err = self.run_text(said)
+        self.assertEqual(code, 1)
+        self.assertIn("override-empty", codes(err))
+
+    # Regression for VHS-86: the Below ran decision line is a level fact, not the override gate.
+    def test_kind_text_decision_below_ran_line_unchanged(self):
+        def text(below_ran):
+            decision = [
+                "## Decisions carried forward",
+                "",
+                "1. Keep the reply gate.",
+                "   **Rests on:** P1 (pointed)",
+            ]
+            if below_ran:
+                decision.append("   **Below ran:** yes")
+            return brief_with(
+                *decision,
+                "",
+                "## Premises",
+                "",
+                premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", kind="text"),
+            )
+
+        code, err = self.run_text(text(False))
+        self.assertEqual(code, 1)
+        self.assertIn("below-ran-line", codes(err))
+        self.assertNotIn("below-ran", codes(err))
+        code, _err = self.run_text(text(True))
+        self.assertEqual(code, 0)
 
     def test_defeating_ran_and_reproduced_without_override(self):
         for level in ("ran", "reproduced"):

@@ -71,6 +71,24 @@ A reader looks at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` and lands on 
 
 `green` carries its kind: `review, round <n>` or `operator-attested`. Both pass the same way. Every confirm stops on a host that cannot wait.
 
+## Operator replies
+
+Read every operator reply for intent. The numbered lines in a prompt are the fast path. A headless caller or another agent may answer with those lines. A person may answer in their own words.
+
+Before you act, print one line: `Reading: <what you will do>.`
+
+Act only when the reply has one meaning. When it has more than one meaning, ask again. Name what is ambiguous. Do not print the grammar again. Keep every clear part of the reply. Do not invent an answer for an item the reply does not address. The prompt stays pending until the reply is clear or the operator aborts.
+
+Silence is never yes. An empty reply is not a yes.
+
+`abort` as the only non-blank line, after trim, still stops and writes nothing further. The compare is case-sensitive. Do not treat any other word as abort.
+
+An override still needs a stated reason. The reason may be free-form. A reason that is empty after trim is not an override.
+
+A host that cannot wait keeps its current stop. That stop is not a reply.
+
+Where a prompt below says an empty reply stops, that stop wins over the "ask again" sentence. Attest is that prompt here. An empty reply there is the headless stop, not a human sentence to clarify.
+
 ## Phase 0 — Preflight
 
 Before anything else, validate the invocation. `--full` takes no value and is exclusive with `--attest`. Both flags together, `--attest` with no reason or an empty reason, `--full` with a value, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | --full]`. Write nothing on this halt.
@@ -89,14 +107,23 @@ If `--attest` is present, do step 1 only (the ticket id from the path), then go 
    If the resolved path is not under `project_root`, halt and ask the user
    to either move the brief into the repo or confirm proceeding; on
    confirm, carry the absolute path instead of the normalized relative
-   form (reviewer access to out-of-root paths is host-dependent).
+   form (reviewer access to out-of-root paths is host-dependent). A clear
+   "proceed" carries the absolute path. A clear "move it" or `abort` stops.
+   Anything else asks again.
 
    Extract `ticket_id` with an anchored prefix match on the filename:
    `^[A-Z][A-Z0-9]*-[0-9]+` (e.g., `PROJ-86-fix-API-33-regression.md` →
    `PROJ-86`; anchoring disambiguates embedded ID-shaped tokens, and the
    `[A-Z0-9]*` tail admits digit-bearing project prefixes like `WEB3-12`).
    If the filename has no match, ask the user for the ticket ID before
-   continuing.
+   continuing. Find id tokens matching `[A-Z][A-Z0-9]*-[0-9]+` that are not
+   preceded by a letter or a digit and not followed by a letter or a digit. Take the id only when the reply asserts
+   that one id and does not negate it. A reply that is only the id is the
+   fast path. A negated mention, such as "not VHS-86" or "don't use
+   VHS-86", asks again and does not bind the id. A reply whose only meaning
+   is a question, such as "VHS-86?", asks again and does not bind the id.
+   Zero ids, or more than one, asks again and names that. `abort` as the
+   only non-blank line stops and writes nothing.
 
    `project_root` is the cwd (the directory containing `CLAUDE.md`).
 
@@ -171,12 +198,11 @@ If `--attest` is present, do step 1 only (the ticket id from the path), then go 
 
       The fork is <M> commits behind upstream/<default-branch>.
 
-      What would you like to do?
-      1. Proceed anyway
-      2. Abort — re-evaluate brief or update fork
+      1. Proceed. The review runs on this tree.
+      2. Abort. Re-read the brief or update the fork first.
       ```
 
-      Wait for the user's response.
+      Wait for the user's response. `1` or a clear "proceed" is Proceed. `2` or `abort` is Abort. Anything else asks again.
 
       - On `Proceed`: log `upstream: N stale commits — user proceeded` and continue to step 5.
       - On `Abort`: halt with message `Spec-cycle aborted: upstream staleness — re-evaluate brief or update fork.`
@@ -255,18 +281,25 @@ If `--attest` is present, do step 1 only (the ticket id from the path), then go 
           Reviewers cold-read the local tree; merged-but-unpulled changes
           generate false-positive findings.
 
-          What would you like to do?
-          1. Fast-forward update now (git merge --ff-only origin/<branch>)
-          2. Proceed on the stale tree
+          1. Update now. This runs git merge --ff-only origin/<branch>.
+          2. Proceed on the stale tree. Nothing is updated.
           ```
 
-          Wait for the user's response.
+          Wait for the user's response. `1`, "fast-forward", or "update now"
+          is the update. `2` or a clear "proceed on the stale tree" is
+          proceed. A vague yes, including "ok", asks again. It must not run
+          the merge. `abort` stops and writes nothing.
           - On update: run `git merge --ff-only origin/<branch>`. On
             success, log `origin: behind-N (updated)`, then re-validate the
             preflight reads the update may have staled: re-confirm the brief
             exists at the resolved path (step 2) and re-read CLAUDE.md
             (step 3); if `docs/specs/TODO/<TICKET-ID>.spec.md` arrived with
-            the update, halt and ask before Phase 1 would overwrite it. If
+            the update, halt and ask before Phase 1 would overwrite it. A clear
+            "continue" or "keep" proceeds; Phase 1 does not re-author an
+            existing spec. A reply whose meaning is replace that file asks
+            again: the existing spec stays unless the operator deletes
+            `docs/specs/TODO/<TICKET-ID>.spec.md` and re-runs. `abort`
+            stops. The word overwrite is not continue. If
             git aborts the merge (e.g., uncommitted local changes would be
             overwritten), print git's error verbatim, log `origin: behind-N
             (update failed — proceeded)`, and continue on the stale tree —
@@ -852,11 +885,10 @@ Reviews at: docs/specs/TODO/<TICKET-ID>.reviews/
 
 DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle before the next pass.
 
-What would you like to do?
-1. Patch manually and re-run /spec-cycle
-2. Skip /ship-spec and ship by hand
-3. Treat as scoped-down — narrow the brief
-4. Grill the remaining findings — a bounded interview scoped to the titles above; decisions route through 2e revise (see 2f-i)
+1. Patch by hand, then run /spec-cycle again.
+2. Do not run /ship-spec. Ship by hand.
+3. Narrow the brief. Treat the work as scoped down.
+4. Grill the remaining findings. This is a short interview about the titles above. Its decisions go through 2e revise (see 2f-i).
 ```
 
 The follow-up block is rendered from `## Deferred — follow-up required` and nothing else; the skill proposes these follow-ups and never files a ticket. Extraction rule: the section's extent is as § 2e defines it — no re-parse; the render treats every `###`-or-deeper heading in that span that is not prefixed `> ` and not inside a fenced code block as a row. A heading whose `D-<n>` id does not parse prints as `  - D-?  (malformed row — see § Deferred — follow-up required)`. Severity is the parenthetical in `Finding:`, scope is the token before the **first** em dash in `Scope:` (if that token is none of `in-scope`, `out-of-scope`, `operator`, print `?`), `Follow-up:` is printed verbatim; a row carrying `Discharged:` additionally prints ` [discharged: <value>]` after it and needs no ticket; a missing or unparseable field prints as `?` in its column. The render never omits a heading it found and never edits a row. When the section is absent or has no rows, the block is its header line plus `  (none)`. Example:
@@ -868,7 +900,7 @@ The follow-up block is rendered from `## Deferred — follow-up required` and no
 
 An undischarged in-scope P0 or P1 line in this render is a defect in the run, not a legal resting state.
 
-Wait for the user. Options 1–3 end the skill as today. Option 4 runs 2f-i once, then re-renders this menu without option 4.
+Wait for the user. A reply selects an option only when that option was printed. Otherwise ask again and name the printed options. Do not start the grill when option 4 was not printed. Do not start a new confirm. Options 1–3 end the skill as today. Option 4 runs 2f-i once, then re-renders this menu without option 4.
 
 ### 2f-i. Option 4 — grill the remaining findings
 
@@ -1095,11 +1127,12 @@ Attest mode runs none of Phase 0 steps 2 to 10, Phase 1, Phase 2, or Phase 3. It
    Reason: <reason>
 
    This records the spec as green without a review round.
-   1. Attest green
-   2. Abort — nothing written
+
+   1. Attest green. This writes the green marker.
+   2. Abort. Nothing is written.
    ```
 
-   Wait for the operator. Any reply other than `1` is treated as 2. A host that cannot wait prints `attestation requires an operator — nothing written` and stops.
+   Wait for the operator. A clear yes, "attest", "attest green", or `1` is option 1, after the echo, with no second confirm. A clear no, `2`, or `abort` is option 2. Any other non-empty reply asks again. It is not abort. An empty reply, end of input, or a host that cannot wait prints `attestation requires an operator — nothing written` and writes nothing.
 6. On 1, write an attested marker: `ticket: <TICKET-ID>`, `spec: docs/specs/TODO/<TICKET-ID>.spec.md`, `verdict: green`, `source: operator-attested`, `round: not reviewed`, `gate: not reviewed`, `tier: <the invocation's tier>`, today's date, the spec's fingerprint, `reason: <reason>`, and `replaces:` set from the old marker's `verdict`, `source`, `round`, `gate` and `date` — `replaces: none` when there was no marker, `replaces: unreadable` when it could not be parsed. Create the reviews directory if it is absent. Print the marker path. If the write fails, print `attestation NOT written: <error>` and stop; the spec's verdict is unchanged.
 
 Attestation is allowed over no marker, a pending marker, a red marker, a green marker whose spec changed, and an unreadable marker.
