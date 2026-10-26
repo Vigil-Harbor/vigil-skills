@@ -243,12 +243,12 @@ For a prefix whose `states` map contains `Post-merge Checklists` and whose `stat
 The Plane comment, posted only on the Post-merge Checklists path, is:
 
 ```text
-<!-- spec-land:checklist PR #<N> <sha256> -->
 Post-merge checklists for PR #<N>:
 <unchecked lines, verbatim, in order>
+spec-land:checklist PR #<N> <sha256>
 ```
 
-`<sha256>` is the SHA-256 of the unchecked lines joined by `\n` (LF), UTF-8, lowercase hex, with no extra LF after the last line. Skip the post only when an existing comment contains `<!-- spec-land:checklist PR #<N> <sha256> -->` for this PR number and this hash. A different PR number posts a new comment even when the lines match. A different set of lines posts a new comment and does not edit the old one. The state move recomputes the target from the current boxes on every run. Already in the target state: skip the move. In Done, with boxes now unchecked, and the Checklists key present: the target is Post-merge Checklists.
+`<sha256>` is the SHA-256 of the unchecked lines joined by `\n` (LF), UTF-8, lowercase hex, with no extra LF after the last line. The marker is visible text, not an HTML comment: Plane strips HTML comments from a comment body, so a hidden marker never persists. Skip the post only when an existing comment's text contains `spec-land:checklist PR #<N> <sha256>` for this PR number and this hash. A different PR number posts a new comment even when the lines match. A different set of lines posts a new comment and does not edit the old one. The state move recomputes the target from the current boxes on every run. Already in the target state: skip the move. In Done, with boxes now unchecked, and the Checklists key present: the target is Post-merge Checklists.
 
 **Instructions (Decision 9).** Resolve these before confirmation. Do not re-read them after the fast-forward. Wiki writes, the slug, and the post-land command are these held values. The fast-forward is not what makes them readable.
 
