@@ -424,10 +424,10 @@ A no-push post does not set `REVIEW_SIGNAL`. A later push in this run posts its 
 ```bash
 LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
 command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-if test -f "$LAND"; then "$PY" "$LAND" post <N> --review <token> [--no-push] < /dev/null; else echo "SHA marker: NOT posted (script missing — run python sync.py install)"; fi
+if test -f "$LAND"; then "$PY" "$LAND" post <N> --review <token> [--no-push] < /dev/null; rc=$?; [ "$rc" -le 1 ] || echo "SHA marker: NOT posted (land_check.py exit $rc)"; else echo "SHA marker: NOT posted (script missing — run python sync.py install)"; fi
 ```
 
-Pass `--no-push` exactly when the caller is the table's "No push" row. The script does the checks, the latest-marker read, the same-head skip and the post. It retries a failed post once. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when the script built one. A failed post (exit 1) does not skip the rest of the round. On a path that still enters 6a, it does not skip 6a. On the fast path and the 3-cycle cap, it does not skip 6d. The push stands. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. When `$LAND` does not exist, the block prints `SHA marker: NOT posted (script missing — run python sync.py install)`; continue the caller's next step.
+Pass `--no-push` exactly when the caller is the table's "No push" row. The script does the checks, the latest-marker read, the same-head skip and the post. It retries a failed post once. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when the script built one. A failed post (exit 1) does not skip the rest of the round. On a path that still enters 6a, it does not skip 6a. On the fast path and the 3-cycle cap, it does not skip 6d. The push stands. For any exit other than 0 or 1 the block prints `SHA marker: NOT posted (land_check.py exit <n>)`; treat it as exit 1. When `$LAND` does not exist, the block prints `SHA marker: NOT posted (script missing — run python sync.py install)`; continue the caller's next step.
 
 A later run posts under the no-push rule when `git rev-parse HEAD` differs from the latest marker head, or when no marker exists. If that head equals the latest marker head, do not duplicate.
 

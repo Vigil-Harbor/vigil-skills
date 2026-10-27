@@ -446,10 +446,10 @@ The marker is one hidden PR comment that records the head, the base, the patch-i
 ```bash
 LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
 command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-if test -f "$LAND"; then "$PY" "$LAND" post <N> --review <passed|skipped> < /dev/null; else echo "SHA marker: NOT posted (script missing — run python sync.py install)"; fi
+if test -f "$LAND"; then "$PY" "$LAND" post <N> --review <passed|skipped> < /dev/null; rc=$?; [ "$rc" -le 1 ] || echo "SHA marker: NOT posted (land_check.py exit $rc)"; else echo "SHA marker: NOT posted (script missing — run python sync.py install)"; fi
 ```
 
-The script checks the PR head, the base and the patch-id, reads the latest marker, and posts. It does not post again when the latest marker already has this head. It retries a failed post once. Its first stdout line is the status. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when it was built. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. When `$LAND` does not exist, the block prints `SHA marker: NOT posted (script missing — run python sync.py install)`; continue. Every exit continues to Phase 6, and the PR stays open.
+The script checks the PR head, the base and the patch-id, reads the latest marker, and posts. It does not post again when the latest marker already has this head. It retries a failed post once. Its first stdout line is the status. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when it was built. For any exit other than 0 or 1 the block prints `SHA marker: NOT posted (land_check.py exit <n>)`; treat it as exit 1. When `$LAND` does not exist, the block prints `SHA marker: NOT posted (script missing — run python sync.py install)`; continue. Every exit continues to Phase 6, and the PR stays open.
 
 ## Phase 6 — Plane update
 
