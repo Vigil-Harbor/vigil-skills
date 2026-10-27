@@ -19,19 +19,15 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 ## Phase 0 — Preflight
 
 1. Resolve `<spec-path>`. Confirm it exists and follows shape `docs/specs/TODO/<TICKET-ID>.spec.md`. Extract `ticket_id` (uppercase) from filename.
-1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format, the fingerprint and the six states. Resolve the two scripts this skill runs. § SHA marker uses the same `LAND` and `PY`:
-
-   ```bash
-   LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
-   VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
-   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-   ```
+1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format, the fingerprint and the six states. Each script call in this skill sets its script path and interpreter in the same shell call, because a host may start each call in a fresh shell.
 
    Before the state table is acted on, read the spec's recorded tier. Never read the brief for this. **Reader rule for the spec line.** Ignore lines inside a fenced code block. Fences are the ones the deferred-section rules already define: a marker of three or more backticks or tildes begins the line (after at most three spaces) and the line is not prefixed `> `, matched from the top of the file; a marker opens a fence only when no fence is open, and closes one only when it uses the same character as the opener and is at least as long — a shorter or different marker inside an open fence is content, and a marker inside a blockquote neither opens nor closes a fence. Outside a fence, a present declaration is a line that, after removing leading indentation, starts with the label `**Tier:**` compared case-insensitively. The first such line wins. A second warns `tier: multiple Tier lines in the spec — using first` and is ignored. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible` is the recorded tier. Any other value, including empty, `tweak`, a trailing note, or punctuation stuck to the token, halts `tier: malformed (<value>) — halting`. That line is not absence and is not `big`. No confirm-through and no write. Absence, which is `big` with no warning, means no label line at all. Where this skill says "no line", it means no label line. A sentence that uses the token without that label is not a declaration. A line inside a fence, and a mid-line mention, are not the recorded tier. This step uses this rule and no other. Hold the result as the spec tier. This step reads the marker and does not rewrite it, including `tier:`.
 
    When the tier halt fires, do not classify the marker. Otherwise classify it with:
 
    ```bash
+   VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
+   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
    "$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path> --spec-tier <spec tier>
    ```
 
@@ -445,13 +441,15 @@ Post one hidden SHA marker on the PR after `gh pr create` returns and before Pha
 
 The review field is `passed` when the review file from this run has a line whose text is `- Result: ran`. Every other path that reaches this step uses `skipped`, including a skip that wrote no review file and a skipped-form file whose `Result:` line is not `- Result: ran`. Do not pass `inconclusive` or `not-run`.
 
-The marker is one hidden PR comment that records the head, the base, the patch-id and the review token. `/spec-land` reads it after the merge. `land_check.py`, installed with `/spec-land`, owns its format. Run this from the worktree, with `LAND` and `PY` from Phase 0 step 1b (run that block again in the same call when the host's shell does not keep variables):
+The marker is one hidden PR comment that records the head, the base, the patch-id and the review token. `/spec-land` reads it after the merge. `land_check.py`, installed with `/spec-land`, owns its format. Run this block as one shell call from the worktree:
 
 ```bash
-"$PY" "$LAND" post <N> --review <passed|skipped> < /dev/null
+LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+if test -f "$LAND"; then "$PY" "$LAND" post <N> --review <passed|skipped> < /dev/null; else echo "SHA marker: NOT posted (script missing — run python sync.py install)"; fi
 ```
 
-The script checks the PR head, the base and the patch-id, reads the latest marker, and posts. It does not post again when the latest marker already has this head. It retries a failed post once. Its first stdout line is the status. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when it was built. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. If `$LAND` does not exist, print `SHA marker: NOT posted (script missing — run python sync.py install)` and continue. Every exit continues to Phase 6, and the PR stays open.
+The script checks the PR head, the base and the patch-id, reads the latest marker, and posts. It does not post again when the latest marker already has this head. It retries a failed post once. Its first stdout line is the status. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when it was built. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. When `$LAND` does not exist, the block prints `SHA marker: NOT posted (script missing — run python sync.py install)`; continue. Every exit continues to Phase 6, and the PR stays open.
 
 ## Phase 6 — Plane update
 

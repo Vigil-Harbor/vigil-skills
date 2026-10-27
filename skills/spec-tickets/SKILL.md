@@ -52,16 +52,11 @@ Where a prompt below says an empty reply stops, that stop wins over the "ask aga
 1. Resolve the repo root and the spec path as above.
 2. Read the spec. It is the only source for the breakdown. Do not read the sibling brief, the reviews directory, or the conversation for pieces. The verdict marker inside the reviews directory is read in step 4 for the verdict and for nothing else.
 3. **Heading check.** Each of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, and `## Out of scope` must occur exactly once as a level-2 heading outside a fenced block. A missing heading, or a second heading of the same name, halts with the heading named. This skill does not re-run reviewers.
-4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format and its states. Resolve it:
+4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format and its states. Classify the marker with this block, run as one shell call because a host may start each call in a fresh shell:
 
    ```bash
    VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
    command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-   ```
-
-   Classify the marker with:
-
-   ```bash
    "$PY" "$VERDICT" read --ticket <PARENT-ID> --marker docs/specs/TODO/<PARENT-ID>.reviews/verdict.md --no-fingerprint
    ```
 
@@ -190,7 +185,7 @@ The block that was printed is what approval freezes — its pieces, edges, crite
 
 ## Phase 4 — File
 
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again with the step 4 call and its fallbacks; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. If the spec cannot be read or compared, or the verdict marker cannot be read again, halt with no writes and ask for a new approval; an incomplete check is not proof that nothing changed. The new approval re-reads the current spec, drafts again (Phase 2), and renders a fresh Phase 3 approval block, with its omit list and the same reply map. Do not add a second confirm on top of it.
+1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again with the whole step 4 block, as one shell call, and its fallbacks; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. If the spec cannot be read or compared, or the verdict marker cannot be read again, halt with no writes and ask for a new approval; an incomplete check is not proof that nothing changed. The new approval re-reads the current spec, drafts again (Phase 2), and renders a fresh Phase 3 approval block, with its omit list and the same reply map. Do not add a second confirm on top of it.
 2. Work only from the frozen draft. Do not redraft from the spec.
 3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
 4. **Per piece.**

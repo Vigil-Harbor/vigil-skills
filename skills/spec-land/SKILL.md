@@ -99,11 +99,13 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 test -f "$SCRIPT" || echo "land_check.py not found — install with 'python sync.py install'"
 ```
 
-The interpreter probe tests executability, not presence. All three assignments are required. If the pre-check prints not-found, halt. Do not run the script. A missing script is not a malformed marker. No side effects.
+The interpreter probe tests executability, not presence. All three assignments are required. A host may start each shell call in a fresh shell, so repeat the `SCRIPT` and `PY` assignments in every call that runs the script. If the pre-check prints not-found, halt. Do not run the script. A missing script is not a malformed marker. No side effects.
 
 Read the latest marker with one call. The script reads the PR's issue comments, checks the result's shape, selects the latest marker comment, and parses it:
 
 ```bash
+SCRIPT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
 "$PY" "$SCRIPT" latest <N> < /dev/null
 ```
 
