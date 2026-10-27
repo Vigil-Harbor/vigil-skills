@@ -419,55 +419,22 @@ Review-pr does not emit `skipped`. The marker `review` field is one of `passed`,
 
 A no-push post does not set `REVIEW_SIGNAL`. A later push in this run posts its own marker after its own `REVIEW_SIGNAL` is set, so the marker for the HEAD that push replaced does not stay the latest.
 
-The body is one HTML comment. After one leading and one trailing whitespace run is removed, it is exactly these six lines, in this order, and no other line. One space after each colon. Each id is 40 lowercase hex digits. The review line is `review: ` plus the token from the table and nothing more.
-
-```text
-<!-- vigil-spec-land
-head: <40 lowercase hex>
-base: <40 lowercase hex>
-patch-id: <40 lowercase hex>
-review: <passed|skipped|inconclusive|not-run>
--->
-```
-
-Do not put the payload in the PR body. `<N>` is the PR number from Input parsing.
-
-Do every check below before `gh pr comment`. Any refusal prints what that check names and does not post. Then continue the caller's next step. Do not post when an earlier check in this procedure already refused. The body uses `headRefOid` and `baseRefOid`, never a local SHA that differs from `headRefOid`.
-
-1. Head and base come from `gh pr view --json headRefOid,baseRefOid` after the push, or, on a no-push post, before the stop or the replies. If that command fails, print the error and do not post.
-2. If the base object is missing (`git cat-file -e <baseRefOid>` exits non-zero), run `git fetch origin` once. If it is still missing, do not post a marker with a bad id. Print the error and the body.
-3. The patch-id is the first field of `git diff <baseRefOid>...<headRefOid> | git patch-id --stable` (three dots). A second field on that same line is not recorded. The first field must be 40 lowercase hex. If either command exits non-zero, or the first field is missing, or a second line is present, that is a bad id: print the error and the body, and do not post.
-4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. GitHub can lag in updating a PR's head right after a push: when they differ, wait about 5 seconds and re-read `headRefOid` once. If they still differ, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
-5. Read the latest marker (below). Do not post when a check above refused.
-   - No-push caller: post only when no marker exists, or the latest marker's `head:` line is `head: ` plus 40 lowercase hex and that value differs from `git rev-parse HEAD`. The same head: do not post again. If a marker exists but has no such line, print its `id` and raw body, and do not post. A marker that exists is not an absent marker.
-   - Any other caller: if that `head:` line equals this head, do not post again. If a marker exists but has no such line, print its `id` and raw body. That is not the same head: when the checks above passed, post so the new comment is the latest.
-6. Write the six lines to a temporary file outside the repository, UTF-8, no BOM (no leading U+FEFF). Do not stage that file and do not commit it. A single trailing newline after `-->` is fine. No blank line inside the comment. Post with `gh pr comment <N> --body-file <path>`. Do not pass the body inline: the shell eats the HTML comment (see the shell note). Substitute the resolved values, then run:
+`land_check.py` (installed with spec-land) owns the marker body, the checks, and the latest-marker read. Resolve it as the installed file, never a path in the target repo:
 
 ```bash
-cat > <path> <<'EOF'
-<!-- vigil-spec-land
-head: <head>
-base: <base>
-patch-id: <patch-id>
-review: <token>
--->
-EOF
-gh pr comment <N> --body-file <path>
+LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
 ```
 
-The heredoc is quoted so the shell does not expand or swallow the comment. Do not retry a failed comment in this run.
-
-Latest marker. Use the owner and repo from Step 1. Read issue comments only:
+`<N>` is the PR number from Input parsing. Run this from the working directory resolved in Step 1:
 
 ```bash
-gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments
+"$PY" "$LAND" post <N> --review <token> [--no-push] < /dev/null
 ```
 
-`--paginate` requests every page. `--slurp` wraps those pages in one array. Do not add `--jq`: gh rejects `--slurp` combined with `--jq` and exits 1. Flatten the pages one level to get the comments. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array whose every element is a JSON array, including `[]` and `[[]]`. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error and the body, and do not post.
+Pass `--no-push` exactly when the caller is the table's "No push" row. The script does the checks, the latest-marker read, the same-head skip and the post. It retries a failed post once. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when the script built one. A failed post (exit 1) does not skip the rest of the round. On a path that still enters 6a, it does not skip 6a. On the fast path and the 3-cycle cap, it does not skip 6d. The push stands. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. If `$LAND` does not exist, print `SHA marker: NOT posted (script missing — run python sync.py install)` and continue the caller's next step.
 
-A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
-
-Host failure: the post runs only after `REVIEW_SIGNAL` is set, except the no-push post, which has no signal. A failed post does not skip the rest of the round. On a path that still enters 6a, the failure does not skip 6a. On the fast path and the 3-cycle cap, 6a is not entered and the failure does not skip 6d. The push stands. Print the error and the body. A later run posts under the no-push rule when `git rev-parse HEAD` differs from the latest marker head, or when no marker exists. If that head equals the latest marker head, do not duplicate.
+A later run posts under the no-push rule when `git rev-parse HEAD` differs from the latest marker head, or when no marker exists. If that head equals the latest marker head, do not duplicate.
 
 ## Edge cases
 

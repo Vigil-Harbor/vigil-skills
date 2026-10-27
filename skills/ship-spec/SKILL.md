@@ -19,25 +19,37 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 ## Phase 0 — Preflight
 
 1. Resolve `<spec-path>`. Confirm it exists and follows shape `docs/specs/TODO/<TICKET-ID>.spec.md`. Extract `ticket_id` (uppercase) from filename.
-1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. Compute the spec's fingerprint: the SHA-256 of the spec file's bytes after every carriage-return byte is removed and after every line whose first non-blank characters are `**Follow-up:**` is dropped, every other byte left as it is (so a follow-up ticket filed after green does not read as a changed spec, and a file whose last line has no line feed does not gain one), written as `sha256-lf:` followed by the 64 lower-case hex digits *(e.g., `tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum` in a POSIX shell with GNU `sed`, `shasum -a 256` in place of `sha256sum` on macOS, or the equivalent in your host — where the host's `sed` or `grep` appends a missing final line feed, as `grep -v` and BSD `sed` do, use a filter that does not)*.
+1b. **Read the spec verdict.** Classify `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes — and act on the state. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format, the fingerprint and the six states. Resolve the two scripts this skill runs. § SHA marker uses the same `LAND` and `PY`:
+
+   ```bash
+   LAND="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
+   VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
+   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+   ```
 
    Before the state table is acted on, read the spec's recorded tier. Never read the brief for this. **Reader rule for the spec line.** Ignore lines inside a fenced code block. Fences are the ones the deferred-section rules already define: a marker of three or more backticks or tildes begins the line (after at most three spaces) and the line is not prefixed `> `, matched from the top of the file; a marker opens a fence only when no fence is open, and closes one only when it uses the same character as the opener and is at least as long — a shorter or different marker inside an open fence is content, and a marker inside a blockquote neither opens nor closes a fence. Outside a fence, a present declaration is a line that, after removing leading indentation, starts with the label `**Tier:**` compared case-insensitively. The first such line wins. A second warns `tier: multiple Tier lines in the spec — using first` and is ignored. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible` is the recorded tier. Any other value, including empty, `tweak`, a trailing note, or punctuation stuck to the token, halts `tier: malformed (<value>) — halting`. That line is not absence and is not `big`. No confirm-through and no write. Absence, which is `big` with no warning, means no label line at all. Where this skill says "no line", it means no label line. A sentence that uses the token without that label is not a declaration. A line inside a fence, and a mid-line mention, are not the recorded tier. This step uses this rule and no other. Hold the result as the spec tier. This step reads the marker and does not rewrite it, including `tier:`.
 
-   The rows are tested top to bottom and the first that matches wins:
+   When the tier halt fires, do not classify the marker. Otherwise classify it with:
 
-   | State | When | What this skill does |
-   |-------|------|----------------------|
-   | `missing` | The file or its directory does not exist | Confirm |
-   | `unreadable` | The file has no `verdict:` line with one of the three values, or its `ticket:` line is absent or names another ticket | Confirm, naming the reason |
-   | `pending` | `verdict: pending` | Confirm: a review started and did not finish |
-   | `red` | `verdict: red` | Halt, whether or not the spec has changed |
-   | `green` | `verdict: green`, the computed fingerprint equals the marker's, and either there is no `tier:` line or the first `tier:` line is exactly `small`, `big`, or `irreversible` and equals the spec tier | Pass |
-   | `changed` | `verdict: green` and the computed fingerprint differs, or the marker's `fingerprint:` line is absent or `none`, or the fingerprint could not be computed; also when `verdict: green`, the fingerprint matches, and a `tier:` line is present but is not one of `small`, `big`, or `irreversible`, or differs from the spec tier | Confirm: the spec is not the text that was judged. When the cause is the `tier:` clause, the confirm names the marker value and the spec tier, and says the gate follows the spec tier. When the spec has no label line, the confirm says the spec tier is `big` because no line was recorded, and that a different marker `tier:`, including `irreversible`, will not be enforced. |
+   ```bash
+   "$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path> --spec-tier <spec tier>
+   ```
 
-   `green` carries its kind: `review, round <round>` when `source: review`, `operator-attested` when `source: operator-attested`, `source not recorded` when the `source:` line is absent or has any other value. Its date is the marker's `date:` line, or `no date` when that line is absent. Both kinds pass the same way.
+   It prints the state as one JSON object: `missing`, `unreadable`, `pending`, `red`, `green`, or `changed`. If `$VERDICT` does not exist, the state is `unreadable` with reason `script missing — run python sync.py install`. A non-zero exit, or stdout that is not one JSON object with a valid `state`, is `unreadable` with reason `verdict_marker.py exit <n>`. Before taking `unreadable` for a missing or failed script, read the marker as plain text: a first `verdict:` line whose value is `red` takes the red halt.
+
+   What this skill does for each JSON `state`:
+
+   - `missing`: confirm.
+   - `unreadable`: confirm, naming the `reason`.
+   - `pending`: confirm: a review started and did not finish.
+   - `red`: halt, whether or not the spec has changed.
+   - `green`: pass.
+   - `changed`: confirm: the spec is not the text that was judged, or the marker's `tier:` disagrees with the spec tier (below).
+
+   `green` carries its kind, the JSON `kind`: `review, round <round>`, `operator-attested`, or `source not recorded`. Its date is the JSON `date`, which is `no date` when the marker has none. Both kinds pass the same way.
 
    - `green`: continue. Keep `- [x] Spec verdict: green (<kind>, <date>)` for the PR body.
-   - `red`: halt with
+   - `red`: halt with the JSON `round`, `gate` and `date` (on the plain-text path, the marker's own lines):
 
      ```text
      SPEC VERDICT: red (round <round>, gate <gate>, <date>).
@@ -56,9 +68,9 @@ This skill assumes `/spec-cycle` has already produced a converged spec. It imple
 
      and wait. Any reply other than `1` is treated as 2. A host that cannot wait prints `spec verdict needs an operator — stopping` and stops. On 1, keep `- [ ] Spec verdict: <state> — proceeded on operator confirmation` for the PR body and continue. On 2, stop.
 
-     When the `changed` state is the `tier:` clause, the one line names the marker value and the spec tier and says the gate follows the spec tier. When the spec has no label line, that line says the spec tier is `big` because no line was recorded, and that a different marker `tier:`, including `irreversible`, will not be enforced.
+     When the state is `changed` and `cause` is `tier`, the one line names the marker value (`marker_tier`) and the spec tier and says the gate follows the spec tier. When the spec has no label line, that line says the spec tier is `big` because no line was recorded, and that a different marker `tier:`, including `irreversible`, will not be enforced.
 
-   `red`, `pending`, `missing`, and `unreadable` still win when they match first. After the operator confirms a non-red state, Phase 3b uses the spec tier, not the marker's `tier:`. A missing marker `tier:` is not a disagreement. This step does not rewrite the marker.
+   The script tests the states in order, so `red`, `pending`, `missing`, and `unreadable` still win when they match first. After the operator confirms a non-red state, Phase 3b uses the spec tier, not the marker's `tier:`. A missing marker `tier:` is not a disagreement. This step does not rewrite the marker.
 
    This step reads no reviewer report and recomputes no gate.
 2. Confirm sibling brief exists at `docs/specs/TODO/<TICKET-ID>.brief.md`. If missing, warn but proceed using the spec alone.
@@ -431,55 +443,15 @@ Capture the returned PR URL. `<N>` is the PR number in that URL. If the URL has 
 
 Post one hidden SHA marker on the PR after `gh pr create` returns and before Phase 6. Post whether or not Phase 3b wrote a review file. The `small` skip and the no-review-command skip still post. This comment is not the spec verdict marker. This step never writes that marker. This step never skips Phase 6.
 
-The review field is `passed` when the review file from this run has a line whose text is `- Result: ran`. Every other path that reaches this step uses `skipped`, including a skip that wrote no review file and a skipped-form file whose `Result:` line is not `- Result: ran`. Do not write `inconclusive` or `not-run`.
+The review field is `passed` when the review file from this run has a line whose text is `- Result: ran`. Every other path that reaches this step uses `skipped`, including a skip that wrote no review file and a skipped-form file whose `Result:` line is not `- Result: ran`. Do not pass `inconclusive` or `not-run`.
 
-The body is one HTML comment. After one leading and one trailing whitespace run is removed, it is exactly these six lines, in this order, and no other line. One space after each colon. Each id is 40 lowercase hex digits.
-
-```text
-<!-- vigil-spec-land
-head: <40 lowercase hex>
-base: <40 lowercase hex>
-patch-id: <40 lowercase hex>
-review: <passed|skipped|inconclusive|not-run>
--->
-```
-
-This step writes `review: passed` or `review: skipped` and nothing after the token. Do not put the payload in the PR body.
-
-Do every check below before `gh pr comment`. Any refusal prints what that check names and does not post. Phase 6 still runs. The body uses `headRefOid` and `baseRefOid`, never a local SHA that differs from `headRefOid`.
-
-1. Head and base come from `gh pr view --json headRefOid,baseRefOid` after `gh pr create`. If that command fails, print the error and do not post.
-2. If the base object is missing (`git cat-file -e <baseRefOid>` exits non-zero), run `git fetch origin` once. If it is still missing, do not post a marker with a bad id. Print the error and the body.
-3. The patch-id is the first field of `git diff <baseRefOid>...<headRefOid> | git patch-id --stable` (three dots). A second field on that same line is not recorded. The first field must be 40 lowercase hex. If either command exits non-zero, or the first field is missing, or a second line is present, that is a bad id: print the error and the body, and do not post.
-4. `git rev-parse HEAD` must equal `headRefOid`. Both must be 40 lowercase hex digits, and they must be the same string. GitHub can lag in updating a PR's head right after a push: when they differ, wait about 5 seconds and re-read `headRefOid` once. If they still differ, do not post a local-only SHA. Print both values and the body that would have been posted. Print this mismatch even when an earlier check already refused the post.
-5. Read the latest marker (below). If its `head:` line is `head: ` plus 40 lowercase hex and that value equals this head, do not post again. That is not a failed post, and Phase 7 does not print `SHA marker: NOT posted`. If a marker comment exists but has no such line, print its `id` and raw body. That is not an absent marker and it is not the same head: when the checks above passed, post the new body so the new comment is the latest.
-6. Write the six lines to a temporary file outside the repository, UTF-8, no BOM (no leading U+FEFF). Do not stage that file and do not commit it. A single trailing newline after `-->` is fine. No blank line inside the comment. Post with `gh pr comment <N> --body-file <path>`. Do not pass the body inline: the shell eats the HTML comment. Substitute the resolved values, then run:
+The marker is one hidden PR comment that records the head, the base, the patch-id and the review token. `/spec-land` reads it after the merge. `land_check.py`, installed with `/spec-land`, owns its format. Run this from the worktree, with `LAND` and `PY` from Phase 0 step 1b (run that block again in the same call when the host's shell does not keep variables):
 
 ```bash
-cat > <path> <<'EOF'
-<!-- vigil-spec-land
-head: <head>
-base: <base>
-patch-id: <patch-id>
-review: <passed-or-skipped>
--->
-EOF
-gh pr comment <N> --body-file <path>
+"$PY" "$LAND" post <N> --review <passed|skipped> < /dev/null
 ```
 
-The heredoc is quoted so the shell does not expand or swallow the comment.
-
-Latest marker. Resolve owner and repo with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'`. Read issue comments only:
-
-```bash
-gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments
-```
-
-`--paginate` requests every page. `--slurp` wraps those pages in one array. Do not add `--jq`: gh rejects `--slurp` combined with `--jq` and exits 1. Flatten the pages one level to get the comments. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array whose every element is a JSON array, including `[]` and `[[]]`. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a failed read. Do not treat a failed or truncated read as an absent marker: print the error, do not post, do not retry `gh pr comment`, do not claim the record exists, and continue to Phase 6.
-
-A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
-
-Host failure: if `gh pr create` succeeded and `gh pr comment` exits non-zero, retry that comment once with the same body file. A zero exit is the one post; do not post a second comment. On the second failure, Phase 6 still runs and the PR stays open. Phase 7 prints `SHA marker: NOT posted`, prints the exact body, and does not claim the record exists.
+The script checks the PR head, the base and the patch-id, reads the latest marker, and posts. It does not post again when the latest marker already has this head. It retries a failed post once. Its first stdout line is the status. Exit 0 prints `SHA marker: posted (...)` or `SHA marker: already current (...)`. Exit 1 prints `SHA marker: NOT posted (<reason>)`, then the body when it was built. Any exit other than 0 or 1 is treated as exit 1 and prints `SHA marker: NOT posted (land_check.py exit <n>)`. If `$LAND` does not exist, print `SHA marker: NOT posted (script missing — run python sync.py install)` and continue. Every exit continues to Phase 6, and the PR stays open.
 
 ## Phase 6 — Plane update
 
@@ -527,14 +499,14 @@ After merge:
   # Run /spec-land <pr-number> (it removes this worktree), then /spec-close <spec-path> to reconcile and retire the spec
 ```
 
-When the SHA marker comment failed twice after `gh pr create` succeeded, print these lines in this summary. Do not claim the record exists. The PR stays open.
+When the SHA marker post did not exit 0, or `$LAND` was missing, print the step's `SHA marker: NOT posted (...)` line in this summary, and the body when the script printed one. Do not claim the record exists. The PR stays open.
 
 ```text
-SHA marker: NOT posted
-<exact body>
+SHA marker: NOT posted (<reason>)
+<exact body, when printed>
 ```
 
-When the marker was not posted for any other reason, the SHA marker step already printed the mismatch or the error and the body. Do not claim the record exists. When the comment was posted, or was not posted because the latest marker already has this head, do not print `SHA marker: NOT posted`.
+When the post exited 0 (`posted` or `already current`), print nothing about the marker.
 
 Do not auto-update any project wiki — that happens post-merge once the merge SHA exists on `<default-branch>`. `/spec-land` writes the merge log line and the filemap delta; run your project's own post-merge wiki/docs flow for anything else.
 
@@ -544,7 +516,7 @@ Do not auto-update any project wiki — that happens post-merge once the merge S
 - Bash for git, gh, package-manager commands — fully scripted, no interactive prompts.
 - plane-proxy tools (project listing, work-item state update, work-item comment) — or the equivalent capabilities in your host's Plane integration.
 - The Phase 3b review runs in a read-only subagent when the host has one, inline otherwise, which is what `subagents: optional` in the frontmatter declares. The review command itself is whatever the project declared; this skill supplies none.
-- A shell hash command to check the spec's fingerprint in Phase 0 step 1b (`tr -d '\r' < <spec-path> | sed '/^[[:space:]]*\*\*Follow-up:\*\*/d' | sha256sum`, or your host's equivalent). This skill reads the verdict marker and never writes it.
+- Bash for `verdict_marker.py read` (Phase 0 step 1b) and `land_check.py post` (§ SHA marker). This skill reads the verdict marker and never writes it.
 - Do not run `git rebase -i`, `git add -i`, or any interactive command.
 - Do not push to `<default-branch>`. Do not force-push the feature branch unless the user explicitly asks.
 - Do not skip pre-commit hooks (`--no-verify`). If a hook fails, fix the underlying issue.

@@ -3,6 +3,7 @@ name: spec-tickets
 description: Optional stage between /spec-cycle and /ship-spec. Break one green-lit spec into verifiable pieces with blocking edges, stop for operator approval, then file each piece as a child of the spec's ticket — blocked-by relations where the tracker has them, a Blocked by section where it does not, one local file per piece when no tracker is connected. Never files headless. Does not change how /ship-spec runs.
 user_invocable: true
 requires:
+  shell: optional
   filesystem: [read, write]
   services: [issue-tracker?]
 ---
@@ -51,19 +52,32 @@ Where a prompt below says an empty reply stops, that stop wins over the "ask aga
 1. Resolve the repo root and the spec path as above.
 2. Read the spec. It is the only source for the breakdown. Do not read the sibling brief, the reviews directory, or the conversation for pieces. The verdict marker inside the reviews directory is read in step 4 for the verdict and for nothing else.
 3. **Heading check.** Each of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, and `## Out of scope` must occur exactly once as a level-2 heading outside a fenced block. A missing heading, or a second heading of the same name, halts with the heading named. This skill does not re-run reviewers.
-4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. Fields in the marker are `key: value` lines, lower-case keys, one per line, with the key at the start of the line; the `# Spec verdict:` heading is not a field; take the first line for each key and ignore anything else in the file. This skill computes no fingerprint, so a `verdict: green` marker is always `green` here, including one whose `fingerprint:` is `none`. The rows are tested top to bottom and the first that matches wins:
+4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format and its states. Resolve it:
 
-   | State | When | What this skill does |
-   |-------|------|----------------------|
-   | `missing` | The file or its directory does not exist | Shown in the approval block |
-   | `unreadable` | The file has no `verdict:` line with one of the three values, or its `ticket:` line is absent or names another ticket | Shown in the approval block, naming the reason |
-   | `pending` | `verdict: pending` | Shown in the approval block |
-   | `red` | `verdict: red` | Halt |
-   | `green` | `verdict: green` | Shown in the approval block |
+   ```bash
+   VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
+   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+   ```
 
-   `green` carries its kind: `review, round <round>` when `source: review`, `operator-attested` when `source: operator-attested`, `source not recorded` when the `source:` line is absent or has any other value. Its date is the marker's `date:` line, or `no date` when that line is absent.
+   Classify the marker with:
 
-   - `red`: halt here, before any draft, with
+   ```bash
+   "$PY" "$VERDICT" read --ticket <PARENT-ID> --marker docs/specs/TODO/<PARENT-ID>.reviews/verdict.md --no-fingerprint
+   ```
+
+   It prints the state as one JSON object. If `$VERDICT` does not exist, or the call exits non-zero or prints no valid JSON, the state is `unreadable` with reason `script missing — run python sync.py install` or `verdict_marker.py exit <n>`. On a host with no shell, the state is `unreadable` with reason `no shell — verdict not fully checked`. In every one of these fallback cases, first read the marker as plain text: a first `verdict:` line whose value is `red` halts as below.
+
+   This skill checks no fingerprint, so a `verdict: green` marker is always `green` here, including one whose `fingerprint:` is `none`. It never sees `changed`. What this skill does for each JSON `state`:
+
+   - `missing`: shown in the approval block.
+   - `unreadable`: shown in the approval block, naming the `reason`.
+   - `pending`: shown in the approval block.
+   - `red`: halt.
+   - `green`: shown in the approval block.
+
+   `green` carries its kind, the JSON `kind`: `review, round <round>`, `operator-attested`, or `source not recorded`. Its date is the JSON `date`, which is `no date` when the marker has none.
+
+   - `red`: halt here, before any draft, with the JSON `round`, `gate` and `date` (on the plain-text path, the marker's own lines):
 
      ```text
      SPEC VERDICT: red (round <round>, gate <gate>, <date>).
@@ -176,7 +190,7 @@ The block that was printed is what approval freezes — its pieces, edges, crite
 
 ## Phase 4 — File
 
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. If the spec cannot be read or compared, or the verdict marker cannot be read again, halt with no writes and ask for a new approval; an incomplete check is not proof that nothing changed. The new approval re-reads the current spec, drafts again (Phase 2), and renders a fresh Phase 3 approval block, with its omit list and the same reply map. Do not add a second confirm on top of it.
+1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again with the step 4 call and its fallbacks; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. If the spec cannot be read or compared, or the verdict marker cannot be read again, halt with no writes and ask for a new approval; an incomplete check is not proof that nothing changed. The new approval re-reads the current spec, drafts again (Phase 2), and renders a fresh Phase 3 approval block, with its omit list and the same reply map. Do not add a second confirm on top of it.
 2. Work only from the frozen draft. Do not redraft from the spec.
 3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
 4. **Per piece.**
@@ -215,8 +229,8 @@ Edits the spec. Edits or changes the behaviour of `/ship-spec`, `/spec-cycle`, o
 - File reading and writing for the spec and, in `local` mode, the ticket files.
 - The issue tracker's capabilities, all optional: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, and create a blocked-by relation on the dependent. Use whatever the connected integration offers for each, or the equivalent in your host. This skill names no tracker response field; read what the integration returns the way that integration documents it.
 - A host whose tracker integration sets a parent and nothing else takes the `text` mode.
-- Reads the verdict marker at `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` for the verdict only. Computes no hash; the fingerprint is not checked here.
-- No shell, no network beyond the tracker integration, no subagents, no shared-memory lookup.
+- Reads the verdict marker at `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` for the verdict only, with one `verdict_marker.py read --no-fingerprint` call when a shell is available (step 4 and the Phase 4 re-read). The fingerprint is not checked here. With no shell, the state is `unreadable` (`no shell — verdict not fully checked`), and a plain-text first `verdict:` line of `red` still halts.
+- No shell use beyond that call, no network beyond the tracker integration, no subagents, no shared-memory lookup.
 - `local` file names fit `/spec-close`'s companion rule (`<TICKET-ID>.<rest>`), so a later close archives `ticket-<slug>.md` with the rest of the spec's artifacts.
 
 ## Failure modes
