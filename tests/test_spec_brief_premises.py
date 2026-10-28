@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for spec-brief's check_premises.py (VHS-67).
+"""Tests for spec-brief's check_premises.py (VHS-67, VHS-93).
 
 Stdlib unittest. The script is loaded by file path, the same way
 tests/test_spec_land.py loads land_check.py, so an import does not exit.
@@ -23,6 +23,7 @@ SKILL = REPO_ROOT / "skills" / "spec-brief" / "SKILL.md"
 CODE_RE = re.compile(r"^premise: (\S+)", re.M)
 
 RUN_RECORD = 'source: run: "python -m app.job"; exit: 0; excerpt: "wrote ledger"'
+READ_SOURCE = "vendor/sdk.py:12"
 
 
 def load_script(path, module_name):
@@ -40,16 +41,11 @@ def codes(err):
     return CODE_RE.findall(err)
 
 
-def premise(pid, claim, level, source, flag, override=None, kind=None):
+def premise(pid, claim, level, source, override=None):
     lines = [
         "{}. **P{}.** {}".format(pid, pid, claim),
         "   **Level:** {}".format(level),
-    ]
-    if kind is not None:
-        lines.append("   **Kind:** {}".format(kind))
-    lines += [
         "   **Source:** {}".format(source),
-        "   **Defeats ticket:** {}".format(flag),
     ]
     if override is not None:
         lines.append("   **Override:** {}".format(override))
@@ -65,7 +61,6 @@ def sole_marker_brief():
         "## Decisions carried forward",
         "",
         "1. Keep the clock.",
-        "   **Rests on:** none",
         "",
         "## Premises",
         "",
@@ -107,217 +102,66 @@ class CheckPremisesTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(codes(err), ["section-absent"])
 
-    def test_sole_marker_and_rests_on_none(self):
+    def test_sole_marker(self):
         code, err = self.run_text(sole_marker_brief())
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
 
-    def test_defeating_below_ran_without_override(self):
-        for level, source in (
-            ("said", "none"),
-            ("pointed", "vendor/sdk.py:12"),
-            ("walked", "1. skills/app/SKILL.md:10 opens the job."),
-        ):
-            with self.subTest(level=level):
+    # Regression for VHS-93: Decisions carry no Rests on line, and the script no longer reads them.
+    def test_decisions_without_rests_on_pass(self):
+        text = brief_with(
+            "## Decisions carried forward",
+            "",
+            "1. Keep the clock. The ticket says so.",
+            "",
+            "2. Drop the cache.",
+            "",
+            "## Premises",
+            "",
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
+        )
+        code, err = self.run_text(text)
+        self.assertEqual(code, 0, err)
+
+    # Regression for VHS-93: an unchecked premise needs the operator's reason.
+    def test_unchecked_without_override(self):
+        for source in ("none", "operator says the job writes first"):
+            with self.subTest(source=source):
                 text = brief_with(
                     "## Premises",
                     "",
-                    premise(1, "The job writes the ledger before it returns.", level, source, "yes"),
+                    premise(1, "The job writes the ledger before it returns.", "unchecked", source),
                 )
                 code, err = self.run_text(text)
                 self.assertEqual(code, 1)
-                self.assertEqual(codes(err), ["below-ran"])
+                self.assertEqual(codes(err), ["unchecked"])
 
-    def test_defeating_below_ran_with_override(self):
-        for level, source in (
-            ("said", "none"),
-            ("pointed", "vendor/sdk.py:12"),
-            ("walked", "1. skills/app/SKILL.md:10 opens the job."),
-        ):
-            with self.subTest(level=level):
-                text = brief_with(
-                    "## Premises",
-                    "",
-                    premise(
-                        1,
-                        "The job writes the ledger before it returns.",
-                        level,
-                        source,
-                        "yes",
-                        override="operator accepts the trace for this brief",
-                    ),
-                )
-                code, _err = self.run_text(text)
-                self.assertEqual(code, 0)
-
-    # Regression for VHS-86: Kind: text at pointed or walked passes without an override.
-    def test_kind_text_pointed_and_walked_skip_below_ran(self):
-        for level, source in (
-            ("pointed", "vendor/sdk.py:12"),
-            ("walked", "1. skills/app/SKILL.md:10 opens the job."),
-        ):
-            with self.subTest(level=level):
-                text = brief_with(
-                    "## Premises",
-                    "",
-                    premise(1, "The file says the gate rejects any other reply.", level, source, "yes", kind="text"),
-                )
-                code, err = self.run_text(text)
-                self.assertEqual(code, 0)
-                self.assertEqual(err, "")
-
-    # Regression for VHS-86: said is not exempt.
-    def test_kind_text_said_still_below_ran(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "said", "none", "yes", kind="text"),
-        )
-        code, err = self.run_text(text)
-        self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["below-ran"])
-
-    # Regression for VHS-86: only the exact value text is accepted.
-    def test_kind_invalid_value(self):
-        for value in ("execution", "Text", ""):
-            with self.subTest(value=value):
-                text = brief_with(
-                    "## Premises",
-                    "",
-                    premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", kind=value),
-                )
-                code, err = self.run_text(text)
-                self.assertEqual(code, 1)
-                self.assertIn("kind-invalid", codes(err))
-
-    # Regression for VHS-86: the exemption does not cover a bad source.
-    def test_kind_text_does_not_exempt_bad_source(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "pointed", "no line here", "yes", kind="text"),
-        )
-        code, err = self.run_text(text)
-        self.assertEqual(code, 1)
-        self.assertIn("source-invalid", codes(err))
-        self.assertNotIn("below-ran", codes(err))
-
-    # Regression for VHS-86: a non-defeating text premise still passes.
-    def test_kind_text_non_defeating_still_passes(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "no", kind="text"),
-        )
-        code, _err = self.run_text(text)
-        self.assertEqual(code, 0)
-
-    # Regression for VHS-86: Kind: text at ran is a valid field.
-    def test_kind_text_ran_without_override_still_passes(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The ledger file appears after the job command.", "ran", RUN_RECORD, "yes", kind="text"),
-        )
-        code, err = self.run_text(text)
-        self.assertEqual(code, 0)
-        self.assertNotIn("kind-invalid", codes(err))
-
-    # Regression for VHS-86: a second Kind line is a duplicate field.
-    def test_kind_duplicate(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "no", kind="text"),
-            "   **Kind:** text",
-        )
-        code, err = self.run_text(text)
-        self.assertEqual(code, 1)
-        self.assertIn("field-duplicate", codes(err))
-
-    # Regression for VHS-86: a stated override stays legal on a text premise.
-    def test_kind_text_with_override_still_passes(self):
+    def test_unchecked_with_override(self):
         text = brief_with(
             "## Premises",
             "",
             premise(
                 1,
-                "The file says the gate rejects any other reply.",
-                "pointed",
-                "vendor/sdk.py:12",
-                "yes",
-                override="operator accepts the reading for this brief",
-                kind="text",
+                "The job writes the ledger before it returns.",
+                "unchecked",
+                "none",
+                override="operator accepts the vendor's documented behavior for this brief",
             ),
         )
-        code, _err = self.run_text(text)
-        self.assertEqual(code, 0)
+        code, err = self.run_text(text)
+        self.assertEqual(code, 0, err)
 
-    # Regression for VHS-86: an empty Override on a text-exempt premise does not block; said still does.
-    def test_kind_text_empty_override_does_not_block(self):
-        exempt = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", override="", kind="text"),
-        )
-        code, err = self.run_text(exempt)
-        self.assertEqual(code, 0)
-        self.assertNotIn("override-empty", codes(err))
-        self.assertNotIn("below-ran", codes(err))
-        said = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The file says the gate rejects any other reply.", "said", "none", "yes", override="", kind="text"),
-        )
-        code, err = self.run_text(said)
-        self.assertEqual(code, 1)
-        self.assertIn("override-empty", codes(err))
-
-    # Regression for VHS-86: the Below ran decision line is a level fact, not the override gate.
-    def test_kind_text_decision_below_ran_line_unchanged(self):
-        def text(below_ran):
-            decision = [
-                "## Decisions carried forward",
-                "",
-                "1. Keep the reply gate.",
-                "   **Rests on:** P1 (pointed)",
-            ]
-            if below_ran:
-                decision.append("   **Below ran:** yes")
-            return brief_with(
-                *decision,
-                "",
-                "## Premises",
-                "",
-                premise(1, "The file says the gate rejects any other reply.", "pointed", "vendor/sdk.py:12", "yes", kind="text"),
-            )
-
-        code, err = self.run_text(text(False))
-        self.assertEqual(code, 1)
-        self.assertIn("below-ran-line", codes(err))
-        self.assertNotIn("below-ran", codes(err))
-        code, _err = self.run_text(text(True))
-        self.assertEqual(code, 0)
-
-    def test_defeating_ran_and_reproduced_without_override(self):
-        for level in ("ran", "reproduced"):
+    # Regression for VHS-93: read and ran pass without an override.
+    def test_read_and_ran_without_override(self):
+        for level, source in (("read", READ_SOURCE), ("ran", RUN_RECORD)):
             with self.subTest(level=level):
                 text = brief_with(
                     "## Premises",
                     "",
-                    premise(1, "The ledger file appears after the job command.", level, RUN_RECORD, "yes"),
+                    premise(1, "The ledger file appears after the job command.", level, source),
                 )
-                code, _err = self.run_text(text)
-                self.assertEqual(code, 0)
-
-    def test_non_defeating_said_without_override(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, _err = self.run_text(text)
-        self.assertEqual(code, 0)
+                code, err = self.run_text(text)
+                self.assertEqual(code, 0, err)
 
     def test_level_missing_and_invalid(self):
         missing = brief_with(
@@ -325,62 +169,58 @@ class CheckPremisesTests(unittest.TestCase):
             "",
             "1. **P1.** The vendor SDK injects the clock.",
             "   **Source:** none",
-            "   **Defeats ticket:** no",
         )
         code, err = self.run_text(missing)
         self.assertEqual(code, 1)
         self.assertIn("level-missing", codes(err))
 
-        invalid = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "Ran", "none", "no"),
-        )
-        code, err = self.run_text(invalid)
-        self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["level-invalid"])
+        # Regression for VHS-93: the old five-level names are no longer levels.
+        for level in ("said", "pointed", "walked", "reproduced", "Ran"):
+            with self.subTest(level=level):
+                invalid = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The vendor SDK injects the clock.", level, RUN_RECORD),
+                )
+                code, err = self.run_text(invalid)
+                self.assertEqual(code, 1)
+                self.assertEqual(codes(err), ["level-invalid"])
 
-    def test_flag_missing_and_invalid(self):
-        missing = brief_with(
-            "## Premises",
-            "",
-            "1. **P1.** The vendor SDK injects the clock.",
-            "   **Level:** said",
-            "   **Source:** none",
-        )
-        code, err = self.run_text(missing)
-        self.assertEqual(code, 1)
-        self.assertIn("flag-missing", codes(err))
-
-        invalid = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "true"),
-        )
-        code, err = self.run_text(invalid)
-        self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["flag-invalid"])
+    # Regression for VHS-93: the dropped fields are unknown fields now.
+    def test_dropped_fields_are_unknown(self):
+        for line in ("   **Defeats ticket:** yes", "   **Kind:** text"):
+            with self.subTest(line=line):
+                text = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
+                    line,
+                )
+                code, err = self.run_text(text)
+                self.assertEqual(code, 1)
+                self.assertEqual(codes(err), ["field-unknown"])
 
     def test_override_whitespace_only(self):
-        text = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "pointed", "vendor/sdk.py:12", "yes", override="   "),
-        )
-        code, err = self.run_text(text)
-        self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["override-empty"])
+        for level, source in (("read", READ_SOURCE), ("unchecked", "none")):
+            with self.subTest(level=level):
+                text = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The vendor SDK injects the clock.", level, source, override="  "),
+                )
+                code, err = self.run_text(text)
+                self.assertEqual(code, 1)
+                self.assertEqual(codes(err), ["override-empty"])
 
     def test_item_id_gap(self):
         text = brief_with(
             "## Premises",
             "",
-            premise(1, "First claim.", "said", "none", "no"),
+            premise(1, "First claim.", "read", READ_SOURCE),
             "",
             "3. **P3.** Third claim.",
-            "   **Level:** said",
-            "   **Source:** none",
-            "   **Defeats ticket:** no",
+            "   **Level:** read",
+            "   **Source:** vendor/sdk.py:30",
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
@@ -391,9 +231,8 @@ class CheckPremisesTests(unittest.TestCase):
             "## Premises",
             "",
             "1. **P1.**",
-            "   **Level:** said",
-            "   **Source:** none",
-            "   **Defeats ticket:** no",
+            "   **Level:** read",
+            "   **Source:** vendor/sdk.py:12",
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
@@ -404,7 +243,7 @@ class CheckPremisesTests(unittest.TestCase):
             "## Premises",
             "",
             "```",
-            premise(1, "Hidden claim.", "said", "none", "no"),
+            premise(1, "Hidden claim.", "read", READ_SOURCE),
             "```",
         )
         code, err = self.run_text(text)
@@ -415,24 +254,24 @@ class CheckPremisesTests(unittest.TestCase):
         text = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
             "",
             "```",
-            premise(2, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(2, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
         self.assertEqual(codes(err), ["fence-open"])
 
-    def test_defeating_item_after_next_heading_is_not_a_premise(self):
+    def test_item_after_next_heading_is_not_a_premise(self):
         text = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
             "",
             "## Done when",
             "",
-            premise(2, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(2, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         code, _err = self.run_text(text)
         self.assertEqual(code, 0)
@@ -454,7 +293,7 @@ class CheckPremisesTests(unittest.TestCase):
             "",
             "## Premises",
             "",
-            premise(1, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(1, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
@@ -465,8 +304,8 @@ class CheckPremisesTests(unittest.TestCase):
             "## Premises",
             "",
             "1. **P1.** The vendor SDK injects the clock.",
-            "   **Level:** said",
-            "   **Source:** none",
+            "   **Level:** read",
+            "   **Source:** vendor/sdk.py:12",
             "   **Defeats:** yes",
         )
         code, err = self.run_text(unknown)
@@ -477,177 +316,48 @@ class CheckPremisesTests(unittest.TestCase):
             "## Premises",
             "",
             "1. **P1.** The vendor SDK injects the clock.",
-            "   **Level:** said",
-            "   **Level:** pointed",
-            "   **Source:** none",
-            "   **Defeats ticket:** no",
+            "   **Level:** read",
+            "   **Level:** ran",
+            "   **Source:** vendor/sdk.py:12",
         )
         code, err = self.run_text(duplicate)
         self.assertEqual(code, 1)
         self.assertIn("field-duplicate", codes(err))
 
     def test_source_shapes(self):
-        pointed = brief_with(
+        read = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "pointed", "no line here", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", "no line here"),
         )
-        code, err = self.run_text(pointed)
+        code, err = self.run_text(read)
         self.assertEqual(code, 1)
         self.assertIn("source-invalid", codes(err))
 
         ran = brief_with(
             "## Premises",
             "",
-            premise(1, "The ledger file appears after the job command.", "ran", "vendor/sdk.py:12", "yes"),
+            premise(1, "The ledger file appears after the job command.", "ran", READ_SOURCE),
         )
         code, err = self.run_text(ran)
         self.assertEqual(code, 1)
         self.assertIn("source-invalid", codes(err))
 
-        said = brief_with(
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, _err = self.run_text(said)
-        self.assertEqual(code, 0)
-
-    def test_rests_on_checks(self):
-        mismatch = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock.",
-            "   **Rests on:** P1 (pointed)",
-            "   **Below ran:** yes",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, err = self.run_text(mismatch)
-        self.assertEqual(code, 1)
-        self.assertIn("rests-on-level", codes(err))
-
-        unknown = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock.",
-            "   **Rests on:** P9 (said)",
-            "   **Below ran:** yes",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, err = self.run_text(unknown)
-        self.assertEqual(code, 1)
-        self.assertIn("rests-on-unknown", codes(err))
-
-        missing = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock. The ticket says so.",
-            "",
-            "## Premises",
-            "",
-            "_(no premises)_",
-        )
-        code, err = self.run_text(missing)
-        self.assertEqual(code, 1)
-        self.assertIn("rests-on-missing", codes(err))
-
-        duplicate = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock.",
-            "   **Rests on:** none",
-            "   **Rests on:** P1 (said)",
-            "   **Below ran:** yes",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, err = self.run_text(duplicate)
-        self.assertEqual(code, 1)
-        self.assertIn("rests-on-duplicate", codes(err))
-        self.assertNotIn("below-ran-line", codes(err))
-
-        no_line = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock.",
-            "   **Rests on:** P1 (said)",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
-        )
-        code, err = self.run_text(no_line)
-        self.assertEqual(code, 1)
-        self.assertIn("below-ran-line", codes(err))
-
-        line_on_ran = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Keep the clock.",
-            "   **Rests on:** P1 (ran)",
-            "   **Below ran:** yes",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The ledger file appears after the job command.", "ran", RUN_RECORD, "yes"),
-        )
-        code, err = self.run_text(line_on_ran)
-        self.assertEqual(code, 1)
-        self.assertIn("below-ran-line", codes(err))
-
-    def test_below_ran_line_is_per_decision(self):
-        ok = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Walked decision.",
-            "   **Rests on:** P1 (walked)",
-            "   **Below ran:** yes",
-            "",
-            "2. Ran decision.",
-            "   **Rests on:** P2 (ran)",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The job writes the ledger before it returns.", "walked", "skills/app/SKILL.md:10", "no"),
-            "",
-            premise(2, "The ledger file appears after the job command.", "ran", RUN_RECORD, "yes"),
-        )
-        code, _err = self.run_text(ok)
-        self.assertEqual(code, 0)
-
-        swapped = brief_with(
-            "## Decisions carried forward",
-            "",
-            "1. Walked decision.",
-            "   **Rests on:** P1 (walked)",
-            "",
-            "2. Ran decision.",
-            "   **Rests on:** P2 (ran)",
-            "   **Below ran:** yes",
-            "",
-            "## Premises",
-            "",
-            premise(1, "The job writes the ledger before it returns.", "walked", "skills/app/SKILL.md:10", "no"),
-            "",
-            premise(2, "The ledger file appears after the job command.", "ran", RUN_RECORD, "yes"),
-        )
-        code, err = self.run_text(swapped)
-        self.assertEqual(code, 1)
-        self.assertIn("below-ran-line", codes(err))
+        for source in ("none", "operator says so"):
+            with self.subTest(source=source):
+                unchecked = brief_with(
+                    "## Premises",
+                    "",
+                    premise(1, "The vendor SDK injects the clock.", "unchecked", source, override="accepted"),
+                )
+                code, err = self.run_text(unchecked)
+                self.assertEqual(code, 0, err)
 
     def test_item_unparsed_not_a_well_formed_next_item(self):
         bad = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
             "2. **P2** claim",
         )
         code, err = self.run_text(bad)
@@ -657,7 +367,7 @@ class CheckPremisesTests(unittest.TestCase):
         also = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
             "2. P2. claim",
         )
         code, err = self.run_text(also)
@@ -667,23 +377,22 @@ class CheckPremisesTests(unittest.TestCase):
         good = brief_with(
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "no"),
+            premise(1, "The vendor SDK injects the clock.", "read", READ_SOURCE),
             "",
-            premise(2, "The job writes the ledger before it returns.", "said", "none", "no"),
+            premise(2, "The job writes the ledger before it returns.", "ran", RUN_RECORD),
         )
         code, _err = self.run_text(good)
         self.assertEqual(code, 0)
 
-    def test_walked_step_on_its_own_line_is_item_unparsed(self):
+    def test_numbered_line_after_a_field_is_item_unparsed(self):
         text = "\n".join([
             "## Premises",
             "",
             "1. **P1.** The job writes the ledger before it returns.",
-            "   **Level:** walked",
-            "   **Source:** 1. skills/app/SKILL.md:10 opens the job.",
+            "   **Level:** read",
+            "   **Source:** skills/app/SKILL.md:10",
             "   2. skills/app/SKILL.md:40 opens the write.",
-            "   **Defeats ticket:** yes",
-            "   **Override:** operator accepts the trace for this brief",
+            "   **Override:** operator accepts the file for this brief",
             "",
         ])
         code, err = self.run_text(text)
@@ -694,11 +403,10 @@ class CheckPremisesTests(unittest.TestCase):
         text = "\n".join([
             "## Premises",
             "",
-            premise(1, "The vendor SDK injects the clock.", "said", "none", "yes", "fine"),
-            "    2. **P2.** Hidden defeating claim.",
-            "    **Level:** said",
-            "    **Source:** none",
-            "    **Defeats ticket:** yes",
+            premise(1, "The vendor SDK injects the clock.", "unchecked", "none", "fine"),
+            "      2. **P2.** Hidden defeating claim.",
+            "   **Level:** unchecked",
+            "   **Source:** none",
             "",
         ])
         code, err = self.run_text(text)
@@ -712,25 +420,6 @@ class CheckPremisesTests(unittest.TestCase):
             code, err = self.run_text(sole_marker_brief())
         self.assertEqual(code, 2)
         self.assertIn("premise: error RuntimeError", err)
-
-    def test_fenced_and_quoted_rests_on_do_not_count(self):
-        text = "\n".join([
-            "## Decisions carried forward",
-            "",
-            "1. **Keep.** The rationale.",
-            "```",
-            "   **Rests on:** none",
-            "```",
-            "   **Rests on:** none",
-            "> **Rests on:** P9 (said)",
-            "",
-            "## Premises",
-            "",
-            "_(no premises)_",
-            "",
-        ])
-        code, err = self.run_text(text)
-        self.assertEqual(code, 0, err)
 
     def test_unreadable_paths(self):
         code, err = self.run_text_missing()
@@ -768,32 +457,11 @@ class CheckPremisesTests(unittest.TestCase):
             "",
             "> ## Done when",
             "",
-            premise(1, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(1, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["below-ran"])
-
-    def test_indented_and_fenced_decision_lines_are_not_items(self):
-        text = "\n".join([
-            "## Decisions carried forward",
-            "",
-            "1. **Keep.** The rationale.",
-            "   1. a substep",
-            "   **Rests on:** none",
-            "```",
-            "2. **Other.**",
-            "```",
-            "",
-            "## Premises",
-            "",
-            "_(no premises)_",
-            "",
-        ])
-        code, err = self.run_text(text)
-        self.assertEqual(code, 0, err)
-        self.assertNotIn("decision-id", codes(err))
-        self.assertNotIn("rests-on-missing", codes(err))
+        self.assertEqual(codes(err), ["unchecked"])
 
     def test_marker_and_items_only(self):
         text = brief_with(
@@ -801,7 +469,7 @@ class CheckPremisesTests(unittest.TestCase):
             "",
             "_(no premises)_",
             "",
-            premise(1, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(1, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
@@ -831,18 +499,18 @@ class CheckPremisesTests(unittest.TestCase):
         text = brief_with(
             "## Premises",
             "",
-            premise(1, "The ledger — the real one — is written before return.", "said", "none", "yes"),
+            premise(1, "The ledger — the real one — is written before return.", "unchecked", "none"),
         )
         code, err = self.run_text(text)
         self.assertEqual(code, 1)
-        self.assertEqual(codes(err), ["below-ran"])
+        self.assertEqual(codes(err), ["unchecked"])
         self.assertNotIn("error", codes(err))
 
     def test_subprocess_entry_point(self):
         defeating = brief_with(
             "## Premises",
             "",
-            premise(1, "The job writes the ledger before it returns.", "said", "none", "yes"),
+            premise(1, "The job writes the ledger before it returns.", "unchecked", "none"),
         )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "brief.md"
@@ -855,7 +523,7 @@ class CheckPremisesTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 1)
             self.assertEqual(proc.stdout, b"")
-            self.assertIn(b"premise: below-ran", proc.stderr)
+            self.assertIn(b"premise: unchecked", proc.stderr)
             self.assertEqual(path.read_bytes(), before)
 
             path.write_bytes(sole_marker_brief().encode("utf-8"))
@@ -875,16 +543,36 @@ class CheckPremisesTests(unittest.TestCase):
         for needle in (
             "check_premises.py",
             "## Premises",
-            "**Rests on:**",
-            "premises need an operator — stopping",
+            "_(no premises)_",
+            "tier needs an operator — stopping",
             "premise gate: check_premises.py did not run",
+            "writing without the check",
             "Write blocked",
-            "When the first premise is added, delete _(no premises)_ in that same edit.",
-            "A premise at ran or reproduced with no matching hand-off line is demoted.",
-            "Write the temp from the candidate after flag replies and override lines are on the items.",
+            "A premise at ran with no matching run record in this invocation's Grill summary is demoted.",
+            "Write the temp from the candidate after override lines are on the items.",
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
+
+    # Regression for VHS-93: the removed premise model must not drift back in.
+    def test_skill_drops_the_old_premise_model(self):
+        text = SKILL.read_text(encoding="utf-8")
+        for needle in (
+            "reproduced",
+            "**Rests on:**",
+            "**Below ran:**",
+            "**Kind:**",
+            "Defeats ticket",
+            "notice_armed",
+            "Tweak surfaces",
+        ):
+            with self.subTest(needle=needle):
+                self.assertNotIn(needle, text)
+
+    # Regression for VHS-93: anti-regrowth tripwire for the VHS-90 simplification epic.
+    def test_skill_word_budget(self):
+        words = len(SKILL.read_text(encoding="utf-8").split())
+        self.assertLessEqual(words, 5800)
 
 
 if __name__ == "__main__":
