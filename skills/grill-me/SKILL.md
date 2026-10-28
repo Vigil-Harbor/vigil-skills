@@ -13,11 +13,11 @@ Invoked as: `/grill-me <topic>`.
 
 Run the `grilling` skill (Claude Code: invoke it through the skill-invocation tool, or the equivalent in your host) with `seed` = the topic the user gave, brief altitude, and the default bounds (3 rounds, 7 questions). When it hands back, the Grill summary is the deliverable — write nothing to disk.
 
-The `requires:` block above mirrors `grilling`'s: it declares what the delegate needs, so pre-flight is honest.
+The `requires:` block above mirrors `grilling`'s, so pre-flight is honest.
 
 ## Failure modes
 
-- If this host cannot invoke a nested skill, say so and stop: `grilling is unavailable in this host`. Never improvise the interview inline — the bounds live in the primitive.
-- On `empty-seed` (no topic, or a topic with nothing to decide), report the primitive's one-line reason and stop — there is no summary to deliver.
-- On `fence-empty` (the topic has a root decision but nothing about it is askable at brief altitude), deliver the Grill summary as usual — its header's reason line is the answer.
-- On a fact the check could not settle — this host offers no read-restricted agent class, the claim is a person's intent or a preference, this host offers no read-only sandbox, a network run is not offered, the check came back `not found`, empty, errored, or only partly supporting, or the round's check batch was too full to take it — the primitive leaves the fact Open and labelled `(operator claim, unverified)` instead of establishing it; for no read-only sandbox or a network run not offered, the hand-off stores the short parenthetical `(no read-only sandbox)` or `(network run not offered)`, respectively, after that label, not the long display tag, and a run-time claim that names no file is unverified only when no run was offered or the run did not confirm. Deliver the Grill summary as usual; the label is the answer, and the claim travels with it in the item's `claim:` field.
+- If this host cannot invoke a nested skill, say `grilling is unavailable in this host` and stop. Never improvise the interview inline.
+- On `empty-seed`, report the primitive's one-line reason and stop.
+- On `fence-empty`, deliver the Grill summary; its reason line is the answer.
+- A fact the check could not settle stays Open as `fact not established`, with the operator's claim in `claim:` when there was one; deliver the summary as usual.
