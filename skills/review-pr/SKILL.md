@@ -227,11 +227,11 @@ Run that probe under the waiting rule with a 9-minute deadline (a host without b
 **Advisory only — CodeRabbit's CI check:**
 
 ```bash
-gh pr checks <N> --json name,state \
-  --jq '[.[] | select(.name | test("coderabbit"; "i")) | .state] | if length == 0 then "NONE" elif any(. == "PENDING") then "PENDING" elif all(. == "SUCCESS") then "SUCCESS" else "FAILURE" end'
+gh pr checks <N> --json name,bucket \
+  --jq '[.[] | select(.name | test("coderabbit"; "i")) | .bucket] | if length == 0 then "NONE" elif any(. == "fail") then "FAILURE" elif all(. == "pass") then "SUCCESS" else "PENDING" end'
 ```
 
-Fold this into the same Bash calls as the findings poll, for observability only. `FAILURE` is the one state worth acting on: CodeRabbit errored, so no incremental findings are coming and polling further is pointless. Set `REVIEW_SIGNAL=ci-check (FAILURE)`, post the SHA marker for this HEAD with review state `inconclusive` (see SHA marker), then proceed to 6d immediately. `SUCCESS` corroborates a count of 0. `PENDING` and `NONE` mean nothing either way and must not extend polling.
+Classify on `bucket` (`pass`, `fail`, `pending`, `skipping`, `cancel`), not `state`: a review in progress reports `state` values such as `IN_PROGRESS` or `QUEUED`, which must not read as `FAILURE`. Fold this into the same Bash calls as the findings poll, for observability only. `FAILURE` is the one state worth acting on: CodeRabbit errored, so no incremental findings are coming and polling further is pointless. Set `REVIEW_SIGNAL=ci-check (FAILURE)`, post the SHA marker for this HEAD with review state `inconclusive` (see SHA marker), then proceed to 6d immediately. `SUCCESS` corroborates a count of 0. `PENDING` and `NONE` mean nothing either way and must not extend polling.
 
 **Re-entry from 6b (round 2+ guard):** the findings predicate handles this for free — advance `PREV_REVIEW_ID` to the review just triaged before looping back, and `pull_request_review_id > PREV_REVIEW_ID` cannot re-match the prior round. No check-transition dance is needed.
 
