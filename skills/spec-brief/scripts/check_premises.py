@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Parse a brief's ## Premises section and the Decision citations that rest on it.
+"""Parse a brief's ## Premises section.
 
 Stdlib only. Reads one brief path and never writes it. Exit 0 is silence.
 Exit 1 is a data or gate failure. Exit 2 is usage, an unreadable path, or
-an unexpected error. See the VHS-67 spec, Parser and exits.
+an unexpected error. See the VHS-67 spec, Parser and exits; VHS-93 cut the
+levels to three and dropped the Decision citations.
 """
 
 from __future__ import annotations
@@ -12,22 +13,15 @@ import re
 import sys
 from pathlib import Path
 
-LEVELS = ("said", "pointed", "walked", "ran", "reproduced")
-BELOW_RAN = ("said", "pointed", "walked")
-KNOWN_FIELDS = ("Level", "Source", "Defeats ticket", "Override", "Kind")
+LEVELS = ("unchecked", "read", "ran")
+KNOWN_FIELDS = ("Level", "Source", "Override")
 PREMISES_TITLE = "## Premises"
-DECISIONS_TITLE = "## Decisions carried forward"
 NO_PREMISES = "_(no premises)_"
-NO_DECISIONS = "_(none settled — see Risks / decisions)_"
 
 ITEM_RE = re.compile(r"^(\d+)\.\s+\*\*P(\d+)\.\*\*(.*)$")
 FIELD_RE = re.compile(r"^\*\*([A-Za-z][A-Za-z0-9 ]*):(\*\*)(.*)$")
 HEADING_RE = re.compile(r"^#{1,2} ")
-DECISION_RE = re.compile(r"^(\d+)\.\s")
 NUMBERED_RE = re.compile(r"^\d+\.\s")
-REST_PART_RE = re.compile(
-    r"^P(\d+) \((said|pointed|walked|ran|reproduced)\)$"
-)
 PATH_LINE_RE = re.compile(r"\S+:\d+")
 
 
@@ -162,61 +156,28 @@ def _check_item(item, position, problems):
             _emit(problems, "level-invalid", p_label)
             level = None
 
-    flag = None
-    if "Defeats ticket" not in fields:
-        _emit(problems, "flag-missing", p_label)
-    else:
-        flag = fields["Defeats ticket"].strip()
-        if flag not in ("yes", "no"):
-            _emit(problems, "flag-invalid", p_label)
-            flag = None
-
     if "Source" not in fields or fields["Source"].strip() == "":
         _emit(problems, "source-missing", p_label)
     elif level is not None:
         source = fields["Source"].strip()
         bad = False
-        if level in ("pointed", "walked") and PATH_LINE_RE.search(source) is None:
+        if level == "read" and PATH_LINE_RE.search(source) is None:
             bad = True
-        elif level in ("ran", "reproduced") and "source: run:" not in source:
+        elif level == "ran" and "source: run:" not in source:
             bad = True
         if bad:
             _emit(problems, "source-invalid", p_label)
 
-    # VHS-86: a claim about a file's words, opened at pointed or walked,
-    # passes without an override. said is not exempt.
-    if "Kind" in fields and fields["Kind"].strip() != "text":
-        _emit(problems, "kind-invalid", p_label)
-    text_exempt = (
-        "Kind" in fields
-        and fields["Kind"].strip() == "text"
-        and level in ("pointed", "walked")
-    )
-
-    override_empty = False
-    has_override = False
+    # VHS-93: only an unchecked premise needs the operator's reason.
     if "Override" in fields:
         if fields["Override"].strip() == "":
-            override_empty = True
-            if not text_exempt:
-                _emit(problems, "override-empty", p_label)
-        else:
-            has_override = True
-
-    if (
-        flag == "yes"
-        and level in BELOW_RAN
-        and not override_empty
-        and not has_override
-        and not text_exempt
-    ):
-        _emit(problems, "below-ran", p_label)
-
-    item["level"] = fields["Level"].strip() if "Level" in fields else None
+            _emit(problems, "override-empty", p_label)
+    elif level == "unchecked":
+        _emit(problems, "unchecked", p_label)
 
 
 def _parse_items(lines, in_fence, start, end, problems):
-    """Return ('marker', None), ('empty', None), ('mixed', None), or ('items', list)."""
+    """Return 'marker', 'empty', 'mixed', or 'items'."""
     nonblank = []
     for i in range(start + 1, end):
         if in_fence[i]:
@@ -240,11 +201,11 @@ def _parse_items(lines, in_fence, start, end, problems):
             item_indexes.append(i)
 
     if marker_at is not None and other:
-        return "mixed", None
+        return "mixed"
     if marker_at is not None:
-        return "marker", None
+        return "marker"
     if not item_indexes:
-        return "empty", None
+        return "empty"
 
     items = []
     for pos, idx in enumerate(item_indexes):
@@ -255,7 +216,6 @@ def _parse_items(lines, in_fence, start, end, problems):
             "claim": [rest],
             "fields": {},
             "scan": [],
-            "level": None,
         }
         next_idx = item_indexes[pos + 1] if pos + 1 < len(item_indexes) else end
         seen_field = False
@@ -296,113 +256,7 @@ def _parse_items(lines, in_fence, start, end, problems):
 
     for position, item in enumerate(items, start=1):
         _check_item(item, position, problems)
-    return "items", items
-
-
-def _parse_rests(value):
-    value = value.strip()
-    if value == "none":
-        return "none", []
-    parts = value.split("; ")
-    parsed = []
-    seen = set()
-    for part in parts:
-        match = REST_PART_RE.match(part)
-        if match is None:
-            return "invalid", []
-        pid = int(match.group(1))
-        if pid in seen:
-            return "invalid", []
-        seen.add(pid)
-        parsed.append((pid, match.group(2)))
-    if not parsed:
-        return "invalid", []
-    return "ok", parsed
-
-
-def _check_decisions(lines, in_fence, problems, items):
-    headings = _heading_indexes(lines, in_fence, DECISIONS_TITLE)
-    if not headings:
-        return
-    if len(headings) >= 2:
-        _emit(problems, "decision-section", "")
-        return
-
-    start = headings[0]
-    end = _section_end(lines, in_fence, start)
-    content = []
-    for i in range(start + 1, end):
-        if in_fence[i]:
-            continue
-        if lines[i].strip() == "":
-            continue
-        content.append(i)
-    if len(content) == 1 and lines[content[0]].strip() == NO_DECISIONS:
-        return
-
-    starts = []
-    for i in content:
-        line = lines[i]
-        if line.startswith("> ") or line[:1] in (" ", "\t"):
-            continue
-        match = DECISION_RE.match(line)
-        if match is None:
-            continue
-        starts.append((i, int(match.group(1))))
-
-    levels = {}
-    if items:
-        for item in items:
-            if item["p_n"] not in levels:
-                levels[item["p_n"]] = item["level"]
-
-    for pos, (idx, number) in enumerate(starts, start=1):
-        if number != pos:
-            _emit(problems, "decision-id", str(number))
-        next_idx = starts[pos][0] if pos < len(starts) else end
-        # pos is 1-based; the next start lives at index pos in `starts` when
-        # another item follows. `pos < len(starts)` is that test.
-        rests = []
-        below = []
-        for j in range(idx, next_idx):
-            if j >= end or in_fence[j] or lines[j].startswith("> "):
-                continue
-            text = lines[j].strip()
-            if text.startswith("**Rests on:**"):
-                rests.append(text[len("**Rests on:**"):].strip())
-            elif text.startswith("**Below ran:**"):
-                below.append(text)
-        n_label = str(number)
-        if not rests:
-            _emit(problems, "rests-on-missing", n_label)
-            continue
-        if len(rests) >= 2:
-            _emit(problems, "rests-on-duplicate", n_label)
-            continue
-        status, cites = _parse_rests(rests[0])
-        if status == "invalid":
-            _emit(problems, "rests-on-invalid", n_label)
-            continue
-        if status == "ok":
-            for pid, cited in cites:
-                if pid not in levels:
-                    _emit(problems, "rests-on-unknown", "{} P{}".format(n_label, pid))
-                elif cited != levels[pid]:
-                    _emit(problems, "rests-on-level", "{} P{}".format(n_label, pid))
-        ran_cited = status == "none" or any(
-            level in ("ran", "reproduced") for _, level in cites
-        )
-        all_below = status == "ok" and cites and all(
-            level in BELOW_RAN for _, level in cites
-        )
-        if ran_cited:
-            if below:
-                _emit(problems, "below-ran-line", n_label)
-        elif all_below:
-            if any(text != "**Below ran:** yes" for text in below) or not any(
-                text == "**Below ran:** yes" for text in below
-            ):
-                _emit(problems, "below-ran-line", n_label)
+    return "items"
 
 
 def _split_lines(text):
@@ -450,7 +304,7 @@ def _run(argv):
         return 1, problems
 
     end = _section_end(lines, in_fence, headings[0])
-    kind, items = _parse_items(lines, in_fence, headings[0], end, problems)
+    kind = _parse_items(lines, in_fence, headings[0], end, problems)
     if kind == "mixed":
         _emit(problems, "marker-and-items", "")
         return 1, problems
@@ -458,7 +312,6 @@ def _run(argv):
         _emit(problems, "section-empty", "")
         return 1, problems
 
-    _check_decisions(lines, in_fence, problems, items)
     if problems:
         return 1, problems
     return 0, problems
