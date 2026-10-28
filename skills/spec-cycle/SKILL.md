@@ -109,7 +109,7 @@ On green, after 2g, rewrite that round's `spec.copy.md` to the post-polish bytes
 
 **`spec_diff`** (delta only). A unified diff of the predecessor's `spec.copy.md` — the marker round's for pass 1, pass 1's for pass 2 — against the current spec. Remove carriage returns and drop `**Follow-up:**` lines on both sides first, the fingerprint's filter, applied in memory or to temps outside the reviews directory. Use Python's `difflib.unified_diff`, or `git --no-pager diff --no-index --no-color --no-ext-diff <old> <new>`. The git form succeeds on exit 0 with empty output, or exit 1 with a non-empty diff and nothing on stderr; git exits 1 on an unreadable side too. Anything else, or a failed difflib run, prints `spec_diff: unavailable — running full`. A large diff may be passed as a path to a file outside the repo.
 
-**`open_findings`** (delta only) are extracted, not recalled. List every `### F-<k>:` heading of severity P0 or P1 in the predecessor round's `correctness.md`, `edge-cases.md` and `conventions.md`, plus `scalability.md` only when this invocation's scale lens is on, as `<lens>/F-<k> (P<sev>) "<title>" — <Where>`. Ignore `synthesis.md`. A missing report, a report with no parseable STATUS, or a positive STATUS P0+P1 sum with no matching heading adds `<lens>/STATUS (P0)`. A brief change is not detected; pass `--full` after editing the brief.
+**`open_findings`** (delta only) are extracted, not recalled. List every `### F-<k>:` heading of severity P0 or P1 in the predecessor round's `correctness.md`, `edge-cases.md` and `conventions.md`, plus `scalability.md` only when this invocation's scale lens is on, as `<lens>/F-<k> (P<sev>) "<title>" — <Where>`. Ignore `synthesis.md`. A missing report, a report with no parseable STATUS, or a positive STATUS P0+P1 sum with no matching heading adds `<lens>/STATUS (P0)`. A change to the brief or to cited code is not detected; pass `--full` after either.
 
 **Forcing full.** At mode selection, an unavailable `spec_diff`, a `<lens>/STATUS` line, or a missing ledger makes the invocation full. Before delta pass 2, the same causes dispatch that pass with `review_mode: full`, no `spec_diff`, and no `closure_manifest` when the ledger is missing; the two-pass bound still holds.
 
@@ -276,7 +276,7 @@ Reviews at: docs/specs/TODO/<TICKET-ID>.reviews/
 === FOLLOW-UPS (proposed; not filed by this skill) ===
   - <D-n>  <lens>/R<n>/F-<k>  <P0|P1>  <in-scope|out-of-scope|operator>  "<title>"  — Follow-up: <value>
 
-DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle before the next pass.
+DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle --full before the next pass.
 
 1. Patch by hand, then run /spec-cycle again.
 2. Do not run /ship-spec. Ship by hand.
@@ -339,7 +339,7 @@ Deferred rows: <u> undischarged (<out> out-of-scope, <op> operator), <d> dischar
 === FOLLOW-UPS (proposed; not filed by this skill) ===
   - <D-n>  <lens>/R<n>/F-<k>  <P0|P1>  <in-scope|out-of-scope|operator>  "<title>"  — Follow-up: <value>
 
-DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle before the next pass.
+DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle --full before the next pass.
 
 === NEXT ===
 When ready, run:
