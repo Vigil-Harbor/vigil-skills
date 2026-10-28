@@ -28,7 +28,7 @@ The working directory is the target repo. Steps 1–8 have no side effects excep
 - Call `prepend_merge_entry.py`. Do not copy a wiki-repo script into this repo (Decision 2).
 - Write `state.md`, a comprehension stub, a sibling ticket, or a wiki commit.
 - Invent a state UUID. UUIDs come from the installed `states.json` (Decision 7).
-- Reimplement marker parsing, the patch-id decision, or path overlap. `land_check.py` classifies (Decision 16).
+- Reimplement the comment read, marker parsing, the patch-id decision, or path overlap. `land_check.py` reads and classifies (Decision 16).
 
 ## Step 1 — Input and PR selection (Decision 11)
 
@@ -99,32 +99,23 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 test -f "$SCRIPT" || echo "land_check.py not found — install with 'python sync.py install'"
 ```
 
-The interpreter probe tests executability, not presence. All three assignments are required. If the pre-check prints not-found, halt. Do not run the script. A missing script is not a malformed marker. No side effects.
+The interpreter probe tests executability, not presence. All three assignments are required. A host may start each shell call in a fresh shell, so repeat the `SCRIPT` and `PY` assignments in every call that runs the script. If the pre-check prints not-found, halt. Do not run the script. A missing script is not a malformed marker. No side effects.
 
-Read issue comments only. Same command `/ship-spec` and `/review-pr` use:
-
-```bash
-gh api --paginate --slurp repos/{owner}/{repo}/issues/<N>/comments
-```
-
-`--paginate` requests every page. `--slurp` wraps those pages in one array. Do not add `--jq`: gh rejects `--slurp` combined with `--jq` and exits 1. Flatten the pages one level to get the comments. Do not assume oldest-first. Do not parse `gh pr view --json comments`. A successful read is a JSON array whose every element is a JSON array, including `[]` and `[[]]`. Every object must have `id`, `body`, and `created_at`. A non-zero exit, a result that is not that array, or a missing `id`, `body`, or `created_at` on any object is a hard halt: no wiki write, no Plane write, and no cleanup. Do not treat a failed or truncated read as an absent marker. This halt still applies after `state` is `MERGED`.
-
-A marker comment is one whose body, after stripping one leading U+FEFF and then surrounding whitespace, starts with `<!-- vigil-spec-land`. A comment that only mentions the token elsewhere is not a marker and is ignored, not malformed. The latest record is the marker with the greatest `created_at`, compared as a timestamp. Ties break by the greatest integer `id`.
-
-Only a successful full read with zero marker comments sets verification skipped. Print a note. The confirmation says `SHA record: none — verification skipped`. Plane, wiki, and cleanup still run after confirmation. Do not compute a patch-id on this path.
-
-When a latest marker exists, pass its raw body to `parse` on stdin:
+Read the latest marker with one call. The script reads the PR's issue comments, checks the result's shape, selects the latest marker comment, and parses it:
 
 ```bash
-printf '%s' "$BODY" | "$PY" "$SCRIPT" parse
+SCRIPT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-land/scripts/land_check.py"
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+"$PY" "$SCRIPT" latest <N> < /dev/null
 ```
 
-- Exit 0, one stdout line: `head=<40> base=<40> patch-id=<40> review=<token>`. Hold those four fields. The review token is `passed`, `skipped`, `inconclusive`, or `not-run`. Show it. Do not halt on `skipped`, `inconclusive`, or `not-run`. A match means the landed code is the recorded code, not that it was reviewed.
-- Exit 1, empty stdout: not a marker. This skill already selected the body by the prefix rule, so exit 1 is a contradiction. Halt. No side effects.
-- Exit 2: malformed. Print the comment `id` and the raw body. Do not compare. The operator fixes or deletes the comment. Halt. No side effects.
+- Exit 0, one stdout line: `id=<id> head=<40> base=<40> patch-id=<40> review=<token>`. Hold those fields and go to Step 5. The review token is `passed`, `skipped`, `inconclusive`, or `not-run`. Show it. Do not halt on `skipped`, `inconclusive`, or `not-run`. A match means the landed code is the recorded code, not that it was reviewed.
+- Exit 1 with stdout exactly `no marker`: a successful full read found no marker comment. Only this sets verification skipped. Print a note. The confirmation says `SHA record: none — verification skipped`. Plane, wiki, and cleanup still run after confirmation. Do not compute a patch-id on this path. Exit 1 with any other stdout: halt. No side effects.
+- Exit 2: stdout is `malformed marker id=<id>`, then the raw body. Print the id and the body. Do not compare. The operator fixes or deletes the comment. Halt. No side effects.
+- Exit 4: the comment read failed. This is a hard halt: no wiki write, no Plane write, and no cleanup. Do not treat a failed or truncated read as an absent marker. This halt still applies after `state` is `MERGED`.
 - Any other exit, including 3: halt. No side effects. Exit 3 is an unexpected failure. It is not "no marker."
 
-An argparse usage error exits 2. Every other uncaught exception from the script exits 3. An exit a subcommand does not list halts with no side effects.
+An argparse usage error also exits 2. Every other uncaught exception from the script exits 3. An exit a subcommand does not list halts with no side effects.
 
 ## Step 5 — SHA verification (Decision 3, Decision 16)
 
