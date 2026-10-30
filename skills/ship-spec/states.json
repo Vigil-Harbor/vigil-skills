@@ -411,7 +411,7 @@
       "Spec Authoring": "59032046-26d1-44dc-947b-1f30bf4a7863",
       "Spec Review": "d4c721a7-2406-4cee-940f-9f081c5d452e",
       "PR Review": "b5cf47d0-9545-46d9-adbd-537d6b19f8da",
-      "Post-merge checklists": "b1487d18-411a-4c5e-82b5-52bde51600c0",
+      "Post-merge Checklists": "b1487d18-411a-4c5e-82b5-52bde51600c0",
       "Done": "18ce93f2-ab5a-4a88-afdb-f2ef8c9fd820",
       "Cancelled": "24d8d23f-822e-4c89-a8b8-7de3047600a8"
     },
@@ -423,7 +423,7 @@
       "Spec Authoring": "started",
       "Spec Review": "started",
       "PR Review": "started",
-      "Post-merge checklists": "started",
+      "Post-merge Checklists": "started",
       "Done": "completed",
       "Cancelled": "cancelled"
     }
