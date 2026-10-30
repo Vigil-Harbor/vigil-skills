@@ -397,5 +397,35 @@
       "Done": "completed",
       "Cancelled": "cancelled"
     }
+  },
+  "CLOUD": {
+    "_note": "Vigil Harbor Cloud. Added 2026-10-30 from a live state list.",
+    "project_id": "df553ca2-63bc-4fde-b2a4-a26400335f31",
+    "namespace": "plane",
+    "review_state_id": "b5cf47d0-9545-46d9-adbd-537d6b19f8da",
+    "states": {
+      "Backlog": "7157ded7-4e6a-435e-a26f-62027cb4fb7c",
+      "Todo": "e28963a5-0afa-428d-a14d-72f5788a6292",
+      "Ready to Ship": "48149e1e-5d20-4112-83e8-2794009e37c3",
+      "In Progress": "dbe04489-3034-4f05-93d3-57511cb7d56b",
+      "Spec Authoring": "59032046-26d1-44dc-947b-1f30bf4a7863",
+      "Spec Review": "d4c721a7-2406-4cee-940f-9f081c5d452e",
+      "PR Review": "b5cf47d0-9545-46d9-adbd-537d6b19f8da",
+      "Post-merge Checklists": "b1487d18-411a-4c5e-82b5-52bde51600c0",
+      "Done": "18ce93f2-ab5a-4a88-afdb-f2ef8c9fd820",
+      "Cancelled": "24d8d23f-822e-4c89-a8b8-7de3047600a8"
+    },
+    "state_groups": {
+      "Backlog": "backlog",
+      "Todo": "unstarted",
+      "Ready to Ship": "unstarted",
+      "In Progress": "started",
+      "Spec Authoring": "started",
+      "Spec Review": "started",
+      "PR Review": "started",
+      "Post-merge Checklists": "started",
+      "Done": "completed",
+      "Cancelled": "cancelled"
+    }
   }
 }
