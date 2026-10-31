@@ -151,15 +151,15 @@ Ceremony follows a tier the operator sets at `/spec-brief`'s tier gate, after th
 | `tweak` | spec-brief only. Writes no brief, no spec, and no marker. The operator ships it as a chore PR. |
 | `small` | spec-cycle keeps the three standing lenses and sets `round_cap` to 2. ship-spec skips the review gate and keeps the test gate. spec-brief offers the doubt pass when a reviewer is eligible. |
 | `big` | Today's loop. `round_cap` is 4. ship-spec's three review-gate skip cases stay skips. An absent tier means `big`, with no warning. spec-brief offers the doubt pass when a reviewer is eligible. |
-| `irreversible` | `big`, plus the tier on every reviewer prompt, plus a ship-spec review gate that halts on the three skip cases instead of skipping. It adds no lens. spec-brief requires a doubt pass: it halts before the interview when no reviewer is eligible, and a failed dispatch cannot skip. |
+| `irreversible` | `big`, plus the tier on every reviewer prompt, plus a ship-spec review gate that stops instead of committing when the review did not run. It adds no lens. spec-brief requires a doubt pass: it halts before the interview when no reviewer is eligible, and a failed dispatch cannot skip. |
 
 Scale stays its own `## Scale` declaration and never follows from the tier.
 
 **Grammar.** In the brief, a whole-word heading matching `^#{1,6}\s+tier\s*$` (case-insensitive) opens `## Tier`. The body runs to the next heading. A `**Level:**` line, unfenced, after indentation, names `small`, `big`, or `irreversible`. Sibling lines are ignored. The first strict section wins and a second warns `tier: multiple Tier sections — using first`. No strict heading means `big` and `round_cap` 4, with no warning. A looser heading that merely starts with `tier` and whose body contains an unfenced `**Level:**` line, a strict section with no unfenced Level line, and a Level value of `tweak`, empty, an unknown token, or punctuation stuck to the token each warn `tier: <reason> — using big` and continue. A typo in the brief therefore reads as `big`; the warning is the only guard.
 
-In the spec, the recorded tier is the first unfenced line that, after indentation, starts with `**Tier:**` (case-insensitive), wherever it sits. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible`. A second line warns `tier: multiple Tier lines in the spec — using first`. No label line at all means `big`, with no warning. Any other value, including empty or `tweak`, halts `tier: malformed (<value>) — halting`. A fenced example and a mid-line mention are not a declaration. Fences are a marker of three or more backticks or tildes; a blockquote neither opens nor closes one.
+In the spec, the recorded tier is the first unfenced line that, after indentation, starts with `**Tier:**` (case-insensitive), wherever it sits. The value is the text after the label, trimmed, then lowercased. Exactly `small`, `big`, or `irreversible`. A second line warns `tier: multiple Tier lines in the spec — using first`. No label line at all means `big`, with no warning. Any other value, including empty or `tweak`: spec-cycle halts `tier: malformed (<value>) — halting`; ship-spec warns and uses `big`. A fenced example and a mid-line mention are not a declaration. Fences are a marker of three or more backticks or tildes; a blockquote neither opens nor closes one.
 
-Once a spec exists, a valid recorded line wins over an absent, disagreeing, or malformed brief: warn `tier: brief <absent|disagrees|malformed> — using recorded` and do not halt. A recorded line outside the three values halts and does not fall through to the brief. ship-spec reads the spec line every time and never reads the brief for the tier. A marker `tier:` that is missing is not a disagreement. A marker `tier:` that is present but is not one of the three tokens, or that differs from the spec tier, puts a fingerprint-matching green marker in `changed`. The confirm names both values and says the gate follows the spec tier. When the spec has no label line, that confirm says the spec tier is `big` because no line was recorded.
+Once a spec exists, a valid recorded line wins over an absent, disagreeing, or malformed brief: warn `tier: brief <absent|disagrees|malformed> — using recorded` and do not halt. A recorded line outside the three values halts and does not fall through to the brief. ship-spec reads the spec line every time and never reads the brief for the tier. A bad recorded value halts in spec-cycle only; ship-spec warns. A marker `tier:` that is missing is not a disagreement. A tier mismatch warns, names both values, says the gate follows the spec tier, and continues. It does not ask for confirmation. When the spec has no label line, that warning says the spec tier is `big` because no line was recorded.
 
 `round_cap` is 2 for `small` and 4 for `big`, `irreversible`, and an absent tier. In a full invocation, ordinary revision runs while pass index `P < round_cap`; `P == round_cap` is FROZEN/REWRITE. The FROZEN window is that invocation's earlier passes, not cumulative round numbers left by an older invocation. Delta mode has its own two-pass bound and never runs FROZEN/REWRITE. Grilling's interview cap of 3 is not `round_cap`.
 
@@ -190,15 +190,14 @@ The steps are in `skills/spec-tickets/SKILL.md`.
 
 **Purpose:** Take a green-lit spec through implementation, test gate, commit, PR, and issue-tracker update. Uses an isolated git worktree so the user's primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
 
-**Invocation:** `/ship-spec <path-to-spec>`
+**Invocation:** `/ship-spec <path-to-spec> [--build-only | --from-review <worktree-path>]`. Build-only stops before review and cuts a new worktree. From-review checks the worktree, re-runs the tests, then reviews, commits, and opens the PR.
 
 ### Phase 0 — Preflight
 
-1. **Read the spec.** Confirm it has the expected sections (Goal, Scope, Design, Test plan, Test command, Done when). If it doesn't, it probably hasn't been through spec-cycle — halt and tell the user. Then read the verdict marker spec-cycle left beside the reviews: a green verdict whose fingerprint matches the spec passes, red halts, and anything else (missing, pending, unreadable, or a spec edited since) asks the operator to confirm.
+1. **Read the spec.** Halt when it has no `## Done when` or no `## Test plan`. Red halts. Any other verdict warns and continues.
 2. **Resolve the test command.** Priority: spec's `## Test command` section (authoritative for this change) > project's CLAUDE.md Build & Run section (fallback). If neither yields a runnable command, halt. If the test command is `N/A`, the automated test gate is skipped entirely.
 3. **Discover the default branch** via `git symbolic-ref refs/remotes/origin/HEAD` (fallback: `git remote show origin`). Works for main, master, trunk, etc.
 4. **Confirm GitHub CLI is authenticated** (`gh auth status`).
-5. **Check issue-tracker reachability.** Warn and proceed on failure.
 
 ### Phase 1 — Worktree setup
 
@@ -213,7 +212,7 @@ All subsequent phases run inside the worktree. The spec stays in the user's prim
 
 ### Phase 2 — Implement + author tests
 
-Read the spec and implement everything it describes. Author the tests from the test plan. Tag regression tests with comments like `// Regression for <TICKET-ID>: <one-line>`. Don't commit yet.
+Read the spec and implement everything it describes. Author the tests from the test plan. A regression comment uses the file's own comment syntax and the text `Regression for <TICKET-ID>: <one-line>`, not required to be `//`. Don't commit yet.
 
 ### Phase 3 — Test gate loop (up to 5 iterations)
 
@@ -223,7 +222,7 @@ If still red after 5 iterations, halt and ask the user: continue with more itera
 
 ### Phase 3b — Review gate
 
-One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file — except on the `irreversible` tier, where that case halts before the commit. A declared command that is unavailable or fails is also skipped, and recorded, for `big` and an absent tier. For `irreversible` those two cases halt with the Phase 3b case text, keep the worktree, and do not commit. `small` skips the review gate before the three cases, prints `review gate: skipped (small tier)`, writes no review file, and still runs the test gate. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change when that path is not ignored; when it is ignored, the file is kept locally and copied to the primary checkout beside the spec, and the PR body says so. With an `N/A` test command the review gate still runs for `big`, `irreversible`, and an absent tier, and there is no test re-run. `small` skips the review gate even then.
+One review of the change, between the green test gate and the commit. The project declares the review command (a `## Review command` section in the spec, else in `CLAUDE.md`, else in `AGENTS.md` — the first source that declares one wins); the skill names no reviewer of its own, and a missing command is a skip — one console line, one line in the PR body, no review file. A declared command that is unavailable or fails is also skipped, and recorded, for `big` and an absent tier. On `irreversible`, if the review did not run, stop instead of committing. `small` skips the review gate before the three cases, prints `review gate: skipped (small tier)`, writes no review file, and still runs the test gate. The review runs once, in a fresh read-only subagent when the host has one and inline otherwise; the reviewer reports findings and edits nothing. Each finding is mapped to one of three groups: Blocks, Fix or record, Record only. Before any fix is applied it passes a veto against the project's declared invariants and the test suite's shape, static, and adversarial pins; a vetoed fix is not applied. Blocks findings are fixed, and one that cannot be resolved halts the run for the operator with nothing committed. Fix-or-record findings are fixed or recorded with a one-line reason. If any fix was applied, the tests are re-run through the Phase 3 loop with a fresh count of 5; the review is not run again. The result is written to `docs/specs/TODO/<TICKET-ID>.review.md` and committed with the change when that path is not ignored; when it is ignored, the file is kept locally and copied to the primary checkout beside the spec, and the PR body says so. With an `N/A` test command the review gate still runs for `big`, `irreversible`, and an absent tier, and there is no test re-run. `small` skips the review gate even then.
 
 ### Phase 4 — Commit
 
@@ -235,11 +234,9 @@ Stage files explicitly (no `git add -A`). Commit with a conventional-commits mes
 <2-4 sentence narrative>
 
 <File-level change list or layer enumeration>
-
-Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-Don't skip pre-commit hooks.
+The message is passed with `git commit -F`. Don't skip pre-commit hooks.
 
 ### Phase 5 — Push and open PR
 
