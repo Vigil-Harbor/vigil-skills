@@ -7,7 +7,7 @@ requires:
   filesystem: [read, write]
   network: true
   subagents: true
-  services: [issue-tracker?, shared-memory?]
+  services: [issue-tracker?]
 ---
 
 # /spec-brief — produce the brief
@@ -37,10 +37,9 @@ Read each reply for intent. Numbered lines are the fast path; a person may answe
 
 1. `project_root` = cwd. Read its project-instructions file (`CLAUDE.md`, or `AGENTS.md` where that holds the instructions). Resolve `wiki_root` and `project_slug` if a wiki is configured; if a hardcoded wiki path with a username does not exist, retry with the current user's name.
 2. **Output collision.** If only a stale `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp` exists, remove it, log `stale temp removed`, and continue. If the brief, the spec, or `docs/specs/TODO/<TICKET-ID>.reviews/` exists, list what exists and offer `1. Write the brief` or `2. Abort. The files stay.`, then wait. On 1, an existing brief is read as grounding; a spec is never read as grounding. Never overwrite silently.
-3. **Namespace** comes from `<config-dir>/skills/ship-spec/states.json` (`$CLAUDE_CONFIG_DIR`, else `~/.claude/`) for the ticket prefix. A missing file or prefix falls back to `plane`.
-4. **Origin sync (warn only).** Run a bounded `git fetch origin`. If the current branch is behind its origin branch, print `ORIGIN SYNC: local <branch> is <N> commits behind origin/<cmp> — the brief's "verified against current files" claim may be stale.` and log `origin: behind-N`. Any git error, no remote, or detached HEAD logs `origin: skipped`. Never update the tree.
-5. **Ticket resolution**, each step optional: the shared-memory tag-only search (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent in your host) with `tags: ["plane_work_item", "<TICKET-ID>"]` and the namespace; then the tracker's retrieve-by-identifier capability (e.g., `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalent in your host); then local-only: print `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.` and wait. The header then reads `**Plane:** unresolved (local-only)`.
-6. Print `ticket: <memory | tracker | local-only> · namespace: <ns> · wiki: <resolved|none> · origin: <token> · grill: on (rounds=N, questions=M) | off (--no-grill)`.
+3. **Origin sync (warn only).** Run a bounded `git fetch origin`. If the current branch is behind its origin branch, print `ORIGIN SYNC: local <branch> is <N> commits behind origin/<cmp> — the brief's "verified against current files" claim may be stale.` and log `origin: behind-N`. Any git error, no remote, or detached HEAD logs `origin: skipped`. Never update the tree.
+4. **Ticket resolution.** Uppercase the identifier first; a lower-case ref is not found. Read it with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "id,name,state,description_stripped,priority,assignees,created_at"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). `id` is the header `<uuid>`, `state.name` the `<state>`, `created_at` the `**Created:**` date, `name` the title, `description_stripped` the ticket text and `priority` `**Priority:**`. `assignees` holds member ids: print the id, and `unassigned` only for an empty list. A field you did not request comes back null, or `[]` for an array, and that never means the ticket lacks it. On a failed read, print `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` (`<error>` is `no tracker connected` when no tracker tool is connected), then `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.`, and wait. On not-found, print `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`, then that same unresolved line, and wait. The brief header stays `**Plane:** unresolved (local-only)`. No retry and no cache; warn once per run.
+5. Print `ticket: <tracker | local-only> · wiki: <resolved|none> · origin: <token> · grill: on (rounds=N, questions=M) | off (--no-grill)`.
 
 ## Phase 1 — Grounding (read-only)
 
@@ -400,7 +399,7 @@ Then print:
 === BRIEF WRITTEN: <TICKET-ID> ===
 Path: docs/specs/TODO/<TICKET-ID>.brief.md
 Interview: <n> rounds, exit <token>; <s> settled, <o> open   |   skipped (--no-grill)
-Ticket: <memory | tracker | local-only>
+Ticket: <tracker | local-only>
 
 === NEXT ===
 /spec-cycle docs/specs/TODO/<TICKET-ID>.brief.md
@@ -417,7 +416,7 @@ Its only filesystem mutations are creating `docs/specs/TODO/`, writing and renam
 - Read, Grep, and read-only or ref-only Bash (`git fetch origin` bounded by a timeout, `git rev-list`, `git status`), plus the mutations above and the bounded `check_premises.py` run, which only reads the temp.
 - Agent for the Phase 1 exploration; the Phase 3 reviewer is a read-only native agent, skill, or command-line tool of another model family.
 - Skill for `grilling`.
-- Shared-memory search and the tracker's read capability, both optional.
+- The tracker's read capability, optional.
 
 ## Failure modes
 

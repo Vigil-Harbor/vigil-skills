@@ -96,9 +96,9 @@ A project may gitignore `docs/specs/`. The lifecycle still runs: the skills reso
 
 ## Plane.so integration
 
-`/spec-cycle` and `/ship-spec` use the plane-proxy MCP server for ticket lookup and state updates. Configure it per Plane's docs.
+`/spec-cycle` and `/ship-spec` use the Plane MCP connector for ticket lookup and state updates. Configure it per Plane's docs.
 
-`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads `skills/ship-spec/states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. To add a new project, call the plane-proxy's state-list capability (e.g., `mcp__plane__list_states` in Claude Code, or the equivalent in your host's Plane integration) for the project and add an entry to `states.json`.
+`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads `skills/ship-spec/states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. To add a new project, call the tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host) for the project and add an entry to `states.json`.
 
 ## Default branch
 

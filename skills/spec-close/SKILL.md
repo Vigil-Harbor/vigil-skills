@@ -6,7 +6,7 @@ requires:
   shell: true
   filesystem: [read, write]
   network: true
-  services: [issue-tracker?, shared-memory?, vcs-host?]
+  services: [issue-tracker?, vcs-host?]
 ---
 
 Invoked as:
@@ -45,7 +45,7 @@ The skill preserves the read-only-analysis-then-confirmed-mutations split intern
    - **File missing or unreadable:** Warn: `states.json missing or unreadable — skipping Plane state gate, entering partial-close mode.`
    - **Invalid JSON:** Warn: `states.json contains invalid JSON — skipping Plane state gate, entering partial-close mode.`
    - **Prefix not found:** Warn: `Project prefix "<project_prefix>" not found in states.json. Skipping Plane state gate — entering partial-close mode.`
-   Otherwise capture `project_id`, `namespace`, and the states map.
+   Otherwise capture `project_id` and the states map.
 5. Parse flags. Apply the mutual-exclusion check above. `--partial` sets `force_partial_close = true`.
 6. Origin sync check (target repo). Reconciliation diffs the spec against **shipped code**, and the archive step moves spec artifacts the merge may have added on `origin`; a local tree behind `origin` cold-reads stale files and can miss merge-added artifacts (e.g., a `test-output.txt` capture committed with the PR). This is an informational **warn only** — never a halt, and never an auto-update: spec-close keeps every mutation behind the Phase 4 checkpoint, so it must not fast-forward the tree here. Catch-all: any git failure inside this step → log `origin: skipped (git error)` and continue.
    a. **Detect origin remote:** `git remote get-url origin 2>/dev/null`. If exit ≠ 0: log `origin: skipped (no remote)` and continue.
@@ -62,7 +62,7 @@ One Plane lookup decides the mode. Rows are evaluated **top-down and the first m
 
 | # | Input | Mode |
 |---|---|---|
-| 1 | `--report-only` flag | **report-only** — skip the Plane lookup; the report's `> Plane state:` header reads `not checked (--report-only)` unless a memory record supplies it |
+| 1 | `--report-only` flag | **report-only** — skip the Plane lookup; the report's `> Plane state:` header reads `not checked (--report-only)` |
 | 2 | `force_partial_close` (from `--partial` or a states.json failure) | **partial-close** — print: `Entering partial-close mode: archiving spec artifacts only, skipping reconciliation and wiki decomposition.` |
 | 3 | Plane lookup succeeds; state group `completed` or `cancelled` | **full-close** |
 | 4 | Plane lookup succeeds; ticket's state UUID absent from the state map, or `state` is null | Prompt, never infer a group — **missing UUID:** name the unmatched UUID and suggest a states.json refresh; **null state:** report that the ticket has no state UUID and suggest a states.json refresh. Either branch: `1. Partial-close  2. Abort` |
@@ -71,7 +71,7 @@ One Plane lookup decides the mode. Rows are evaluated **top-down and the first m
 | 7 | Resolved mode would be full-close but `wiki_available` is false | Same partial-or-abort prompt with reason `wiki not found at <path>` — checked after rows 3–6, before any reconciliation work |
 | 8 | Partial-close (via any row) and `wiki_available` is false | Proceed; the log.md entry is dropped from the close plan with a printed notice: `wiki not found — skipping log.md entry; archive only` |
 
-Plane mechanics (rows 3–6): call the plane-proxy's state-list capability (e.g., `mcp__plane__list_states` in Claude Code, or the equivalent in your host's Plane integration) with `project_id` to get the full state map with groups. Look up the ticket via the plane-proxy's work-item-lookup capability (e.g., `mcp__plane__retrieve_work_item_by_identifier`, or the equivalent in your host) with `project_identifier` and `issue_number` (pass `issue_number` as integer). Match the ticket's `state` UUID against the state map to determine the group.
+Plane mechanics (rows 3–6): list states with the tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host), whose results carry `id` and `group`. Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields: "name,state,completed_at"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas), without `expand`, so that `state` stays a UUID. Match the ticket's `state` UUID against the state map to determine the group. `completed_at` is requested because the ship date reads it.
 
 **Never use `completed_at` as a gate signal** — some Plane workspaces have non-completed states that still set `completed_at`. The state UUID → group match is the only gate. (`completed_at` remains acceptable later as a *date source* for the state.md evidence triple.)
 
@@ -85,7 +85,7 @@ Goal: identify what code actually shipped for this ticket.
 
 1. **Find the merge commit(s).** Three strategies, tried in order:
    a. `git log --all --oneline -i -E --grep="<TICKET-ID>([^0-9]|$)" -- .` — matches commit messages containing the ticket ID. Case-insensitive because conventional-commit subjects lowercase the ticket ID (ship-spec's `<type>(<ticket-lower>):` prefix is the primary producer; this skill's own `close(<ticket-lower>):` commits appear on re-runs). The `([^0-9]|$)` suffix prevents prefix collisions — `VHS-1` must not match `VHS-11`'s commits.
-   b. Look up the Plane ticket via the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) with `tags: ["plane_work_item", "<TICKET-ID>"]`, `namespace` from preflight. Parse the description for PR references (`PR #N`, `#N`, `github.com/.../pull/N`). If the search returns zero results, warn naming what was searched: `no plane_work_item record for <TICKET-ID> in namespace "<namespace>" — states.json namespace may be stale.`
+   b. Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields: "name,description_stripped"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. Parse `description_stripped` for PR references (`PR #N`, `#N`, `github.com/.../pull/N`) as today. A failed read prints `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` (`<error>` is `no tracker connected` when no tracker tool is connected). A not-found read prints `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.` Either one falls through to 1c. No retry and no cache; warn once.
    c. If neither yields results, prompt the user: `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`
 
 2. **Read the shipped diff.** Branch on identifier type:
@@ -477,8 +477,7 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 ## Tool-use notes
 
 - Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data (`vcs-host?`; the SHA path needs no `gh`).
-- MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for Plane ticket lookup.
-- plane-proxy's state-list and work-item-lookup capabilities (e.g., `mcp__plane__list_states` and `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalents in your host's Plane integration) for the mode gate.
+- The tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host) and its retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for the mode gate and the ticket read.
 - Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git check-ignore -q`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
 - Write for the reconciliation report and wiki entries. Edit for state.md updates (surgical line replacement). `log.md` is deliberately **not** a Write target: `scripts/prepend_log_entry.py` owns it, which makes the duplicate check and the insert one operation rather than a check this skill could read and then write anyway.
 - **Mutation boundary:** no file mutation before the Phase 4 confirmation except the reconciliation report (generated audit-trail output, Phase 2c). All other writes — wiki entries, state.md, archive moves, log.md — happen in Phase 5, after explicit user approval.
@@ -488,7 +487,7 @@ For partial-close, omit the wiki block (or show only the log.md line when it was
 
 - **Merge commit not found.** Fall back through the three strategies to the user prompt. Common for tickets where commit messages don't include the ticket ID (older conventions).
 - **Large diffs.** PRs with >500 lines of diff: summarize by file, don't try to read every line. Focus grep on the specific code paths the spec's decisions describe.
-- **Plane ticket not in MCP memory.** Warn and proceed using only git log + brief. The brief is the local source of truth for acceptance criteria. When the tag search returns zero results, the warning names the namespace and tags searched — a stale states.json `namespace` is the usual cause.
+- **Ticket read fails at 2a.** Print `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` or `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`, and continue with git log and the brief.
 - **Plane unreachable or ticket not found.** Surface the partial-or-abort prompt (Phase 1 row 6) — partial-close is the safer path (archive only, no wiki writes or state.md edits). Re-run once Plane is available to get full-close with wiki decomposition.
 - **`completed_at` is not a gate.** Some Plane workspaces have non-completed states that still set `completed_at`; the state UUID → group match is the only gate signal (Phase 1). `completed_at` is used solely as a ship-date source, with merge-commit-date and today-with-warning fallbacks.
 - **State UUID unresolvable.** A ticket state UUID missing from the state map (stale `project_id` in states.json, or a null state field) lands on Phase 1 row 4 — prompt, never infer a group.

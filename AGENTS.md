@@ -60,7 +60,7 @@ Process guide for a credential-exposure response. The operator performs every pr
 ### File layout
 
 - `skills/<name>/SKILL.md` — Skill definitions (YAML frontmatter + markdown body). Installed to `~/.claude/skills/<name>/SKILL.md`.
-- `skills/ship-spec/states.json` — Committed config mapping project identifiers to state UUIDs, MCP namespaces, and review-state IDs. Synced alongside SKILL.md by `sync.py`.
+- `skills/ship-spec/states.json` — Committed config mapping project identifiers to state UUIDs and review-state IDs. Synced alongside SKILL.md by `sync.py`.
 - `agents/<name>.md` — Subagent definitions (YAML frontmatter + markdown body). Installed to `~/.claude/agents/<name>.md`.
 - `sync.py` — Bidirectional file sync. Stdlib only, cross-platform via `pathlib`.
 - `skills/spec-close/SKILL.md` — Post-land close skill (reconciliation + wiki harvest + archive in one pass). Installed to `~/.claude/skills/spec-close/SKILL.md`.
@@ -136,7 +136,7 @@ State.md edits require an evidence triple (Plane ID, date, commit hash) — the 
 
 ## External dependencies (runtime, not build)
 
-- **plane-proxy** — state updates (write). Ticket reads now flow through MCP memory via `memory_search` (cached by MCP-33 webhook receiver). Skills warn-and-proceed on cache miss. `/spec-tickets` resolves the parent on the tracker itself, because that read is a create precondition, and it does not consult shared memory. It uses the tracker when one is connected and its storage probe succeeds, writes local files only when no issue-tracker integration is connected, and halts otherwise.
+- **Plane connector** — ticket reads and state updates, live. Skills warn and proceed when a read fails; `wiki-state-update` refuses instead. `/spec-tickets` resolves the parent on the tracker itself, because that read is a create precondition. It uses the tracker when one is connected and its storage probe succeeds, writes local files only when no issue-tracker integration is connected, and halts otherwise.
 - **`gh` CLI** — PR creation, CodeRabbit thread management. Must be authenticated.
 - **CodeRabbit** — configured on target repos for `/review-pr`.
 

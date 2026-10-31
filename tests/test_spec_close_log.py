@@ -1188,7 +1188,7 @@ class TestSkillDeclaration(unittest.TestCase):
         self.assertIn("network: true", block)
         self.assertIn("shell: true", block)
         self.assertIn("issue-tracker?", block)
-        self.assertIn("shared-memory?", block)
+        self.assertNotIn("shared-memory", block)
         self.assertIn("vcs-host?", block)
 
     def test_lint_is_clean_including_warns(self):

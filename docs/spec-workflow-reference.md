@@ -10,7 +10,7 @@ Five AI-driven skills, plus one optional stage: an interview stage that produces
 
 **Invocation:** `/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`. `--rounds` takes 1–10 (default 3), `--questions` takes 1–15 (default 7); there is no `0` alias, because a zero-width round is a stall, not a bound. `--no-grill` skips the interview but not the seed gate, the tier gate, the doubt pass, or the confirmation step. It does not skip the Confirm gate or `check_premises.py`. The seed gate runs before the tier gate in every mode, including `--no-grill`, and is not part of the interview that flag skips.
 
-**Phase 0 — Preflight.** Read the project-instructions file and resolve the wiki. Check for existing artifacts at `docs/specs/TODO/<TICKET-ID>.*` — a brief, a spec, a reviews tree — and halt rather than overwrite the axiom prior review rounds were measured against; a stale temp file from an interrupted run is removed without halting. Run a warn-only origin-sync check (grounding reads the local tree; the skill never updates it). Resolve the ticket through the shared-memory cache, then the issue tracker, then — if both are unreachable — conversation-only mode, where the operator states the problem in a paragraph.
+**Phase 0 — Preflight.** Read the project-instructions file and resolve the wiki. Check for existing artifacts at `docs/specs/TODO/<TICKET-ID>.*` — a brief, a spec, a reviews tree — and halt rather than overwrite the axiom prior review rounds were measured against; a stale temp file from an interrupted run is removed without halting. Run a warn-only origin-sync check (grounding reads the local tree; the skill never updates it). Resolve the ticket through the issue tracker, then — if it is unreachable — conversation-only mode, where the operator states the problem in a paragraph.
 
 **Phase 1 — Grounding (read-only).** Retrieval-first: the ticket text, then the project wiki's state and filemap, then the files the ticket names by path, and only then read-restricted exploration agents for the gaps that remain — dispatched in one bounded parallel batch, instructed to answer with `path:line` evidence and make no mutations.
 
@@ -278,7 +278,6 @@ The skills are designed to be tool-agnostic. The integration points to swap:
 | `mcp__plane__*` tools | Your tracker's API/MCP/CLI |
 | `states.json` (maps ticket prefixes to project IDs and state UUIDs) | Your tracker's project/workflow config |
 | `gh` CLI (PRs) | Your git host's CLI (`gh`, `glab`, Bitbucket API, etc.) |
-| MCP memory server (cached ticket lookup) | Direct API call to your tracker, or skip |
 | Wiki (conventions reviewer reads `decisions/`, `architecture.md`, etc.) | Your team's docs, ADRs, Confluence, Notion — or omit `wiki_root` |
 | `docs/specs/TODO/<TICKET-ID>.*` file layout | Whatever path convention you prefer |
 

@@ -1,8 +1,7 @@
 {
-  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-07-27; N2O (INFUZD) added 2026-10-20 from a live state list. Each project's `state_groups` mirrors `states` key-for-key, carrying Plane's `group` field verbatim (backlog | unstarted | started | completed | cancelled) — this is the gate signal /spec-close reads; `states` stays name->UUID because ship-spec and spec-cycle depend on that shape. Review states ('In Review' / 'PR Review') were moved from group `completed` to `started` in Plane on 2026-07-27 across all 11 affected projects and re-swept here — see vigil-harbor-wiki decisions/2026-07-27-cross-review-states-belong-in-started.md. Talaria (TAL) has NO Plane project: TAL-* spec IDs are repo-local only, so /spec-close can never full-close them and they are always partial. Deliberately absent: DEM (Demerzel) and MED (Media) run the default 5-state workflow and do no spec-cycle work.",
+  "_note": "Covers projects that use /spec-cycle. Add an entry when onboarding a new project. State UUIDs fetched from Plane; refresh if project workflows change. Last swept 2026-07-27; N2O (INFUZD) added 2026-10-20 from a live state list. Each project's `state_groups` mirrors `states` key-for-key, carrying Plane's `group` field verbatim (backlog | unstarted | started | completed | cancelled) — this is the gate signal /spec-close reads; `states` stays name->UUID because ship-spec depends on that shape. Review states ('In Review' / 'PR Review') were moved from group `completed` to `started` in Plane on 2026-07-27 across all 11 affected projects and re-swept here — see vigil-harbor-wiki decisions/2026-07-27-cross-review-states-belong-in-started.md. Talaria (TAL) has NO Plane project: TAL-* spec IDs are repo-local only, so /spec-close can never full-close them and they are always partial. Deliberately absent: DEM (Demerzel) and MED (Media) run the default 5-state workflow and do no spec-cycle work.",
   "MCP": {
     "project_id": "98788c4e-f30f-466d-9562-19e28aa4e53e",
-    "namespace": "mcp",
     "review_state_id": "f724dfef-38e4-4a3e-8b60-9bad988a6829",
     "states": {
       "Backlog": "e9a009e5-58e1-4b19-8441-b17e686fa304",
@@ -29,7 +28,6 @@
   },
   "DYN": {
     "project_id": "60c4d66a-0b83-477f-b848-a80fcd8ce72c",
-    "namespace": "dynasty",
     "review_state_id": "2f177294-83d8-4c9a-b74d-03bbc6826593",
     "states": {
       "Backlog": "9590c0ce-406c-43f9-ad89-3020d9121721",
@@ -56,7 +54,6 @@
   },
   "ADA": {
     "project_id": "4e2d82c9-6ea0-4bc6-b528-e744d92fc9dd",
-    "namespace": "adapter",
     "review_state_id": "9a44c946-c19f-4d15-8d5d-9cde9ea67f10",
     "states": {
       "Backlog": "463460e2-25e1-43d6-92d6-908cca58689c",
@@ -83,7 +80,6 @@
   },
   "VHS": {
     "project_id": "401bddd2-6d35-48e4-9c4e-e6d4fbec819d",
-    "namespace": "skills",
     "review_state_id": "c0e933ae-0094-443a-8cdb-9eb4190441e3",
     "states": {
       "Backlog": "0b42a227-5e4c-4345-aa9d-61c05b336395",
@@ -113,7 +109,6 @@
   "CLT": {
     "_note": "CLT gained a Post-merge Checklists state under VHS-57 (absorbs VHS-44); its group is started.",
     "project_id": "897ad6dc-67c0-465b-8b43-45ddf74b7011",
-    "namespace": "clients",
     "review_state_id": "df29d743-ab03-4467-8563-6a3845f9ad57",
     "states": {
       "Backlog": "adb8fea0-f1fa-4646-9d91-68752da52bf5",
@@ -142,7 +137,6 @@
   },
   "PET": {
     "project_id": "5bff6316-84ea-4103-b9e2-4861ac9c226a",
-    "namespace": "petasos",
     "review_state_id": "13defdfc-d04d-4c57-8535-db3bf72daf8b",
     "states": {
       "Backlog": "b8a46d96-d191-4beb-b251-d15af9a27767",
@@ -171,7 +165,6 @@
   },
   "SER": {
     "project_id": "8bdfa36f-5f16-4eaa-85d9-31c2c12cbf8e",
-    "namespace": "serenade",
     "review_state_id": "371068bc-a594-4045-ad4d-cf86b150b5d0",
     "_note": "Reference configuration — SER's review state was created in group `started` (2026-06-16) and never needed the 2026-07-27 correction.",
     "states": {
@@ -197,9 +190,8 @@
   },
   "GAV": {
     "project_id": "2874c1fe-a0fe-4708-a3f1-c5efecaac13b",
-    "namespace": "gavin",
     "review_state_id": "3384cf0e-ffa0-49e2-944d-a24793a79851",
-    "_note": "Hermes Agent designation (like Gibson — GIB isn't a thing). Gavin is Jordan's Hermes deployment in the Texas office, but GAV scope is broader: any Hermes harness work, whatever the deploy. Default 5-state workflow; no Spec/PR Review states, review_state_id maps to In Progress. Namespace corrected 2026-07-27 from `plane` (not a real namespace) to `gavin`, verified by memory_search returning GAV-5/GAV-6 there.",
+    "_note": "Hermes Agent designation (like Gibson — GIB isn't a thing). Gavin is Jordan's Hermes deployment in the Texas office, but GAV scope is broader: any Hermes harness work, whatever the deploy. Default 5-state workflow; no Spec/PR Review states, review_state_id maps to In Progress.",
     "states": {
       "Backlog": "6508c48c-d917-463f-8eff-b0ebedadbad7",
       "Todo": "d3a3081b-1400-4443-80b2-1a10c35d0630",
@@ -217,7 +209,6 @@
   },
   "RAD": {
     "project_id": "e3440d24-ecbc-4289-a632-f0ad7e639357",
-    "namespace": "radiant",
     "review_state_id": "16c2d53c-9c7b-423c-b7d3-4486752a6241",
     "states": {
       "Backlog": "aa2a3beb-88c2-4458-a2f1-fe5158ba6997",
@@ -244,7 +235,6 @@
   },
   "CAL": {
     "project_id": "cfe8997b-4c00-40cb-9733-da646dd230d2",
-    "namespace": "calvin",
     "review_state_id": "1d52708e-513b-4bd5-88f8-89313b681365",
     "_note": "Added 2026-07-27. Calvin runtime parked 2026-06-12; full spec-cycle state set present, ticket flow sparse.",
     "states": {
@@ -272,7 +262,6 @@
   },
   "INFRA": {
     "project_id": "7aa0cafe-ed5c-4b02-bebd-4a88a51a5bbc",
-    "namespace": "infra",
     "review_state_id": "acdf0b8c-7074-42c5-b116-f93e4bf6e55e",
     "_note": "Added 2026-07-27.",
     "states": {
@@ -300,7 +289,6 @@
   },
   "DBR": {
     "project_id": "f4446ff1-6afd-4e5f-b711-8b433dc5a3ee",
-    "namespace": "drawbridge",
     "review_state_id": "0e422175-2990-4c42-8600-16f474aca661",
     "_note": "Added 2026-07-27. Plane spells this project's spec-review state 'Spec review' (lowercase r); the key here is normalized to 'Spec Review' so lookups match every other project — the UUID is what the API consumes.",
     "states": {
@@ -328,9 +316,8 @@
   },
   "ACM": {
     "project_id": "b92ea9b5-db00-46b1-97da-17e64555183e",
-    "namespace": "acm",
     "review_state_id": "1627a5c9-44a3-4486-9528-c3a2b3b3c081",
-    "_note": "Added 2026-07-27. AgentCraft Mods. Full spec-cycle state set present; the `acm` MCP namespace was previously logged as an unmapped prefix in the wiki namespace registry — this entry maps it.",
+    "_note": "Added 2026-07-27. AgentCraft Mods. Full spec-cycle state set present.",
     "states": {
       "Backlog": "6f97645f-e2b2-48c4-a0a4-01a528da9562",
       "Todo": "81283b86-09f2-4df1-acf5-b75ae6709664",
@@ -356,7 +343,6 @@
   },
   "WEBSITE": {
     "project_id": "a8cf6522-c785-4603-842e-f79f557d3ef8",
-    "namespace": "plane",
     "review_state_id": "d33838e1-7294-4478-a857-85894967188f",
     "states": {
       "Backlog": "270d73f9-415d-4222-9d55-6fa9da24dfb9",
@@ -375,7 +361,6 @@
   },
   "N2O": {
     "project_id": "1e05dab1-78a3-4cbb-88f0-238083604b14",
-    "namespace": "plane",
     "review_state_id": "6c555cfe-1124-4897-bb14-c18b58e6d706",
     "states": {
       "Backlog": "08981505-4e15-4e15-85d8-592a96e34552",
@@ -403,7 +388,6 @@
   "CLOUD": {
     "_note": "Vigil Harbor Cloud. Added 2026-10-30 from a live state list.",
     "project_id": "df553ca2-63bc-4fde-b2a4-a26400335f31",
-    "namespace": "plane",
     "review_state_id": "b5cf47d0-9545-46d9-adbd-537d6b19f8da",
     "states": {
       "Backlog": "7157ded7-4e6a-435e-a26f-62027cb4fb7c",

@@ -461,8 +461,8 @@ A second run on the same merged PR resumes unfinished actions and reports each o
 
 - Your host's shell for `git`, `gh`, and the two installed Python scripts. `vcs-host` is required. A missing `gh` before merged state is known is the step 2 halt.
 - Your host's file read and write for the wiki filemap and for instruction files. `log.md` is not a direct write: `prepend_log_entry.py` owns it.
-- Issue-tracker state-update and work-item comment capabilities (for example, `mcp__plane__update_work_item` and `mcp__plane__create_work_item_comment` in Claude Code, or the equivalent in your host). Listing comments for the hash check uses the same integration's comment-list capability, or the equivalent in your host. `issue-tracker` is optional: a missing tracker skips Plane and continues.
-- Work-item lookup for the current state UUID, for example `mcp__plane__retrieve_work_item_by_identifier` in Claude Code, or the equivalent in your host.
+- Issue-tracker state-update and work-item comment capabilities (for example, `mcp__claude_ai_Plane__workitem` with `action: update`, and `mcp__claude_ai_Plane__workitem_comment` with `action: create` and `action: list`, in Claude Code, or the equivalent in your host). Listing comments for the hash check uses that comment-list action, or the equivalent in your host. `issue-tracker` is optional: a missing tracker skips Plane and continues.
+- Work-item lookup for the current state UUID, the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields: "id,state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas), without `expand`, so that `state` stays the UUID the state move compares (`:400`). The `id` is named because the write needs it and an unrequested `id` is null. The write's `project_id` comes from the prefix's `states.json` entry.
 - No shared-memory call. The ticket id comes from the spec path, the branch, the title, or the operator.
 
 ## Failure modes

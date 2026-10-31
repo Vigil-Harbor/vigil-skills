@@ -137,7 +137,7 @@ Parity is judged on these outcomes plus honored control-flow — **not** on stri
 
 ## Worked reference
 
-`skills/spec-cycle/SKILL.md` carries the first capability declaration as a worked reference. It exercises every field of the schema: `git fetch` (`shell`, `network`), reading briefs and writing spec/review files (`filesystem: [read, write]`), dispatching reviewer subagents in parallel (`subagents`), and calling Plane + the shared-memory service, both warn-and-proceed (`services: [issue-tracker?, shared-memory?]`):
+`skills/spec-cycle/SKILL.md` carries the first capability declaration as a worked reference. It exercises every field of the schema: `git fetch` (`shell`, `network`), reading briefs and writing spec/review files (`filesystem: [read, write]`), dispatching reviewer subagents in parallel (`subagents`), and calling Plane, warn-and-proceed (`services: [issue-tracker?]`):
 
 ```yaml
 requires:
@@ -145,7 +145,7 @@ requires:
   filesystem: [read, write]
   network: true
   subagents: true
-  services: [issue-tracker?, shared-memory?]
+  services: [issue-tracker?]
 ```
 
 The block is frontmatter-only; it round-trips through `sync.py` untouched (sync mirrors each file byte-for-byte and only walks the `skills/`/`agents/` subtrees), so carrying it requires no change to `sync.py`.

@@ -62,8 +62,8 @@ The engine that emits these canonical `SKILL.md` sources as per-harness packages
 
 - **Python 3.8+** for `sync.py` (stdlib only — no pip install).
 - **Claude Code** — skills and subagents are Claude Code features.
-- For `/spec-cycle`, `/ship-spec`, and `/spec-close`: a Plane.so workspace with the plane-proxy MCP server, and `gh` CLI authenticated. `/spec-close`'s wiki half additionally needs a wiki checkout.
-- For `/spec-brief` and `/grill-me`: no external services required — `/spec-brief` reads the ticket through Plane / shared memory when present and degrades to conversation when not. Both need a harness that can dispatch a read-restricted subagent. `/spec-brief`'s doubt pass also needs a session-available, fresh-context mechanism that itself states a different model family or provider and offers the narrowest read-restricted agent class or a read-only sandbox mode; a shell or installed-skill bridge counts when it meets the same checks. Without one, the pass degrades by tier: `small` and `big` skip and record it, `irreversible` halts.
+- For `/spec-cycle`, `/ship-spec`, and `/spec-close`: a Plane.so workspace with the Plane MCP connector, and `gh` CLI authenticated. `/spec-close`'s wiki half additionally needs a wiki checkout.
+- For `/spec-brief` and `/grill-me`: no external services required — `/spec-brief` reads the ticket through the issue tracker when present and degrades to conversation when not. Both need a harness that can dispatch a read-restricted subagent. `/spec-brief`'s doubt pass also needs a session-available, fresh-context mechanism that itself states a different model family or provider and offers the narrowest read-restricted agent class or a read-only sandbox mode; a shell or installed-skill bridge counts when it meets the same checks. Without one, the pass degrades by tier: `small` and `big` skip and record it, `irreversible` halts.
 - For `/spec-tickets`: an operator is required at approval; the tracker is optional (local files only when no issue-tracker integration is connected); `gh` is not required.
 - For `/review-pr`: `gh` CLI authenticated, CodeRabbit configured on your repo.
 

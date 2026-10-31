@@ -13,7 +13,6 @@ The orchestrator passes these in your prompt:
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
 - `ticket_id` — the Plane ticket ID, if any
-- `namespace` — memory namespace for ticket lookup (from states.json, default `"plane"`)
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
 - `closure_manifest` — author-stated disposition of each predecessor P0/P1 finding (present when this pass has a closure predecessor); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred.
 - `scale_target` — the declared target N the design must hold at (e.g., `10^6 records/day; 500 concurrent tenants; ≤ $0.002/op`)
@@ -27,7 +26,7 @@ Execute these steps in order. Do not skip:
 
 1. **Read the spec from disk at `spec_path` fresh.** Do not trust prior context.
 2. **Read the brief at `brief_path`.**
-3. **Retrieve the Plane ticket if `ticket_id` is given** via the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) with `namespace` (from prompt context), `tags: ["plane_work_item", "<TICKET-ID>"]`, `source_system: "plane"`, `max_results: 1`. If the memory server is unavailable or returns zero results, proceed using the brief.
+3. **Retrieve the Plane ticket if `ticket_id` is given**, using the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
 4. **Read `<project_root>/CLAUDE.md`.**
 5. **Read the actual files the spec proposes to change.** You need to understand the per-invocation / per-item work and where it sits in a hot path.
 6. **Identify the scaling-relevant axes:** fan-out points, accumulation sites, external calls per item, shared / per-instance state.
@@ -161,6 +160,6 @@ The **last non-blank line MUST be exactly one of**:
 
 - Use `Read`, `Grep`, `Glob` for spec, brief, CLAUDE.md, and source verification.
 - Use `Bash` only for read-only git introspection. Do not mutate state.
-- Use the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for ticket lookup (tags: [plane_work_item, <TICKET-ID>], namespace from prompt context). If zero results or error, proceed using the brief.
+- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
 
 Do not edit any file. You are read-only.
