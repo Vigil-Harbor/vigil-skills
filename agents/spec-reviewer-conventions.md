@@ -13,7 +13,6 @@ The orchestrator passes these in your prompt:
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
 - `ticket_id` — the Plane ticket ID, if any
-- `namespace` — memory namespace for ticket lookup (from states.json, default `"plane"`)
 - `wiki_root` — absolute path to the project wiki, if one is configured (e.g., `~/code/myproject-wiki`). May be omitted if the project has no wiki.
 - `project_slug` — the project subdir under `<wiki_root>/projects/` (e.g., `myproject`, `my-service`). Only meaningful if `wiki_root` is set.
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
@@ -217,6 +216,6 @@ The **last non-blank line MUST be exactly one of**:
 
 - Use `Read`, `Grep`, `Glob` for spec, brief, CLAUDE.md, wiki pages, and source.
 - Use `Bash` only for read-only git introspection. Do not mutate state.
-- Use the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for ticket lookup if needed (tags: [plane_work_item, <TICKET-ID>], namespace from prompt context). If zero results or error, proceed using the brief.
+- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for ticket lookup if needed. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
 
 Do not edit any file. You are read-only.

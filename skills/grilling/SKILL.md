@@ -134,7 +134,7 @@ A fact request the operator leaves unanswered twice becomes an Open item (`fact 
 |---|---|
 | "Should the origin-sync check offer a fast-forward, or only warn?" — changes a Decision and the Out-of-scope fence on mutation. | "Should the fast-forward use `git merge --ff-only` or `git pull --ff-only`?" — same Decision either way; the spec pins the command. |
 | "Is scale a factor for this ticket — do we dispatch the scalability lens, and at what target N?" — adds or removes a Scope row. | "What regex detects the `## Scale` heading?" — implementation of an already-settled Scope row. |
-| "Does `/spec-brief` write Plane state, or only read the ticket?" — Out-of-scope fence. | "Which `states.json` key does `/spec-brief` read the namespace from?" — the spec author reads the file. |
+| "Does `/spec-brief` write Plane state, or only read the ticket?" — Out-of-scope fence. | "Which `states.json` key does `/spec-land` read the target state from?" — the spec author reads the file. |
 
 Implementation detail is the spec's job. Asking it here duplicates `/spec-cycle`.
 

@@ -13,7 +13,6 @@ The orchestrator passes these in your prompt:
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
 - `ticket_id` — the Plane ticket ID, if any (e.g., `PROJ-123`)
-- `namespace` — memory namespace for ticket lookup (from states.json, default `"plane"`)
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
 - `closure_manifest` — author-stated disposition of each predecessor P0/P1 finding (present when this pass has a closure predecessor); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred.
 - `scale_lens` — whether the optional scalability lens ran this round (`on` / `off`). Used only for closure tracking in step 7: when `off`, ignore any stale `scalability.md` left in the prior-round directory by an earlier on-run.
@@ -27,7 +26,7 @@ Execute these steps in order. Do not skip:
 
 1. **Read the spec from disk at `spec_path`.** Do not trust prior context. Read it now, fresh.
 2. **Read the brief at `brief_path`.**
-3. **Retrieve the Plane ticket if a `ticket_id` is given.** Use the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) with `namespace` (from prompt context), `tags: ["plane_work_item", "<TICKET-ID>"]`, `source_system: "plane"`, `max_results: 1`. If the memory server is unavailable or returns zero results, note as a finding (P3 — "ticket not cached") and proceed using the brief. The ticket's description and acceptance criteria are canonical when they conflict with the brief.
+3. **Retrieve the Plane ticket if `ticket_id` is given**, using the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue. The ticket's description and acceptance criteria are canonical when they conflict with the brief.
 4. **Read `<project_root>/CLAUDE.md`.**
 5. **Verify every claim the spec makes about current code.** For each function, type, file, or call site the spec names: open it, read enough of it, confirm the spec describes it accurately.
 6. **Run `git log -10 --oneline -- <touched-files>`** for the files the spec proposes to change. If a commit landed in the last 7 days, surface it — the spec may be planning around already-shifted code.
@@ -244,6 +243,6 @@ The orchestrator parses this line to gate the review loop. Any other format brea
 - Use `Read` for spec, brief, CLAUDE.md, and verifying source files.
 - Use `Grep` and `Glob` to verify references and find symbols.
 - Use `Bash` only for read-only git introspection: `git log`, `git show`, `git blame`, `git diff`. Do not run any command that mutates state.
-- Use the MCP memory server's search capability (e.g., `mcp__claude_ai_Vigil_Harbor_MCP_Server__memory_search` in Claude Code, or the equivalent semantic-search tool in your host) for ticket lookup (tags: [plane_work_item, <TICKET-ID>], namespace from prompt context). If zero results or error, note as a P3 finding and proceed using the brief.
+- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
 
 Do not edit any file. You are read-only.
