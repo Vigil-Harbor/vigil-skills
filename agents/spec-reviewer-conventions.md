@@ -216,6 +216,6 @@ The **last non-blank line MUST be exactly one of**:
 
 - Use `Read`, `Grep`, `Glob` for spec, brief, CLAUDE.md, wiki pages, and source.
 - Use `Bash` only for read-only git introspection. Do not mutate state.
-- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for ticket lookup if needed. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
+- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for ticket lookup whenever `ticket_id` is given. Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
 
 Do not edit any file. You are read-only.
