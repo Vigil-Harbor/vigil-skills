@@ -1,6 +1,6 @@
 ---
 name: spec-reviewer-edge-cases
-model: opus
+model: claude-opus-5-5
 description: Review an engineering spec for edge cases and failure modes. Probes empty/null/zero-length inputs, concurrency, external-system failures, limits, runtime-precondition violations, and debuggable-tripwire requirements. Returns severity-ranked findings with a machine-parseable STATUS line.
 ---
 
