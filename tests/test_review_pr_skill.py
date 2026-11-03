@@ -30,6 +30,8 @@ class TestSkill(unittest.TestCase):
         for phrase in ("in_reply_to_id",
                        'state != "COMMENTED"',
                        "Outside diff range",
+                       "/<path>#L<line>`",
+                       "/<path>#L<line>-L<end>`",
                        "cr-comment:v1:",
                        "ai-agent-prompt",
                        "land_check.py",
