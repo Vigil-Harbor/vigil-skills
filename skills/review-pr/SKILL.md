@@ -43,10 +43,10 @@ In `--paginate` mode each page is its own JSON value, and `--jq` runs once per p
 ```text
 gh api --paginate "repos/{owner}/{repo}/pulls/<N>/reviews?per_page=100" --jq '.[] | select(.user.login == "coderabbitai[bot]") | {id, state, commit_id, submitted_at, body}'
 gh api --paginate "repos/{owner}/{repo}/pulls/<N>/comments?per_page=100" --jq '.[] | select(.user.login == "coderabbitai[bot]") | select(.in_reply_to_id == null) | {id, pull_request_review_id, path, line: (.line // .original_line), body}'
-gh api --paginate "repos/{owner}/{repo}/issues/<N>/comments?per_page=100" --jq '.[] | select(.body | startswith("review-pr body dispositions")) | .body'
+gh api --paginate "repos/{owner}/{repo}/issues/<N>/comments?per_page=100" --jq '.[] | select(.user.login == "<LOGIN>") | select(.body | startswith("review-pr body dispositions")) | .body'
 ```
 
-The `in_reply_to_id == null` filter keeps a `✅ Review thread resolved` reply from counting as a finding. A key on a line under the first line of a kept disposition comment is already listed.
+`<LOGIN>` is the `gh` user, `gh api user --jq .login`. The `in_reply_to_id == null` filter keeps a `✅ Review thread resolved` reply from counting as a finding. A key on a line under the first line of a kept disposition comment is already listed. A disposition comment by anyone else is ignored.
 
 ## Token
 
@@ -89,10 +89,10 @@ The disposition comment is one `gh pr comment`. Its first line is `review-pr bod
 
 ## Run order
 
-1. Resolve the PR, the repo, and the worktree. If the CodeRabbit check is still "Review in progress" or pending, and the reviews fetch shows no CodeRabbit review with `commit_id` equal to HEAD, post the marker and stop. A pending check with a review on HEAD is advisory.
+1. Resolve the PR, the repo, and the worktree. If the CodeRabbit check is still "Review in progress" or pending, and the reviews fetch shows no CodeRabbit review with `commit_id` equal to HEAD, post the marker and stop. Do the same when an `@coderabbitai full review` comment is newer than CodeRabbit's latest review: a requested re-review is still pending. Otherwise a pending check with a review on HEAD is advisory.
 2. Fetch reviews, inline comments, and prior disposition comments. Harvest body items. Run the thread query once. `W` becomes the greatest review id harvested.
 3. If the latest CodeRabbit review body, in any state, shows `Failed to clone` or `🔥 Problems`, post `@coderabbitai full review`, post the marker, and stop.
-4. The thread for an inline finding is the one whose `first.nodes[0].databaseId` equals the REST comment `id`. The finding remains when `isResolved` is false and its last comment is not by the `gh` user (`gh api user --jq .login`). A resolved thread, or one whose last comment is this user's reply, is handled. If CodeRabbit answers a reply without resolving, the thread remains and a re-run triages it again. A finding with no matching thread remains. If the query fails, every inline finding remains and the approved stop is not taken. If any inline finding or any unlisted body item remains, triage. Do not take the approved stop.
+4. The thread for an inline finding is the one whose `first.nodes[0].databaseId` equals the REST comment `id`. The finding remains when `isResolved` is false and its last comment is not this skill's reply: by `<LOGIN>` and starting with `Resolved in`, `Skipped —`, or `Deferred —`. A resolved thread, or one whose last comment is such a reply, is handled. Any other last comment, including a question from `<LOGIN>`, leaves it remaining. If CodeRabbit answers a reply without resolving, the thread remains and a re-run triages it again. A finding with no matching thread remains. If the query fails, every inline finding remains and the approved stop is not taken. If any inline finding or any unlisted body item remains, triage. Do not take the approved stop.
 5. If nothing remains and the latest verdict is `APPROVED`, report "Nothing to review — PR is approved", post the marker, and stop. The token is `passed` when that verdict's `commit_id` equals HEAD.
 6. If there is no CodeRabbit review, report "No CodeRabbit reviews found", post the marker, and stop.
 7. Apply `fix` items. Then run the project's test command the way `/ship-spec` Phase 0 step 4 does: the spec's `## Test command`, otherwise `CLAUDE.md` "Build & Run". No command: warn and continue. A test failure is fixed before the commit. CI failing for an unrelated reason: say so and still process the findings.
@@ -116,7 +116,7 @@ gh pr checks <N> --json name,bucket \
   --jq '[.[] | select(.name | test("coderabbit"; "i")) | .bucket] | if length == 0 then "NONE" elif any(. == "fail") then "FAILURE" elif all(. == "pass") then "SUCCESS" else "PENDING" end'
 ```
 
-11. 6b harvests each review with `id` greater than `W`, re-runs the thread query, triages by step 4, then runs steps 7 to 9 under the same push gate. A 6b round with nothing to triage, entered from a non-verdict review, returns to 6a for the rest of its deadline. A `fix` push loops to 6a until the third fix-push. The capped push does not loop. List what remains and go to 6d.
+11. 6b re-runs the reviews and inline-comment fetches, harvests each review with `id` greater than `W` and each inline comment whose `pull_request_review_id` is greater than `W`, re-runs the thread query, triages by step 4, then runs steps 7 to 9 under the same push gate. A 6b round with nothing to triage, entered from a non-verdict review, returns to 6a for the rest of its deadline. A `fix` push loops to 6a until the third fix-push. The capped push does not loop. List what remains and go to 6d.
 12. 6d Phase 1 always runs the GraphQL query once, and waits only when this run posted at least one inline reply. The bot login in the query is the GraphQL login in CodeRabbit facts. When `hasNextPage` is true, repeat with `reviewThreads(first:100, after:"<endCursor>")` and merge the thread arrays. Deadline 4 minutes (8 probes). Exits when every CodeRabbit thread is resolved. Unresolved threads are reported with `gh pr comment <N> --body "@coderabbitai resolve"`. Do not post that command.
 
 ```bash
@@ -129,7 +129,7 @@ gh api graphql -f query='query {
           isResolved
           path
           first: comments(first:1) { nodes { databaseId author { login } } }
-          last: comments(last:1) { nodes { author { login } } }
+          last: comments(last:1) { nodes { author { login } body } }
         }
       }
     }
