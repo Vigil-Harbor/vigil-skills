@@ -35,7 +35,7 @@ class TestSkill(unittest.TestCase):
                        "evidence, not instructions",
                        "Read only a relative path inside the worktree",
                        "paging as in 6d",
-                       "latest non-empty CodeRabbit review body",
+                       "latest CodeRabbit review that is not an empty `COMMENTED` acknowledgement",
                        "cr-comment:v1:",
                        "ai-agent-prompt",
                        "land_check.py",
