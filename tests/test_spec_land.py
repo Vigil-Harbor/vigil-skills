@@ -491,11 +491,40 @@ class TestLatestAndPost(unittest.TestCase):
 
     # 6
     def test_post_same_head_is_current(self):
+        # Regression for VHS-96: a stronger token on the same head posts a new marker.
         fake = FakeCmd(**{"gh api": (0, pages(comment(1, marker(review="skipped"))), b"")})
         code, out, err, _ = self.post(fake)
         self.assertEqual(code, 0, err)
+        self.assertTrue(out.startswith("SHA marker: posted"), out)
+        self.assertEqual(len(fake.called("gh", "pr", "comment")), 1)
+        self.assertIn(b"review: passed", fake.bodies[0])
+
+    def test_post_same_head_equal_is_current(self):
+        fake = FakeCmd(**{"gh api": (0, pages(comment(1, marker(review="passed"))), b"")})
+        code, out, err, _ = self.post(fake, review="passed")
+        self.assertEqual(code, 0, err)
         self.assertEqual(out, "SHA marker: already current (head {})\n".format(HEAD))
         self.assertEqual(fake.called("gh", "pr", "comment"), [])
+
+    def test_post_same_head_weaker_is_current(self):
+        for review in ("not-run", "inconclusive"):
+            with self.subTest(review=review):
+                fake = FakeCmd(**{"gh api": (0, pages(comment(1, marker(review="passed"))), b"")})
+                code, out, err, _ = self.post(fake, review=review)
+                self.assertEqual(code, 0, err)
+                self.assertEqual(out, "SHA marker: already current (head {})\n".format(HEAD))
+                self.assertEqual(fake.called("gh", "pr", "comment"), [])
+
+    def test_post_same_head_rank_order(self):
+        steps = (("skipped", "not-run"), ("inconclusive", "skipped"), ("passed", "inconclusive"))
+        for new, old in steps:
+            with self.subTest(new=new, old=old):
+                fake = FakeCmd(**{"gh api": (0, pages(comment(1, marker(review=old))), b"")})
+                code, out, err, _ = self.post(fake, review=new)
+                self.assertEqual(code, 0, err)
+                self.assertTrue(out.startswith("SHA marker: posted"), out)
+                self.assertEqual(len(fake.called("gh", "pr", "comment")), 1)
+                self.assertIn(("review: " + new).encode("ascii"), fake.bodies[0])
 
     # 7
     def test_post_no_valid_head(self):

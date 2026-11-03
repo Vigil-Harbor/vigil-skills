@@ -36,7 +36,7 @@ post checks the PR head, base and patch-id, reads the latest marker, and posts
 a new marker with gh pr comment, retrying a failed post once. Run it from the
 PR's checkout. The first stdout line is the status line.
     0  "SHA marker: posted (head <head>, review <token>)", or
-       "SHA marker: already current (head <head>)"
+       "SHA marker: already current (head <head>)" when the head matches and the new token does not outrank the recorded one
     1  "SHA marker: NOT posted (<reason>)", then the body when it was built
 
 Only parse, decide and overlap read stdin; main() decodes it as strict UTF-8.
@@ -63,6 +63,8 @@ _OPEN = "<!-- vigil-spec-land"
 _CLOSE = "-->"
 _HEX_ID = re.compile(r"^[0-9a-f]{40}$")
 _REVIEW_TOKENS = frozenset(("passed", "skipped", "inconclusive", "not-run"))
+# Low to high. A same-head post replaces the marker only when the new token outranks the recorded one.
+_REVIEW_RANK = {"not-run": 0, "skipped": 1, "inconclusive": 2, "passed": 3}
 _ID_LABELS = ("head", "base", "patch-id")
 _CMD_TIMEOUT = 120
 # A credential prompt must fail, not wait on a terminal nobody is watching.
@@ -315,6 +317,13 @@ def _valid_head_line(body: str) -> str | None:
     return None if _bad_id(value) else value
 
 
+def _recorded_review(line: str) -> str:
+    for field in line.split():
+        if field.startswith("review="):
+            return field[len("review="):]
+    return ""
+
+
 def _post(number: int, review: str, no_push: bool) -> int:
     def refuse(reason: str, body: str | None = None) -> int:
         print("SHA marker: NOT posted ({})".format(reason))
@@ -361,8 +370,10 @@ def _post(number: int, review: str, no_push: bool) -> int:
         cid, raw, line = latest
         if line is not None:
             if line.split()[0] == "head=" + head:
-                print("SHA marker: already current (head {})".format(head))
-                return 0
+                recorded = _recorded_review(line)
+                if _REVIEW_RANK[review] <= _REVIEW_RANK.get(recorded, -1):
+                    print("SHA marker: already current (head {})".format(head))
+                    return 0
         else:
             print("latest marker id={} (malformed):".format(cid), file=sys.stderr)
             print(_safe(raw), file=sys.stderr)
