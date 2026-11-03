@@ -20,6 +20,16 @@ Day-to-day discipline for writing skills that run on any harness in the fleet â€
 3. **Never name a harness's tools as the operative instruction.** When you must give an example, tag it: write the harness-neutral capability first, then "*(e.g. `mcp__plane__list_projects` in Claude Code, or the equivalent in your host)*." Keep bare tool-name inventories in a non-operative **"Tool-use notes"** section, never as an executed step.
 4. **Don't assume one harness's affordances.** No hardcoded paths, no "the X panel," no reliance on a single harness's file layout beyond what `requires` declares.
 
+## Simplifying an existing skill
+
+Preserve observable behavior first. In the brief, separate behavior-preserving cuts, existing-defect repairs, and new capabilities or intentional behavior changes. Give repairs a reproducer and neighboring regression cases; budget added behavior and its validation explicitly. Combining them in one delivery is a recorded choice, not evidence that all changes are simplification.
+
+Carry forward the parent's scope and tier constraints. Record deliberate exceptions and their rationale in the brief; a larger tier alone does not expand scope. Keep review-driven additions tied to broken contracts or demonstrated harm, using the existing deferral policy for speculative work.
+
+Check outputs, waits, stops, and side effects against representative scenarios. Word counts and phrase checks guard structure; they do not prove correctness. Distinguish manual interpretation from executing the workflow or helper. Consider a helper when a concrete case shows ambiguity it would remove; account for code, fixtures, packaging, and remaining prose before changing an explicit exclusion. Record rationale and owner for accepted tradeoffs; use a ticket when separate work is planned.
+
+See the [VHS-109 decision](review-pr-simplification-decision.md) for the VHS-96 example. This guidance adds no review stage.
+
 ## Running the lint
 
 ```bash
