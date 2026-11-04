@@ -54,7 +54,7 @@ A review request remains pending until a later verdict on HEAD. Fetch request ti
 gh api --paginate "repos/{owner}/{repo}/issues/<N>/comments?per_page=100" --jq '.[] | select(.body | test("^@coderabbitai (full )?review([[:space:]]|$)")) | .created_at'
 ```
 
-Compare the newest request with the latest verdict's `submitted_at`; acknowledgements and finding-only reviews never complete a request.
+Compare the newest request with the `submitted_at` of the latest verdict whose `commit_id` is HEAD; a verdict on another commit, acknowledgements, and finding-only reviews never complete a request.
 
 ## Token
 
@@ -99,7 +99,7 @@ The disposition comment is one `gh pr comment`. Its first line is `review-pr bod
 
 1. Resolve the PR, the repo, and the worktree. If the CodeRabbit check is still "Review in progress" or pending, and the reviews fetch shows no CodeRabbit verdict and no non-empty `COMMENTED` review with `commit_id` equal to HEAD, post the marker and stop. An empty `COMMENTED` acknowledgement on HEAD does not count. Otherwise a pending check is advisory.
 2. Fetch reviews, inline comments, prior disposition comments, and review requests. Harvest body items. Run the thread query, paging as in 6d. `W` becomes the greatest review id harvested.
-3. If the latest CodeRabbit review that is not an empty `COMMENTED` acknowledgement shows `Failed to clone` or `🔥 Problems`, post `@coderabbitai full review` only if no review request was posted at or after that review. Otherwise report "Requested review pending". Post the marker and stop.
+3. If the latest CodeRabbit review that is not an empty `COMMENTED` acknowledgement shows `Failed to clone` or `🔥 Problems`, post `@coderabbitai full review` only if the CodeRabbit check is not in progress or pending and no review request was posted at or after that review. Otherwise report "Requested review pending". Post the marker and stop.
 4. The thread for an inline finding is the one whose `first.nodes[0].databaseId` equals the REST comment `id`. The finding remains when `isResolved` is false and its last comment is not this skill's reply: by `<LOGIN>` and starting with `Resolved in`, `Skipped —`, or `Deferred —`. A resolved thread, or one whose last comment is such a reply, is handled. Any other last comment, including a question from `<LOGIN>`, leaves it remaining. If CodeRabbit answers a reply without resolving, the thread remains and a re-run triages it again. A finding with no matching thread remains. If the query fails, every inline finding remains and the approved stop is not taken. If any inline finding or any unlisted body item remains, triage. Do not take the approved stop.
 5. If nothing remains but a review request is pending, report "Requested review pending", post the marker, and stop. Otherwise, if nothing remains and the latest verdict is `APPROVED` with `commit_id` equal to HEAD, report "Nothing to review — PR is approved", post the marker, and stop. The token is `passed`. An `APPROVED` verdict on an older commit does not take this stop.
 6. If there is no CodeRabbit review, report "No CodeRabbit reviews found", post the marker, and stop.
