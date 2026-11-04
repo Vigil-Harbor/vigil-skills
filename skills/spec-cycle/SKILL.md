@@ -198,7 +198,7 @@ Every dispatched round, after the reports are on disk, write `round-<C>/synthesi
 ## Dismissed
 ```
 
-Act on: P0/P1 findings that fold, `routing violation:` findings, and a missing STATUS or a stub. Consider: out-of-scope P0/P1 findings with two or more sites. Noted: P2 and lower, and `<lens> — no findings`. Dismissed: P0/P1 findings that are wrong, with `not applicable: <reason>`. Each section is a list of `<lens>/F-<k> (P<sev>) "<title>" — <one line>` or the line `(none)`. Print `synthesis: Act on <a>, Consider <c>, Noted <n>, Dismissed <d> — round-<C>/synthesis.md`. A failed write prints `synthesis NOT written: <error>` and changes nothing else. 2e's dispositions are authoritative. For accepted or deferred nonblocking items, the existing Noted line summarizes the rationale and follow-up owner or ticket from the spec; a proposed disposition stays labeled proposed.
+Act on: P0/P1 findings that fold, `routing violation:` findings, and a missing STATUS or a stub. Consider: out-of-scope P0/P1 findings with two or more sites. Noted: P2 and lower, and `<lens> — no findings`. Dismissed: P0/P1 findings that are wrong, with `not applicable: <reason>`. Each section is a list of `<lens>/F-<k> (P<sev>) "<title>" — <one line>` or the line `(none)`. Print `synthesis: Act on <a>, Consider <c>, Noted <n>, Dismissed <d> — round-<C>/synthesis.md`. A failed write prints `synthesis NOT written: <error>` and changes nothing else. 2e's dispositions are authoritative. For every recorded P2+ entry, the existing Noted line summarizes its disposition, rationale and follow-up from the spec; a proposed disposition stays labeled proposed.
 
 ### 2d. Gate
 
