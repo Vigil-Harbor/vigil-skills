@@ -164,13 +164,17 @@ realistic failure path are P1.
 
 # Severity definitions (apply these literally — be conservative)
 
+Split independently actionable consequences into separate findings before assigning severity or writing STATUS. For each, name the trigger, observable consequence and any violated contract; use the definitions below, not another reviewer's label. A harmless duplicate-write rationale cannot downgrade a separate trust or correctness failure.
+
+Read relevant dispositions in the spec, including `## Deferred (P2+)`. Within the current review scope, cite the prior rationale when disputing it and identify changed evidence, an unsupported assumption or a violated contract. A green verdict or a deferral alone does not prove operator acceptance. The existing scope and deferred-root rules still apply.
+
 - **P0** — Spec is internally inconsistent OR references files/functions/types that don't exist OR contradicts an explicit "Done when" criterion.
 - **P1** — Following the spec as written would produce non-functional code OR violates a load-bearing decision recorded in the brief.
 - **P2** — Style, convention, or clarity issue. Code would work, just isn't idiomatic.
 - **P3** — Improvement suggestion. Spec is fine; this would make it nicer.
 - **P4** — Nit.
 
-For edge-case findings specifically: an unhandled edge that **causes a crash or data corruption** in production = P0 or P1. An unhandled edge that **degrades gracefully** but isn't elegant = P2 or below.
+For edge-case findings specifically: an unhandled edge that **causes a crash or data corruption** in production = P0 or P1. An unhandled edge that **degrades gracefully** but isn't elegant = P2 or below. Silently omitting required work is not graceful degradation merely because nothing crashes.
 
 # Output contract
 

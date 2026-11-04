@@ -101,6 +101,22 @@ Each round:
 
 **Round 2+ closure tracking:** This label describes the first invocation's pass index. A full invocation's first pass has no closure predecessor even when its cumulative round is greater than 1; later passes close the preceding pass. Delta pass 1 closes the candidate round. When a closure predecessor exists, each reviewer reads its reports (the three default lenses, plus `scalability.md` when the scaling lens ran) and produces a closure table showing CLOSED, PARTIAL, REOPENED, DEFERRED, or NEW. Reopened items are P0 unless the spec deliberately changed direction with rationale. In every dispatched round, including the first, each reviewer also checks the spec's `## Deferred — follow-up required` rows for well-formedness and does not re-file a finding whose root a well-formed row already carries. `DEFERRED` is not the closure state of an undischarged in-scope P0 or P1. After the reports are saved and before the gate break, the author writes `round-<C>/synthesis.md` (Act on / Consider / Noted / Dismissed). The gate sum does not read that file.
 
+### Findings and recorded tradeoffs
+
+Reviewers split independently actionable consequences before grading them. The author records the rationale for accepted or deferred nonblocking items in the existing spec entry, with its source id, severity and responsible owner or follow-up ticket; synthesis summarizes that disposition in its existing Noted line. A ticket is useful for separately planned work, not required for every advisory finding. This is part of the existing review and revision steps, not another stage. Reviewer definitions, STATUS arithmetic, delta scope and the scope ceiling are unchanged.
+
+**Worked example — disposition comments.** A proposed workflow trusts any issue comment beginning with a disposition prefix. One report bundles three consequences:
+
+| Consequence and trigger | Assessment and disposition |
+|---|---|
+| An unrelated commenter lists a real finding key, suppressing required triage without inspection | P1: a required review path becomes non-functional. Split it into its own finding and fix the author filter when that file region is in scope. A bot's Major label is not the reason. |
+| A round with no findings posts a header-only comment | P3: noise, with no finding lost. Defer under the fold policy; rationale: harmless extra output does not justify another rule here; owner: project operator. No separate work is planned. |
+| The same key receives a duplicate disposition line within a run, while reads deduplicate it | P3 if no required action is lost. Record that deduplication assumption and its evidence; defer to the project operator. This rationale does not apply to the unrelated commenter's forged disposition. |
+
+For the first consequence, a legitimate out-of-scope P0/P1 still follows the existing propagation-site ceiling and deferred-row rules. Never lower severity just to fit the advisory list. Conversely, a missing rationale or a cosmetic suggestion does not become a blocker merely because it appears beside a real defect.
+
+An accepted risk needs a rationale about that actual consequence. On a later in-scope review, cite the recorded rationale and the changed evidence, unsupported assumption or violated contract that challenges it. Do not infer operator acceptance from a green marker, and do not silently erase an earlier decision. For example, keeping the strongest display-only marker can be a deliberate tradeoff while using an old approval to declare a new HEAD approved remains a separate correctness defect.
+
 ### Phase 3 — Drift-check checklist (hard stop)
 
 When the spec goes green, render a structured checklist comparing the spec back to the brief. A review-produced green verdict (`source: review`) from a run under this rule is never written while an in-scope P0 or P1 sits undischarged in `## Deferred — follow-up required`. Attest mode and green markers issued before this change are outside this guarantee and are not edited. The checklist also shows that round's `synthesis.md` path and the deferred-row tally (`<u>` undischarged — `<out>` out-of-scope, `<op>` operator, `<x>` other — and `<d>` discharged; undischarged in-scope P0/P1 is 0).
