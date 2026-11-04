@@ -867,6 +867,14 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertIn("no marker - verification skipped", out)
         self.assertEqual(state["verification"]["status"], "skipped")
         self.assertEqual(router.ran("git", "patch-id"), [])
+        self.assertNotIn("may omit earlier rebased commits", out)
+
+    def test_preflight_no_marker_multi_commit_shows_filemap_caveat(self):
+        router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b""),
+                              ("gh", "pr", "view", "7"): ok(self.pr_json(commits=[{}, {}]))})
+        code, out, _, _ = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertIn("may omit earlier rebased commits", out)
 
     def test_preflight_warnings_allow_land_anyway(self):
         overlap_walk = {

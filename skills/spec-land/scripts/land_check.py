@@ -874,7 +874,7 @@ def _confirmation(state: dict) -> str:
     if v["drift"]:
         rows.append("Base drift (clear of PR files): " + "; ".join(v["drift"]))
     diff = "Filemap diff: {} {}".format(v["diff_base"], pr["landed"])
-    if v["status"] == "warning":
+    if v["status"] != "match" and pr["commits"] > 1:
         diff += " (landed first parent; may omit earlier rebased commits)"
     rows.append(diff)
     if plane["problem"]:
