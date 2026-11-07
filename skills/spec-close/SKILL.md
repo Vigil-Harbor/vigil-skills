@@ -103,7 +103,7 @@ A ticket already in `DONE/<ID>/`, with nothing left in `TODO/`, only gets the lo
 
 ## Phase 3 — Harvest (full-close only)
 
-- **Duplicates.** Run `grep -rlw "<TICKET-ID>"` over `decisions/`, `comprehension/` and `projects/<slug>/state.md`, and show the hits. Do not propose a kind of entry the wiki already has for this ticket unless the operator asks. spec-close never edits the filemap; spec-land owns it.
+- **Duplicates.** Run `grep -rlw "<TICKET-ID>"` over `decisions/`, `comprehension/` and `projects/<slug>/state.md`, and show the hits. Do not propose a kind of entry the wiki already has for this ticket unless the operator asks. A state.md hit counts only when it sits under What's Shipped; a hit under What's Active or What's Next is the entry to move to What's Shipped. spec-close never edits the filemap; spec-land owns it.
 - **Weight.** Brief tier `small`: a state.md entry and the log line only. Any other tier, or no tier:
   - a decision page only when the spec chose between real options;
   - a comprehension page only for a new module, data flow or integration.
@@ -158,7 +158,9 @@ On `N`, stop: nothing changes after the report.
    if test -f "$ARCHIVE"; then "$PY" "$ARCHIVE" <TICKET-ID> < /dev/null; else echo "archive NOT run: archive_spec.py not found at $ARCHIVE — install with 'python sync.py install'"; fi
    ```
 
-   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It skips sources already gone and never moves onto an existing path. It stages only destinations that git does not ignore, and it prints one `staged:` line per staged path, or `staged: none`. Exit 0 is all done, 1 is some item skipped or failed, and 2 is a usage error. In every case, show the output and continue.
+   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It skips sources already gone and never moves onto an existing path. It stages tracked moves, and untracked ones only when git does not ignore the destination. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
+
+   On exit 0, continue. On any other exit, or `archive NOT run`, the archive is incomplete: skip the log write, report `Archive: incomplete` with the script's problem lines, and tell the operator to clear each one and re-run `/spec-close <TICKET-ID>`. To clear a `destination exists` line, move or remove the existing path. To clear `moved, NOT staged`, run `git add` on that path. The re-run archives what is left and writes the log line.
 3. **Log** (skipped when there is no wiki). Prepend the entry with `prepend_log_entry.py`; it places the entry above the newest dated one, checks the guard, and writes atomically.
    - Spec-flow heading: `## [<date>] close | <PREFIX> — <TICKET-ID>: <spec title> (archived from TODO/)`, with a 1–2 sentence body.
    - Guard: `close | <PREFIX> — <TICKET-ID>:`. The `close |` keeps it apart from spec-land's merge lines. The colon keeps `VHS-1` from matching `VHS-11`.
@@ -210,7 +212,7 @@ Suggested commits:
   (in wiki)         git add <each wiki file this run wrote> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 ```
 
-The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. When the script printed `staged: none`, drop that line and print `Archive is local-only. Nothing was staged in the target repo.` Name in the wiki suggestion only the files this run wrote; `log.md` only when the script wrote it. Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
+The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Name in the wiki suggestion only the files this run wrote; `log.md` only when the script wrote it. Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
 
 ## Re-runs
 

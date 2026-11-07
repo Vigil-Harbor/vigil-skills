@@ -113,6 +113,8 @@ class TestStates(ArchiveCase):
         self.write("X-1.spec.md")
         self.commit("docs/specs/TODO/X-1.spec.md")
         self.ignore("docs/specs/DONE/")
+        # Positive control: the rule really matches the destination.
+        git(self.root, "check-ignore", "--no-index", "-q", "--", "docs/specs/DONE/X-1/spec.md")
         code, out, _ = self.run_script("X-1")
         self.assertEqual(code, 0, out)
         self.assertTrue(self.done("spec.md").is_file())
