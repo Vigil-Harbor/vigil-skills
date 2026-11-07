@@ -18,8 +18,10 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -699,6 +701,474 @@ class TestLatestAndPost(unittest.TestCase):
             [sys.executable, "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"],
             input=raw)
         self.assertEqual((code, out), (0, raw))
+
+
+# --- VHS-97: preflight, wiki, cleanup. Every command is stubbed. ----------
+
+LANDED = "4" * 40
+PARENT = "5" * 40
+BRANCH = "feat/vhs-97-script"
+AGENTS_TEXT = (
+    "# Agents\n\n## Wiki\n\nSlug: proj\nLog: off\nFilemap file: elsewhere.md\n\n"
+    "## Post-land command\n\npython sync.py install\n")
+WRITE_PREFIXES = (("git", "push"), ("git", "branch"), ("git", "worktree", "remove"),
+                  ("git", "merge", "--ff-only"), ("gh", "pr", "comment"))
+
+
+def ok(text=""):
+    return 0, text.encode("utf-8"), b""
+
+
+class Router:
+    """_cmd stand-in for the VHS-97 commands. `git -C <path>` is matched
+    without the -C pair; the longest matching prefix wins."""
+
+    def __init__(self, routes):
+        self.calls = []
+        self.routes = {key: value if isinstance(value, list) else [value]
+                       for key, value in routes.items()}
+
+    @staticmethod
+    def norm(argv):
+        argv = list(argv)
+        return ["git"] + argv[3:] if argv[:2] == ["git", "-C"] else argv
+
+    def __call__(self, argv, input=None):
+        self.calls.append((list(argv), input))
+        plain = self.norm(argv)
+        for prefix in sorted(self.routes, key=len, reverse=True):
+            if tuple(plain[:len(prefix)]) == prefix:
+                responses = self.routes[prefix]
+                response = responses.pop(0) if len(responses) > 1 else responses[0]
+                return response(argv, input) if callable(response) else response
+        raise AssertionError("unexpected command {}".format(argv))
+
+    def ran(self, *prefix):
+        return [argv for argv, _ in self.calls if tuple(self.norm(argv)[:len(prefix)]) == prefix]
+
+
+class TestPreflightWikiCleanup(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_script(SCRIPT, "spec_land_check_vhs97_under_test")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name).as_posix()
+        self.main = self.tmp + "/main"
+        self.linked = self.tmp + "/wt"
+        self.wiki = self.tmp + "/wiki"
+        self.config = self.tmp + "/config"
+        for path in (self.main, self.wiki + "/projects/proj",
+                     self.config + "/skills/ship-spec", self.config + "/skills/spec-close/scripts"):
+            os.makedirs(path)
+        Path(self.main, "CLAUDE.md").write_text(
+            "- **Wiki:** `{}` (the wiki)\n".format(self.wiki), encoding="utf-8")
+        Path(self.config, "skills/ship-spec/states.json").write_text(json.dumps({"VHS": {
+            "project_id": "proj-uuid",
+            "states": {"Done": "done-uuid", "Post-merge Checklists": "pmc-uuid"},
+            "state_groups": {"Done": "completed", "Post-merge Checklists": "started"}}}),
+            encoding="utf-8")
+        Path(self.config, "skills/spec-close/scripts/prepend_log_entry.py").write_text("", encoding="utf-8")
+        self.env = {"CLAUDE_CONFIG_DIR": self.config}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def pr_json(self, **over):
+        data = {"state": "MERGED", "mergeCommit": {"oid": LANDED},
+                "mergedAt": "2026-11-04T00:00:00Z", "baseRefOid": BASE, "headRefOid": HEAD,
+                "headRefName": BRANCH, "title": "feat(vhs-97): script it",
+                "body": "## Test plan\n- [x] tests\n- [ ] Spec verdict: green\n- [ ] Post-merge verification\n",
+                "commits": [{}], "url": "https://github.com/o/r/pull/7"}
+        data.update(over)
+        return json.dumps(data)
+
+    def porcelain(self, main_branch="main", linked=1):
+        text = "worktree {}\nHEAD {}\nbranch refs/heads/{}\n\n".format(self.main, LANDED, main_branch)
+        for index in range(linked):
+            text += "worktree {}{}\nHEAD {}\nbranch refs/heads/{}\n\n".format(
+                self.linked, index or "", HEAD, BRANCH)
+        return text
+
+    def routes(self, over=None):
+        routes = {
+            ("gh", "repo", "view"): ok(json.dumps({"owner": {"login": "o"}, "name": "r"})),
+            ("gh", "pr", "view", "7"): ok(self.pr_json()),
+            ("git", "fetch"): ok(),
+            ("gh", "api"): (0, pages(comment(1, marker(patch=PATCH))), b""),
+            ("git", "diff", LANDED + "^1", LANDED): ok("diff --git a/x b/x\n"),
+            ("git", "patch-id"): ok(PATCH + " " + "f" * 40 + "\n"),
+            ("git", "rev-list", "--parents"): ok(LANDED + " " + PARENT + "\n"),
+            ("git", "cat-file"): ok(),
+            ("git", "cat-file", "-e", LANDED + ":CLAUDE.md"): (128, b"", b"missing"),
+            ("git", "show", LANDED + ":AGENTS.md"): ok(AGENTS_TEXT),
+            ("git", "merge-base"): ok(),
+            ("git", "rev-list", "--reverse"): ok(),
+            ("git", "diff", "--name-only"): ok("skills/x.md\n"),
+            ("git", "worktree", "list"): ok(self.porcelain()),
+            ("git", "symbolic-ref"): ok("refs/remotes/origin/main\n"),
+            ("git", "status"): ok(),
+        }
+        routes.update(over or {})
+        return Router(routes)
+
+    def run_main(self, argv, router, shell=None):
+        out, err = io.StringIO(), io.StringIO()
+        shell = shell or mock.Mock(return_value=0)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                mock.patch.object(self.mod, "_cmd", router), \
+                mock.patch.object(self.mod, "_shell", shell), \
+                mock.patch.dict(os.environ, self.env), \
+                mock.patch.object(sys, "stdin", RaisingStdin()):
+            code = self.mod.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def preflight(self, router, *argv):
+        before = sorted(str(p) for p in Path(self.tmp).rglob("*"))
+        code, out, err = self.run_main(["preflight", *argv], router)
+        self.assertEqual(sorted(str(p) for p in Path(self.tmp).rglob("*")), before,
+                         "preflight wrote a file")
+        for prefix in WRITE_PREFIXES:
+            self.assertEqual(router.ran(*prefix), [], prefix)
+        state = None
+        for line in out.splitlines():
+            if line.startswith("spec_land_state="):
+                state = json.loads(line[len("spec_land_state="):])
+        return code, out, err, state
+
+    def state_file(self, state):
+        path = Path(self.tmp, "state.json")
+        path.write_text(json.dumps(state), encoding="utf-8")
+        return str(path)
+
+    # Preflight -----------------------------------------------------------
+
+    def test_preflight_clean_match(self):
+        router = self.routes()
+        code, out, err, state = self.preflight(router, "7")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("SHA: match (match single) review=passed", out)
+        self.assertIn("Reply yes to land VHS-97.", out)
+        self.assertEqual(len(router.ran("git", "fetch")), 2)
+        self.assertEqual(state["version"], 1)
+        self.assertEqual(state["verification"]["status"], "match")
+        self.assertEqual(state["verification"]["diff_base"], LANDED + "^1")
+        self.assertEqual(state["plane"]["target"], "Post-merge Checklists")
+        self.assertEqual(state["checklist"], ["- [ ] Post-merge verification"])
+        self.assertEqual(state["worktrees"], [self.linked])
+        self.assertEqual(state["fast_forward"], "will run")
+
+    def test_preflight_no_marker_skips_verification(self):
+        router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b"")})
+        code, out, _, state = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertIn("no marker - verification skipped", out)
+        self.assertEqual(state["verification"]["status"], "skipped")
+        self.assertEqual(router.ran("git", "patch-id"), [])
+        self.assertNotIn("may omit earlier rebased commits", out)
+
+    def test_preflight_no_marker_multi_commit_shows_filemap_caveat(self):
+        router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b""),
+                              ("gh", "pr", "view", "7"): ok(self.pr_json(commits=[{}, {}]))})
+        code, out, _, _ = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertIn("may omit earlier rebased commits", out)
+
+    def test_preflight_warnings_allow_land_anyway(self):
+        overlap_walk = {
+            ("git", "rev-list", "--reverse"): ok(PARENT + "\n"),
+            ("git", "diff-tree"): ok("skills/x.md\n"),
+            ("git", "log"): ok("other change\n"),
+        }
+        cases = {
+            "malformed": {("gh", "api"): (0, pages(comment(1, marker(review="maybe"))), b"")},
+            "head": {("gh", "api"): (0, pages(comment(1, marker(head=OTHER))), b"")},
+            "patch-id": {("git", "patch-id"): ok(OTHER + "\n")},
+            "overlap": overlap_walk,
+        }
+        for name, over in cases.items():
+            with self.subTest(case=name):
+                router = self.routes(over)
+                code, out, _, state = self.preflight(router, "7")
+                self.assertEqual(code, 0, out)
+                self.assertIn("SHA: WARNING", out)
+                self.assertIn("Reply land anyway to land VHS-97", out)
+                self.assertEqual(state["verification"]["status"], "warning")
+                self.assertEqual(state["verification"]["diff_base"], LANDED + "^1")
+                if name in ("malformed", "head"):
+                    self.assertEqual(router.ran("git", "patch-id"), [])
+
+    def test_preflight_range_match_uses_range_base(self):
+        pr = self.pr_json(commits=[{}, {}, {}])
+        patches = [ok(OTHER + "\n"), ok(PATCH + "\n")]
+        router = self.routes({("gh", "pr", "view", "7"): ok(pr), ("git", "patch-id"): patches,
+                                ("git", "diff", LANDED + "~3", LANDED): ok("d\n")})
+        code, out, _, state = self.preflight(router, "7")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(state["verification"]["kind"], "match range")
+        self.assertEqual(state["verification"]["diff_base"], LANDED + "~3")
+
+    def test_preflight_policy_stops(self):
+        cases = {
+            "not merged": {("gh", "pr", "view", "7"): ok(self.pr_json(state="OPEN"))},
+            "fetch": {("git", "fetch"): (128, b"", b"Permission denied (publickey).")},
+            "comment read": {("gh", "api"): (1, b"", b"HTTP 502")},
+            "ancestry": {("git", "merge-base"): (1, b"", b"")},
+        }
+        for name, over in cases.items():
+            with self.subTest(case=name):
+                code, out, _, state = self.preflight(self.routes(over), "7")
+                self.assertEqual(code, 1, out)
+                self.assertTrue(out.startswith("HALT: "), out)
+                self.assertNotIn("no marker", out)
+                self.assertIsNone(state)
+
+    def test_preflight_pr_url_must_match_repo(self):
+        code, out, _, _ = self.preflight(self.routes(), "https://github.com/x/y/pull/7")
+        self.assertEqual(code, 1)
+        self.assertIn("PR URL is not for o/r", out)
+        code, out, _, state = self.preflight(self.routes(), "https://github.com/O/R/pull/7")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(state["pr"]["number"], 7)
+
+    def test_preflight_spec_path_pages_past_100(self):
+        rows = [{"number": n, "title": "ABC-{}".format(n), "headRefName": "x"} for n in range(150)]
+        rows.append({"number": 7, "title": "feat: thing", "headRefName": "feat/vhs-97-x"})
+        router = self.routes({("gh", "pr", "view", "--json"): (1, b"", b"no pr"),
+                                ("gh", "pr", "list"): ok(json.dumps(rows))})
+        code, out, _, state = self.preflight(router, "/c/repo/docs/specs/TODO/VHS-97.spec.md")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(state["ticket_source"], "spec path")
+        self.assertIn("10000", router.ran("gh", "pr", "list")[0])
+        router = self.routes({("gh", "pr", "view", "--json"): (1, b"", b"no pr"),
+                                ("gh", "pr", "list"): ok("[]")})
+        code, out, _, _ = self.preflight(router, "docs/specs/TODO/VHS-97.spec.md")
+        self.assertEqual(code, 1)
+        self.assertIn("pass the PR number", out)
+
+    def test_preflight_ambiguous_ticket_then_retry(self):
+        pr = self.pr_json(title="fix(vhs-12): other")
+        code, out, _, state = self.preflight(self.routes({("gh", "pr", "view", "7"): ok(pr)}), "7")
+        self.assertEqual(code, 4)
+        self.assertIn("VHS-97, VHS-12", out)
+        self.assertIsNone(state)
+        code, out, _, state = self.preflight(
+            self.routes({("gh", "pr", "view", "7"): ok(pr)}), "7", "--ticket", "vhs-12")
+        self.assertEqual(code, 0, out)
+        self.assertEqual((state["ticket"], state["ticket_source"]), ("VHS-12", "operator"))
+
+    def test_preflight_instructions(self):
+        # Removed keys are ignored; CLAUDE.md wins the wiki path; AGENTS.md supplies the rest.
+        code, out, _, state = self.preflight(self.routes(), "7")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(state["wiki"]["path"], self.wiki)
+        self.assertEqual(state["wiki"]["slug"], "proj")
+        self.assertEqual(state["post_land"]["command"], "python sync.py install")
+        self.assertNotIn("elsewhere.md", out)
+        two_lines = AGENTS_TEXT.replace("python sync.py install\n", "one\ntwo\n")
+        router = self.routes({("git", "show", LANDED + ":AGENTS.md"): ok(two_lines)})
+        _, out, _, state = self.preflight(router, "7")
+        self.assertIsNone(state["post_land"]["command"])
+        self.assertIn("2 non-blank lines - skipped", out)
+        # Regression for VHS-97: cloud names its wiki only by Path: under ## Wiki.
+        os.makedirs(self.tmp + "/notes")
+        path_only = "## Wiki\n\nPath: {}/notes\n".format(self.tmp)
+        self.assertEqual(self.mod._wiki_path(path_only), self.tmp + "/notes")
+        os.makedirs(self.tmp + "/my notes")
+        spaced = "## Wiki\n\nPath: {}/my notes\n".format(self.tmp)
+        self.assertEqual(self.mod._wiki_path(spaced), self.tmp + "/my notes")
+
+    def test_norm_path_accepts_both_forms(self):
+        with mock.patch.object(self.mod.os, "name", "nt"):
+            self.assertEqual(self.mod._norm_path("/c/Users/x"), "C:/Users/x")
+            self.assertEqual(self.mod._norm_path("C:\\Users\\x"), "C:/Users/x")
+            self.assertEqual(self.mod._norm_path("C:/Users/x"), "C:/Users/x")
+
+    def test_checklist_and_hash(self):
+        unchecked = self.mod._checklist(
+            "## Test plan\r\n- [ ] Review gate: x\n- [ ] Post-merge verification\n## Next\n- [ ] no\n")
+        self.assertEqual(unchecked, ["- [ ] Post-merge verification"])
+        with mock.patch.dict(os.environ, self.env):
+            plane = self.mod._plane("VHS-97", 7, unchecked)
+        self.assertEqual(plane["state_id"], "pmc-uuid")
+        self.assertTrue(plane["comment"].endswith(
+            "spec-land:checklist PR #7 9c4b924006cf6d5f7ec1808f1347d5863786a708d1542a5cc5676b5240be80f9"))
+
+    # Wiki ----------------------------------------------------------------
+
+    def preflight_state(self, over=None):
+        code, out, _, state = self.preflight(self.routes(over), "7")
+        self.assertEqual(code, 0, out)
+        return state
+
+    def test_wiki_log_and_filemap(self):
+        state = self.preflight_state()
+        filemap = Path(self.wiki, "projects/proj/filemap.md")
+        filemap.write_text(
+            "# Filemap\n\n### `gone.py`\n- gone\n\n### `old.py`\n- body\n\n## Next\n", encoding="utf-8")
+        Path(self.wiki, "log.md").write_text("## [2099-01-01] newer\n", encoding="utf-8")
+        router = self.routes({
+            (sys.executable,): ok("prepend_log_entry_outcome=prepended\n"),
+            ("git", "diff", "--name-status"): ok(
+                "D\0gone.py\0R100\0old.py\0new.py\0A\0tests/test_new.py\0M\0keep.py\0")})
+        code, out, _ = self.run_main(["wiki", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 0, out)
+        self.assertIn("log.md: prepended", out)
+        argv, entry = router.calls[0]
+        self.assertEqual(argv[-2:], ["--guard", "merge | VHS \u2014 VHS-97 PR #7:"])
+        self.assertTrue(entry.decode("utf-8").startswith("## [2099-01-01] merge | VHS \u2014 VHS-97 PR #7:"))
+        text = filemap.read_text(encoding="utf-8")
+        self.assertNotIn("gone.py", text)
+        self.assertIn("### `new.py`\n- body", text)
+        self.assertIn("### `tests/test_new.py`\n- **Purpose:** Test added in PR #7.", text)
+        self.assertIn("filemap: M keep.py: not filemap-relevant", out)
+
+    def test_wiki_failures_reported(self):
+        state = self.preflight_state()
+        Path(self.wiki, "projects/proj/filemap.md").write_text("# F\n", encoding="utf-8")
+        router = self.routes({(sys.executable,): (1, b"", b""),
+                                ("git", "diff", "--name-status"): (128, b"", b"bad revision")})
+        code, out, _ = self.run_main(["wiki", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1)
+        self.assertIn("log.md: entry already present - skipped", out)
+        self.assertIn("filemap: NOT written", out)
+
+    def test_state_file_must_be_valid(self):
+        for body in ("not json", json.dumps({"version": 2}), json.dumps({"version": 1})):
+            with self.subTest(body=body):
+                path = Path(self.tmp, "bad.json")
+                path.write_text(body, encoding="utf-8")
+                router = self.routes()
+                code, out, _ = self.run_main(["cleanup", "--state", str(path)], router)
+                self.assertEqual(code, 1)
+                self.assertTrue(out.startswith("HALT: "), out)
+                self.assertEqual(router.calls, [])
+
+    # Cleanup -------------------------------------------------------------
+
+    def cleanup_routes(self, over=None):
+        routes = {
+            ("git", "worktree", "list"): ok(self.porcelain()),
+            ("git", "status"): ok(),
+            ("git", "worktree", "remove"): ok(),
+            ("git", "rev-parse", "--verify"): ok(HEAD + "\n"),
+            ("git", "rev-list", "--count"): ok("0\n"),
+            ("git", "branch", "-d"): (1, b"", b"not fully merged"),
+            ("git", "branch", "-D"): ok(),
+            ("git", "ls-remote"): ok("{}\trefs/heads/{}\n".format(HEAD, BRANCH)),
+            ("git", "push"): ok(),
+            ("git", "merge", "--ff-only"): ok(),
+            ("git", "merge-base", "--is-ancestor"): ok(),
+        }
+        routes.update(over or {})
+        return Router(routes)
+
+    def test_cleanup_happy_path(self):
+        state = self.preflight_state()
+        shell = mock.Mock(return_value=0)
+        router = self.cleanup_routes()
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertEqual(code, 0, out)
+        self.assertIn("local branch: deleted (-D", out)
+        push = router.ran("git", "push")[0]
+        self.assertIn("--force-with-lease=refs/heads/{}:{}".format(BRANCH, HEAD), push)
+        self.assertNotIn("--force", [a for a in push if a == "--force"])
+        self.assertNotIn("--force", router.ran("git", "worktree", "remove")[0])
+        shell.assert_called_once_with("python sync.py install", self.main)
+
+    def test_cleanup_dirty_worktree_keeps_branches(self):
+        state = self.preflight_state()
+        status = lambda argv, _: ok(" M x\n") if argv[2] == self.linked else ok()
+        router = self.cleanup_routes({("git", "status"): status})
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("worktree: dirty - kept", out)
+        for prefix in (("git", "worktree", "remove"), ("git", "branch"), ("git", "push")):
+            self.assertEqual(router.ran(*prefix), [], prefix)
+        self.assertIn("fast-forward: done", out)
+
+    def test_cleanup_several_checkouts_continue(self):
+        state = self.preflight_state()
+        router = self.cleanup_routes({("git", "worktree", "list"): ok(self.porcelain(linked=2))})
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("2 linked checkouts kept", out)
+        self.assertEqual(router.ran("git", "branch"), [])
+        self.assertEqual(router.ran("git", "push"), [])
+        self.assertEqual(len(router.ran("git", "merge", "--ff-only")), 1)
+
+    def test_cleanup_force_delete_needs_match_and_tip(self):
+        warned = self.preflight_state({("git", "patch-id"): ok(OTHER + "\n")})
+        router = self.cleanup_routes()
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(warned)], router)
+        self.assertEqual(router.ran("git", "branch", "-D"), [])
+        self.assertIn("-D needs a SHA match", out)
+        matched = self.preflight_state()
+        for over, phrase in (({("git", "rev-list", "--count"): ok("2\n")}, "2 commits not in the PR head"),
+                             ({("git", "rev-list", "--count"): (128, b"", b"bad")}, "rev-list failed")):
+            with self.subTest(phrase=phrase):
+                router = self.cleanup_routes(over)
+                _, out, _ = self.run_main(["cleanup", "--state", self.state_file(matched)], router)
+                self.assertEqual(router.ran("git", "branch"), [])
+                self.assertIn(phrase, out)
+        # A matched SHA with a local tip that is not the PR head never reaches -D.
+        router = self.cleanup_routes({("git", "rev-parse", "--verify"): ok(OTHER + "\n")})
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(matched)], router)
+        self.assertEqual(router.ran("git", "branch", "-D"), [])
+        self.assertIn("-D needs a SHA match", out)
+
+    def test_cleanup_failed_remove_or_push_deletes_nothing_more(self):
+        state = self.preflight_state()
+        router = self.cleanup_routes({("git", "worktree", "remove"): (1, b"", b"busy")})
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1)
+        self.assertIn("worktree: NOT removed", out)
+        self.assertEqual(router.ran("git", "branch"), [])
+        self.assertEqual(router.ran("git", "push"), [])
+        router = self.cleanup_routes({("git", "push"): (1, b"", b"stale info")})
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("remote branch: skipped (lease rejected or push failed: stale info)", out)
+
+    def test_cleanup_remote_delete_guards(self):
+        state = self.preflight_state()
+        cases = {
+            "lookup failed": (128, b"", b"ssh: denied"),
+            "different tip": ok("{}\trefs/heads/{}\n".format(OTHER, BRANCH)),
+            "already deleted": ok(""),
+        }
+        for name, response in cases.items():
+            with self.subTest(case=name):
+                router = self.cleanup_routes({("git", "ls-remote"): response})
+                _, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+                self.assertEqual(router.ran("git", "push"), [])
+                self.assertIn("remote branch: " + {"lookup failed": "lookup failed",
+                                                   "different tip": "skipped (tip",
+                                                   "already deleted": "already deleted"}[name], out)
+
+    def test_cleanup_default_branch_is_protected(self):
+        state = self.preflight_state()
+        state["pr"]["branch"] = "main"
+        router = self.cleanup_routes()
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("branches: kept (main is the default branch)", out)
+        self.assertEqual(router.ran("git", "branch"), [])
+        self.assertEqual(router.ran("git", "push"), [])
+
+    def test_cleanup_post_land_needs_fast_forward(self):
+        state = self.preflight_state()
+        cases = {
+            "wrong branch": {("git", "worktree", "list"): ok(self.porcelain(main_branch="other"))},
+            "dirty main": {("git", "status"): lambda argv, _: ok(" M k\n") if argv[2] == self.main else ok()},
+            "ff failed": {("git", "merge", "--ff-only"): (128, b"", b"diverged")},
+            "not contained": {("git", "merge-base", "--is-ancestor"): (1, b"", b"")},
+        }
+        for name, over in cases.items():
+            with self.subTest(case=name):
+                shell = mock.Mock(return_value=0)
+                _, out, _ = self.run_main(
+                    ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over), shell)
+                shell.assert_not_called()
+                self.assertIn("post-land command: skipped", out)
 
 
 if __name__ == "__main__":
