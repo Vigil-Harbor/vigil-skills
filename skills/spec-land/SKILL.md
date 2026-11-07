@@ -42,7 +42,7 @@ A missing script stops the run. Every subcommand reads no stdin; give it `< /dev
 "$PY" "$SCRIPT" preflight <PR-number | PR-URL | spec-path> < /dev/null
 ```
 
-No argument uses the current branch's PR, so it works only from the PR branch's checkout. From the main checkout, pass the PR number, URL or spec path. It fetches once and writes nothing.
+No argument uses the current branch's PR, so it works only from the PR branch's checkout. From the main checkout, pass the PR number, URL or spec path. Apart from `git fetch` updating remote refs, it writes nothing.
 
 - **Exit 0.** Stdout is the confirmation block, then one line that starts with `spec_land_state=`. Hold that line exactly as printed. Do not edit it.
 - **Exit 1.** The first line is `HALT: <reason>`. Show it and stop. Nothing was written. The script halts only when the PR is not merged, a PR or comment read fails, the fetch fails, a PR URL names another repository, no single PR matches, or a git command fails.

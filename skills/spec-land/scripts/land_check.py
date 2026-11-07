@@ -713,10 +713,13 @@ def _wiki_path(text: str) -> str | None:
         # Any line that names the wiki, or any line under ## Wiki (such as Path:).
         if "wiki" not in line.lower() and line not in wiki_lines:
             continue
-        for candidate in _ABS_PATH.findall(line):
-            found = _existing_dir(candidate)
-            if found:
-                return found
+        for match in _ABS_PATH.finditer(line):
+            # A path may hold spaces: try the longest run of words first.
+            seg = re.split(r"[`'\"<>|()]", line[match.start():])[0]
+            for end in reversed([word.end() for word in re.finditer(r"\S+", seg)]):
+                found = _existing_dir(seg[:end])
+                if found:
+                    return found
     return None
 
 
@@ -1038,16 +1041,20 @@ def _write_filemap(state: dict) -> bool:
     if not os.path.isfile(path):
         print("filemap: missing file {} - skipped".format(path))
         return True
-    code, out, err = _cmd(["git", "-C", state["main"], "diff", "--name-status",
+    # -z: git leaves unusual pathnames unquoted, NUL-separated.
+    code, out, err = _cmd(["git", "-C", state["main"], "diff", "--name-status", "-z",
                            state["verification"]["diff_base"], pr["landed"]])
     if code != 0:
         print("filemap: NOT written (git diff --name-status failed: {})".format(_text(err).strip()))
         return False
     with open(path, encoding="utf-8", newline="") as handle:
         before = handle.read()
-    lines, notes = _filemap_rows(before.splitlines(keepends=True),
-                                 [row for row in _text(out).splitlines() if row.strip()],
-                                 pr["number"])
+    fields, rows, index = _text(out).split("\0"), [], 0
+    while index < len(fields) and fields[index]:
+        width = 3 if fields[index][:1] in "RC" else 2
+        rows.append("\t".join(fields[index:index + width]))
+        index += width
+    lines, notes = _filemap_rows(before.splitlines(keepends=True), rows, pr["number"])
     for note in notes:
         print("filemap: " + note)
     after = "".join(lines)

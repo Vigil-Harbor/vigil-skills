@@ -976,6 +976,9 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         os.makedirs(self.tmp + "/notes")
         path_only = "## Wiki\n\nPath: {}/notes\n".format(self.tmp)
         self.assertEqual(self.mod._wiki_path(path_only), self.tmp + "/notes")
+        os.makedirs(self.tmp + "/my notes")
+        spaced = "## Wiki\n\nPath: {}/my notes\n".format(self.tmp)
+        self.assertEqual(self.mod._wiki_path(spaced), self.tmp + "/my notes")
 
     def test_norm_path_accepts_both_forms(self):
         with mock.patch.object(self.mod.os, "name", "nt"):
@@ -1009,7 +1012,7 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         router = self.routes({
             (sys.executable,): ok("prepend_log_entry_outcome=prepended\n"),
             ("git", "diff", "--name-status"): ok(
-                "D\tgone.py\nR100\told.py\tnew.py\nA\ttests/test_new.py\nM\tkeep.py\n")})
+                "D\0gone.py\0R100\0old.py\0new.py\0A\0tests/test_new.py\0M\0keep.py\0")})
         code, out, _ = self.run_main(["wiki", "--state", self.state_file(state)], router)
         self.assertEqual(code, 0, out)
         self.assertIn("log.md: prepended", out)
