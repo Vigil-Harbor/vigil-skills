@@ -1,6 +1,6 @@
 ---
 name: spec-close
-description: Close a shipped spec in one pass — diff it against shipped code (reconciliation report), decompose into wiki entries (decisions, comprehension, state.md updates), archive spec artifacts from TODO/ to DONE/, and prepend an entry to the wiki's newest-first log.md. Plane state gates full-close vs partial-close; --report-only writes just the report, --partial archives without wiki decomposition. Supersedes the former two-step reconcile/retire flow. Pair with /spec-cycle and /ship-spec for the full spec lifecycle.
+description: Close a shipped spec in one pass — reconcile it against the shipped code, harvest wiki entries sized to the brief's tier, archive its artifacts from TODO/ to DONE/, and prepend a close entry to the wiki's log.md. Also archives tickets that have artifacts but no spec. Run after /spec-land.
 user_invocable: true
 requires:
   shell: true
@@ -9,493 +9,221 @@ requires:
   services: [issue-tracker?, vcs-host?]
 ---
 
-Invoked as:
-
 ```
-/spec-close <spec-path>                  # full flow
-/spec-close <spec-path> --report-only    # reconciliation report only, zero mutations beyond the report
-/spec-close <spec-path> --partial        # force partial-close (skip reconciliation and wiki decomposition)
+/spec-close <spec-path | TICKET-ID | docs/specs/TODO/<TICKET-ID>/> [--report-only | --partial]
 ```
 
-`--report-only` and `--partial` are mutually exclusive. If both are passed, halt with: `Usage: --report-only and --partial are mutually exclusive — pick one.`
+`--report-only` and `--partial` together halt with `Usage: --report-only and --partial are mutually exclusive — pick one.`
 
-The skill preserves the read-only-analysis-then-confirmed-mutations split internally: everything before the Phase 4 confirmation is analysis, with one exception — the reconciliation report, which is generated audit-trail output written before the checkpoint so the close plan can quote evidence from it. Every other mutation (wiki files, state.md, archive moves, log.md) happens strictly after the user approves the plan.
+Nothing changes before the Phase 4 confirmation except the reconciliation report.
 
 ## Phase 0 — Preflight
 
-1. Resolve `<spec-path>`. Expected shapes: `docs/specs/TODO/<TICKET-ID>.spec.md` or `docs/specs/DONE/<TICKET-ID>/spec.md`. Extract `ticket_id` (uppercase): from TODO paths, the filename stem before `.spec.md`; from DONE paths, the parent directory name. Derive `project_prefix` (portion before the first hyphen, e.g., `ADA` from `ADA-17`) and `issue_number` (integer portion after the hyphen, e.g., `17`). Set `project_root` to the repo root (the directory containing `CLAUDE.md`). Confirm the spec exists. Halt if not.
-2. The resolved spec exists on disk. Classify destination paths once, in the target repo, with `git check-ignore -q -- <path>`. A harness reports only pass or fail, so capture the integer:
+- **Resolve.** `project_root` is the repo root (the directory holding `docs/specs/`); run every command from it. Take the ticket id from the argument: the `.spec.md` stem, the `DONE/<ID>/` directory name, the `TODO/<ID>/` folder name, or the id itself. Uppercase it. `project_prefix` is the part before the first hyphen. The spec is `docs/specs/TODO/<ID>.spec.md`, else `docs/specs/DONE/<ID>/spec.md`.
+  - A spec exists: the spec flow (Phases 1–5).
+  - No spec, but a `docs/specs/TODO/<ID>.*` entry, a `docs/specs/TODO/<ID>/` folder, or an existing `docs/specs/DONE/<ID>/`: the archive-only close (Phase 2A).
+  - Nothing found: halt with `nothing to close for <ID> under docs/specs/`.
+- **Wiki.** Read `wiki_root` and `project_slug` from the project's `CLAUDE.md` or `AGENTS.md`. If a path with a username segment does not exist, retry it with the current user's name. A missing wiki is a warning; Phase 1 handles it.
+- **Origin.** Run `timeout 30 git fetch origin`, then `git rev-list --count HEAD..origin/<branch>` (the default branch when the current one has no origin counterpart). When behind, print one line: `origin: local <branch> is <N> commits behind origin/<cmp> — reconciliation reads the working tree; never updated here.` Any git failure prints `origin: skipped (<reason>)`. Never update the tree.
 
-   ```bash
-   if git check-ignore -q -- <path>; then rc=0; else rc=$?; fi
-   echo "classify: <path> exit $rc"
-   ```
+Print one preflight line: ticket, flow (spec | archive-only), flags, wiki, origin.
 
-   Exit 0 holds `ignored`. Exit 1 holds `not-ignored`. Exit 1 with no output is the ordinary not-ignored result, not a failed command. Any exit other than 0 or 1, or a command that cannot be run, is a failed classification: print the exit code and the output, and stop before staging or moving any artifact.
+## Phase 1 — Mode
 
-   The destination set is fixed at this step. Each entry is one full path, and that same string is what `git check-ignore -q` classifies and what the archive step uses as `<destination>` for `git mv`, `mv`, and `git add`. Do not pass a bare filename. A bare filename is a path the `docs/specs/` rule does not match, and that shape exits 1. The set is `docs/specs/DONE/<TICKET-ID>/spec.md`, `docs/specs/DONE/<TICKET-ID>/brief.md`, `docs/specs/DONE/<TICKET-ID>/reconciliation.md`, `docs/specs/DONE/<TICKET-ID>/reviews`, `docs/specs/DONE/<TICKET-ID>/test-output.txt`, `docs/specs/DONE/<TICKET-ID>/review.md`, and `docs/specs/DONE/<TICKET-ID>/<stripped-name>` for every other `docs/specs/TODO/<TICKET-ID>.*` companion that already exists (the mapping in the archive step). `spec.md` is not prefixed twice. `docs/specs/DONE/<TICKET-ID>/reconciliation.md` is in the set even when Phase 2 has not written it yet. Hold each destination's `ignored` or `not-ignored`. The archive step reads the held result and does not run `git check-ignore` again.
+Spec flow only. The archive-only close skips this phase whatever the ticket's state. First match wins:
 
-   For each source that already exists, print one line:
+1. `--report-only` → report only. No tracker read; the report's Plane line reads `not checked (--report-only)`.
+2. `--partial`, or no tracker config → partial-close. No tracker config means the installed `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ship-spec/states.json` is missing, unreadable, or has no `project_prefix` key.
+3. The ticket's state group is `completed` or `cancelled`, and the wiki exists → full-close.
+4. Anything else → print why, then the partial-or-abort prompt: `1. Partial-close  2. Abort`. This covers another group, a read with no group, Plane unreachable or ticket not found, and a missing wiki for a full close.
 
-   `archive: <source> → <destination> — <state>`
+Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,completed_at"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). `state.group` is the gate. A failed read prints `ticket: could not read <TICKET-ID> from the issue tracker (<error>). Usually a login problem: re-authenticate the tracker connection.` and takes rule 4.
 
-   `<state>` is `tracked` when `git ls-files --error-unmatch <source> 2>/dev/null` exits 0 and `git ls-files --others --exclude-standard -- <source>` prints nothing, `tracked, with untracked files` when the first exits 0 and the second prints any path (a directory holding both tracked and untracked files), `untracked, destination not ignored` when that command exits 1 and the held destination result is `not-ignored`, and `untracked, destination ignored` when it exits 1 and the held result is `ignored`. Keep the `2>/dev/null`, and capture the integer the same way as `git check-ignore`. Exit 1 is the ordinary untracked result (the pathspec error on stderr); it is not a failed command and not a stop. Any other exit from this tracking command, or any non-zero exit from the `--others` listing: print it and stop before moving. Those are the four states. Continue on exit 0 and exit 1. A source written later (the reconciliation report) is absent from this note; its destination class is already held.
-3. Read `<project_root>/CLAUDE.md`. Resolve the wiki path (resolve username-bearing paths per spec-cycle convention: replace the username segment with the current user — Windows: `$env:USERNAME`; Unix: `$USER` — and re-check). Set `wiki_available` = the wiki directory exists. A missing wiki here is a **warning**, not a halt — Phase 1 applies the per-mode behavior (rows 7–8).
-4. Read `<config-dir>/skills/ship-spec/states.json`, where `<config-dir>` is `$CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude/` on Unix and `%USERPROFILE%\.claude\` on Windows (the same resolution order `sync.py` installs with, and the one Phase 5 step 4 resolves the log script through). Handle failure modes — all warn and set `force_partial_close = true` (Plane lookups cannot proceed without `project_id`):
-   - **File missing or unreadable:** Warn: `states.json missing or unreadable — skipping Plane state gate, entering partial-close mode.`
-   - **Invalid JSON:** Warn: `states.json contains invalid JSON — skipping Plane state gate, entering partial-close mode.`
-   - **Prefix not found:** Warn: `Project prefix "<project_prefix>" not found in states.json. Skipping Plane state gate — entering partial-close mode.`
-   Otherwise capture `project_id` and the states map.
-5. Parse flags. Apply the mutual-exclusion check above. `--partial` sets `force_partial_close = true`.
-6. Origin sync check (target repo). Reconciliation diffs the spec against **shipped code**, and the archive step moves spec artifacts the merge may have added on `origin`; a local tree behind `origin` cold-reads stale files and can miss merge-added artifacts (e.g., a `test-output.txt` capture committed with the PR). This is an informational **warn only** — never a halt, and never an auto-update: spec-close keeps every mutation behind the Phase 4 checkpoint, so it must not fast-forward the tree here. Catch-all: any git failure inside this step → log `origin: skipped (git error)` and continue.
-   a. **Detect origin remote:** `git remote get-url origin 2>/dev/null`. If exit ≠ 0: log `origin: skipped (no remote)` and continue.
-   b. **Refresh origin refs:** `timeout 30 git fetch origin 2>/dev/null`. Ref update only — never touches the working tree. Network failure is non-fatal: log `origin: fetch failed (proceeding with available refs)` if exit ≠ 0 and continue with whatever `origin/*` refs are already local.
-   c. **Resolve branches:** `git symbolic-ref --short -q HEAD`. Empty output (detached HEAD): log `origin: skipped (detached HEAD)` and continue. Otherwise capture `<branch>`, then bind the comparison branch `<cmp>`: if `git rev-parse --verify -q origin/<branch>` succeeds, `<cmp>` = `<branch>` (counterpart comparison); otherwise fall back to origin's default branch (`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/origin/||'`, then `main`, then `master` as literals via `git rev-parse --verify`). If none resolve: log `origin: skipped (no comparison branch)` and continue.
-   d. **Behind count:** `git rev-list --count HEAD..origin/<cmp>`. If 0: log `origin: in-sync` and continue. (A branch *ahead* of `origin/<cmp>` with no incoming commits also counts 0 — in-sync for staleness purposes.)
-   e. **Warn (non-blocking):** print `ORIGIN SYNC: local <branch> is <N> commits behind origin/<cmp> — the reconciliation diff and archive step may read stale or missing files (e.g., artifacts the merge added on origin). Consider 'git merge --ff-only origin/<cmp>' before closing.` Log `origin: behind-N (warned)` and continue. spec-close never updates the tree on the user's behalf.
+Never gate on `completed_at`: some states that are not done still set it. It is only a ship-date source.
 
-Print a one-line preflight summary (ticket, flags, states.json status, wiki status, origin sync status), then continue.
+Partial-close skips Phases 2 and 3. With no wiki it archives only and prints `wiki not found — skipping log.md entry; archive only`.
 
-## Phase 1 — Mode resolution
+## Phase 2 — Reconcile (full-close and report-only)
 
-One Plane lookup decides the mode. Rows are evaluated **top-down and the first matching row wins** — in particular, `--report-only` (row 1) takes precedence over `force_partial_close` (row 2):
-
-| # | Input | Mode |
-|---|---|---|
-| 1 | `--report-only` flag | **report-only** — skip the Plane lookup; the report's `> Plane state:` header reads `not checked (--report-only)` |
-| 2 | `force_partial_close` (from `--partial` or a states.json failure) | **partial-close** — print: `Entering partial-close mode: archiving spec artifacts only, skipping reconciliation and wiki decomposition.` |
-| 3 | Plane lookup succeeds; state group `completed` or `cancelled` | **full-close** |
-| 4 | Plane lookup succeeds; ticket's state UUID absent from the state map, or `state` is null | Prompt, never infer a group — **missing UUID:** name the unmatched UUID and suggest a states.json refresh; **null state:** report that the ticket has no state UUID and suggest a states.json refresh. Either branch: `1. Partial-close  2. Abort` |
-| 5 | Plane lookup succeeds; any other resolvable group | Print the current state name and group, then the same partial-or-abort prompt ("I invoked this prematurely" exits via Abort). `/spec-land` is the step that moves the ticket to Done or Post-merge Checklists. |
-| 6 | Plane unreachable or ticket not found | Warn, then the same partial-or-abort prompt (the safer path) |
-| 7 | Resolved mode would be full-close but `wiki_available` is false | Same partial-or-abort prompt with reason `wiki not found at <path>` — checked after rows 3–6, before any reconciliation work |
-| 8 | Partial-close (via any row) and `wiki_available` is false | Proceed; the log.md entry is dropped from the close plan with a printed notice: `wiki not found — skipping log.md entry; archive only` |
-
-Plane mechanics (rows 3–6): list states with the tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host), whose results carry `id` and `group`. Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields: "name,state,completed_at"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas), without `expand`, so that `state` stays a UUID. Match the ticket's `state` UUID against the state map to determine the group. `completed_at` is requested because the ship date reads it.
-
-**Never use `completed_at` as a gate signal** — some Plane workspaces have non-completed states that still set `completed_at`. The state UUID → group match is the only gate. (`completed_at` remains acceptable later as a *date source* for the state.md evidence triple.)
-
-## Phase 2 — Reconciliation (full-close and report-only)
-
-Skipped entirely in partial-close — diffing spec intent against code that may not have merged is meaningless. If a reconciliation report already exists on disk in partial-close, it is archived with the other companions in Phase 5.
-
-### 2a. Gather shipped state
-
-Goal: identify what code actually shipped for this ticket.
-
-1. **Find the merge commit(s).** Three strategies, tried in order:
-   a. `git log --all --oneline -i -E --grep="<TICKET-ID>([^0-9]|$)" -- .` — matches commit messages containing the ticket ID. Case-insensitive because conventional-commit subjects lowercase the ticket ID (ship-spec's `<type>(<ticket-lower>):` prefix is the primary producer; this skill's own `close(<ticket-lower>):` commits appear on re-runs). The `([^0-9]|$)` suffix prevents prefix collisions — `VHS-1` must not match `VHS-11`'s commits.
-   b. Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields: "name,description_stripped"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. Parse `description_stripped` for PR references (`PR #N`, `#N`, `github.com/.../pull/N`) as today. A failed read prints `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` (`<error>` is `no tracker connected` when no tracker tool is connected). A not-found read prints `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.` Either one falls through to 1c. No retry and no cache; warn once.
-   c. If neither yields results, prompt the user: `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`
-
-2. **Read the shipped diff.** Branch on identifier type:
-   - **PR number:** `<N>` is the PR number that classification selected, with one leading `#` removed if the selected text has one, so both `123` and `#123` produce the pattern `(#123)`. No other trimming. An empty or non-numeric `<N>` for which both `gh` commands exit 0 is that other PR: no argument uses the current branch's PR, and a branch name selects that branch. That success is not a fallback case. Do not add a digits check.
-
-     Run `gh pr view <N> --json files,additions,deletions` for the file-level diff stat, then `gh pr diff <N>` for the full diff content. If both exit 0, use that output as today and do not run the fallback.
-
-     `gh` is absent or has failed when it cannot be executed (not on `PATH`, or the harness reports the command unavailable) or either of those two commands exits non-zero. Auth failure, network failure, a missing PR, and a non-zero `gh` are the same case. Do not parse `gh`'s stderr. If `gh pr view` exits 0 and `gh pr diff` does not, discard the view output.
-
-     On that case, print exactly one warning line, then run one `git log`. Do not run a second lookup.
-
-     ```text
-     warning: gh absent or failed for PR #<N> — resolving the squash-merge SHA with git log --grep "(#<N>)"
-     ```
-
-     ```text
-     git --no-pager log --exclude=refs/stash --all --format=%H%x09%P%x09%s -F --grep="(#<N>)"
-     ```
-
-     `--exclude=refs/stash` comes before `--all`, so the stash ref and the index commit it points at are not walked. A squash merge that is not on `HEAD` is still visible. This is not step 1a's reach: step 1a also passes `-- .`, and this command does not. `-F` keeps `(#<N>)` literal. Default `--grep` is basic regex, and unescaped parentheses are already literal there; `-F` is what stops a `grep.patternType=extended` config, or an `-E` flag, from turning the pattern into a group that also matches a bare `#<N>`.
-
-     Split each stdout line on the first two tab characters. Column 1 is the SHA, column 2 is the parent SHAs, and the remainder is the subject. Accept a line only when column 1 is one hex SHA of 40 or 64 characters, column 2 is exactly one parent SHA (hex, no space), and the trimmed subject ends with ` (#<N>)`. A body mention, a revert subject (it does not end with ` (#<N>)`), and anything reachable only from `refs/stash` is not accepted.
-
-     - Exactly one accepted line: take the commit-SHA branch below with that SHA. Do not call `gh` again for this identifier. The reconciliation report's `> Merge:` value is that SHA. The report format already allows a commit SHA there. That line may be any ref `--all` walks, including a commit that is not an ancestor of `HEAD` or of `refs/remotes/origin/HEAD`. Do not add an ancestor filter.
-     - Zero accepted lines, more than one accepted line, or a non-zero exit from that `git log`: this is "finds nothing" (a non-squash or rebase merge, no such commit, or more than one commit that looks like the squash). Do not pick the newest. Print the existing step 1c prompt, unchanged: `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`. Classify the answer the same way step 2 already classifies an identifier, and read it with this same step. No second warning, no attempt counter, no new prompt, no timeout. The automated search ends at that prompt; the operator ends it by supplying a SHA (or a PR number whose lookup succeeds).
-   - **Commit SHA:** `git show --stat <SHA>` for file-level diff stat, then `git show <SHA>` for full diff content.
-   If the diff is large (>500 lines), summarize by file rather than reading every line — focus grep on the specific code paths the spec's decisions describe.
-
-3. **Read the spec's companion brief** at the same directory as the spec (`<TICKET-ID>.brief.md` for TODO paths, `brief.md` for DONE paths), if it exists. The brief's acceptance criteria are the primary reconciliation targets.
-
-### 2b. Reconcile
-
-Walk the spec section by section:
-
-1. **Scope (files changed).** Compare the spec's "Scope" or "Edit" section against the PR's actual diff stat. For each file the spec says to change: confirm it appears in the diff. For each file in the diff that the spec doesn't mention: flag as "Added (not in spec)." For each file the spec mentions but the diff doesn't touch: flag as "Dropped."
-
-2. **Decisions.** For each `### Decision` in the spec: read the relevant code (using the file paths from the diff) and confirm the decision is reflected. Use grep/file reads, not inference. Mark each as: Confirmed (code matches), Drifted (code diverges — describe how), or Unverifiable (decision is about behavior/performance, not structure).
-
-3. **Acceptance criteria.** For each "Done when" bullet in the spec (or "Acceptance" in the brief): produce a grep or file-read that confirms the criterion is met. Mark as: Met (with evidence), Unmet (with explanation), or Unverifiable.
-
-4. **Test plan.** Check whether the tests described in the spec's "Test plan" section exist in the codebase. Grep for test file names, function names, or describe blocks.
-
-### 2c. Report
-
-Write the reconciliation report alongside the spec. If the spec is at `docs/specs/TODO/<TICKET-ID>.spec.md`, write to `docs/specs/TODO/<TICKET-ID>.reconciliation.md`. If the spec is at `docs/specs/DONE/<TICKET-ID>/spec.md`, write to `docs/specs/DONE/<TICKET-ID>/reconciliation.md`.
-
-If a report already exists at the target path, overwrite it (it is generated output, not user-authored content) and print one line first: `overwriting existing reconciliation report (was: RECONCILED: <old> DRIFT: <old-n>)`.
-
-Report format:
+- **Merge.** In `<wiki_root>/log.md`, find the headings that contain `merge | <PREFIX> — <TICKET-ID> PR #`. spec-land writes one per landed PR. The PR number follows `PR #` up to the `:`. The SHA is that entry's `Landed: <sha>` body line; an entry without one gives only its PR number. Several entries: read each and combine them. With no wiki or no entry, run `git log --all --oneline -i -E --grep="<TICKET-ID>([^0-9]|$)" -- .` (the suffix keeps `VHS-1` off `VHS-11`). Nothing found: ask `Could not find merge commit for <TICKET-ID>. Enter PR number or commit SHA:`.
+- **Diff.** For each SHA, read the first-parent diff: `git diff --stat <SHA>^1 <SHA>`, then `git diff <SHA>^1 <SHA>`. That is the change for a squash commit and for a two-parent merge commit, where `git show` prints no diff. If `<SHA>^1` does not resolve, the clone lacks the commit: say so and ask the operator to fetch. With only a PR number, run `gh pr view <N> --json files,additions,deletions` and `gh pr diff <N>`. If `gh` is absent or either command fails, stop and ask for the merge SHA. Over 500 diff lines: summarize by file, and read the paths the spec's decisions name.
+- **Brief.** `<ID>.brief.md` beside a TODO spec, `brief.md` beside a DONE spec. Its acceptance criteria are reconciliation targets. Its `## Tier` `**Level:**` line drives Phase 3.
+- **Walk.** Read the code; do not infer.
+  - Scope: each spec file in the diff, dropped, or unexpected.
+  - Decisions: Confirmed, Drifted, or Unverifiable.
+  - Done-when criteria: Met, Unmet, or Unverifiable, each with evidence.
+  - Test plan: does each test exist?
+- **Report.** Write `<ID>.reconciliation.md` beside the spec (`reconciliation.md` beside a DONE spec). Overwrite an old one.
 
 ```markdown
 # Reconciliation Report: <TICKET-ID>
 
 > Date: YYYY-MM-DD
-> Spec: docs/specs/TODO/<TICKET-ID>.spec.md
-> Merge: <PR number or commit SHA>
+> Spec: <spec path>
+> Merge: <PR number(s) and SHA(s)>
 > Plane state: <state_name> (group: <group>)
 
 ## Summary
-<1-2 sentences: overall reconciliation status.>
+<1-2 sentences.>
 
 ## Scope
 | Spec file | In diff? | Notes |
 |---|---|---|
-| `path/to/file.ts` | Yes | As specified |
-| `path/to/other.ts` | No | Dropped — <reason> |
 
 Unexpected files in diff (not in spec):
-- `path/to/surprise.ts` — <what it does>
+- `path` — <what it does>
 
 ## Decisions
 | # | Decision | Status | Evidence |
 |---|---|---|---|
-| 1 | <title> | Confirmed | `file:line` — '<excerpt>' |
-| 2 | <title> | Drifted | <explanation> |
 
 ## Acceptance Criteria
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | <criterion> | Met | `file:line` — '<excerpt>' |
-| 2 | <criterion> | Unmet | <explanation> |
 
 ## Test Plan
 | Test | Exists? | Location |
 |---|---|---|
-| <test description> | Yes | `path/to/test.ts:line` |
 
 ## Wiki-ready
-Decisions and comprehension worth extracting to the wiki:
-- <Decision N>: <why it's wiki-worthy — non-obvious, reusable, or constraining>
-- <Comprehension>: <what changed and why, for the comprehension layer>
+<one line per entry worth writing, or `none`>
 
 RECONCILED: <yes|no> DRIFT: <n>
 ```
 
-The `RECONCILED: yes` status requires: all acceptance criteria Met or Unverifiable, zero Unmet. Drifted decisions alone don't block — drift is informational. `DRIFT: <n>` counts Drifted + Dropped + Unexpected items.
+`RECONCILED: yes` needs zero Unmet. `DRIFT` counts Drifted + Dropped + Unexpected. Report-only ends here: print the report path and `Re-run /spec-close <spec-path> without --report-only to complete the close.` On `RECONCILED: no`, ask `Spec has unmet acceptance criteria. Continue anyway? [y/N]` and halt on N.
 
-**report-only mode ends here.** Print the report path and a pointer: `Re-run /spec-close <spec-path> (without --report-only) to complete the close.`
+## Phase 2A — Archive-only close
 
-**`RECONCILED: no` soft halt.** Warn: `Spec has unmet acceptance criteria. Review the reconciliation report before proceeding. Continue anyway? [y/N]`. Halt on N.
+For a ticket with artifacts but no spec. There is no reconciliation, no harvest and no mode-gate read. `--report-only` stops with `nothing to reconcile: <ID> has no spec`. `--partial` is accepted and changes nothing.
 
-## Phase 3 — Wiki analysis (full-close only)
+Phase 4 shows the archive plan and the log entry. Phase 5 runs the archive and the log write. The log heading is `## [<date>] close | <PREFIX> — <ID>: <title> (archive only, no spec)`. `<title>` is the brief's `# ` heading when a brief exists. Otherwise it is the ticket name from a tracker read when one succeeds, else `<ID> artifacts`. The body is one sentence naming what was archived.
 
-Partial-close skips to Phase 4 with proposals = archive list + close log entry (or archive list only, Phase 1 row 8).
+A ticket already in `DONE/<ID>/`, with nothing left in `TODO/`, only gets the log line; the guard keeps it to one. With no wiki, it archives only and prints the skipped-log notice.
 
-### 3a. Duplicate detection
+## Phase 3 — Harvest (full-close only)
 
-Search the wiki for existing entries related to this ticket:
+- **Duplicates.** Run `grep -rlw "<TICKET-ID>"` over `decisions/`, `comprehension/` and `projects/<slug>/state.md`, and show the hits. Do not propose a kind of entry the wiki already has for this ticket unless the operator asks. A state.md hit counts only when it sits under What's Shipped; a hit under What's Active or What's Next is the entry to move to What's Shipped. spec-close never edits the filemap; spec-land owns it.
+- **Weight.** Brief tier `small`: a state.md entry and the log line only. Any other tier, or no tier:
+  - a decision page only when the spec chose between real options;
+  - a comprehension page only for a new module, data flow or integration.
 
-```bash
-grep -rlw "<TICKET-ID>" "<wiki_root>/decisions/" "<wiki_root>/comprehension/"
-grep -rli "<key-terms>" "<wiki_root>/decisions/" "<wiki_root>/comprehension/"
-```
+  Follow the wiki's SCHEMA.md templates.
+- **state.md.** A What's Shipped entry has three parts:
+  - the evidence-triple heading `(<ID>, <ship-date>, commit <sha>)`;
+  - the `Verification: <file>:<line> -- '<excerpt>'` line, taken from the report;
+  - 1–2 sentences and links.
 
-The `-w` (word-boundary) flag on the ticket-ID grep prevents prefix collisions — `VHS-1` must not match files mentioning only `VHS-11`. `<key-terms>` are 2-3 distinctive words from the spec's Goal section (not common words like "fix" or "update").
+  The ship date is `completed_at`, else the merge commit's date, else today with a warning. With incomplete evidence, skip the state.md edit and say so. Replace the `> Last updated:` line with one line, `> Last updated: <today> (<ID> <short note>)`. Never keep or extend a `Prior:` chain.
 
-If matches found, read each matched file's title and first paragraph. Present to user:
-```text
-Pre-existing wiki entries found:
-  1. decisions/2026-05-06-dyn-34-score-calibration-pipeline.md — "Decision: DYN-34a score calibration pipeline"
-  2. comprehension/2026-05-06-dyn-34b-ui-calibration-overlay.md — "Comprehension: DYN-34b calibration UI overlay"
+## Phase 4 — Confirm
 
-These may already cover some or all of the spec's content.
-Duplicates will be excluded from wiki proposals below.
-```
-
-Track matched ticket IDs and decision titles as an exclusion list for Phase 3b.
-
-### 3b. Wiki decomposition
-
-#### Fast-path: check existing wiki coverage
-
-Before drafting any wiki proposals, check whether `/wiki-after-merge` has already created wiki entries for this ticket. This is a grep-based pre-check (no LLM analysis) that can skip or narrow the derivation pipeline.
-
-**Stage 1 — Determine applicable derivation categories.**
-
-Extract the `## Wiki-ready` section from the reconciliation report, then grep for category markers within that section only (scoping avoids false positives from the `## Decisions` table header):
-
-```bash
-sed -n '/^## Wiki-ready/,/^##\|^RECONCILED/p' "<reconciliation_report_path>" > /tmp/wiki-ready-section.txt
-grep -c "Decision" /tmp/wiki-ready-section.txt
-grep -c "Comprehension" /tmp/wiki-ready-section.txt
-```
-
-Classify applicability:
-
-| Category | Applicable when |
-|----------|----------------|
-| `comprehension/` | Wiki-ready section contains "Comprehension" (grep count > 0) |
-| `decisions/` | Wiki-ready section contains "Decision" (grep count > 0) |
-| `state.md` "What's Shipped" | Always (evidence triple is mandatory for full-close) |
-
-If the reconciliation report has no `## Wiki-ready` section (sed produces empty output), treat all categories as applicable and fall through to normal derivation.
-
-Note: `log.md` is not included in the coverage model. The close log entry is a distinct event from the merge log entry that wiki-after-merge writes. Phase 3c always compiles a close log entry, and Phase 5's idempotency guard (`scripts/prepend_log_entry.py --guard "close | <PROJECT> — <TICKET-ID>:"`) prevents duplicates while allowing the close entry to coexist with wiki-after-merge's merge entry.
-
-Note: `filemap.md` is intentionally **out of scope** for spec-close. `/spec-land` is the step that writes the filemap delta. `/wiki-after-merge` remains the fallback for everything else. spec-close derives close-event wiki entries (comprehension, decisions, state.md, log.md) but never edits the filemap.
-
-**Stage 2 — Check existing coverage.**
-
-For each applicable category, run a targeted grep with echo delimiters for unambiguous per-category classification:
-
-```bash
-echo "::COMP::"; grep -rlw "<TICKET-ID>" "<wiki_root>/comprehension/" 2>/dev/null
-echo "::DECI::"; grep -rlw "<TICKET-ID>" "<wiki_root>/decisions/" 2>/dev/null
-echo "::STATE::"; grep -rlw --include="state.md" "<TICKET-ID>" "<wiki_root>/projects/" 2>/dev/null
-```
-
-Run all applicable greps in a single Bash call (semicolon-separated). Classify each applicable category by checking the output between its delimiter and the next: non-empty output after the delimiter = `covered`, no output after the delimiter = `missing`.
-
-**Stage 3 — Branch on coverage level.**
-
-1. **Full coverage** (all applicable categories are `covered`):
-
-   Print a summary of what was found (only list applicable categories):
-   ```text
-   Wiki coverage already exists (likely created by /wiki-after-merge):
-     [found] comprehension/ — <matched-filename>
-     [found] decisions/ — <matched-filename>
-     [found] state.md — entry found
-
-   All derivation categories covered. Skip wiki proposal derivation? [y/N]
-   ```
-
-   - On `y`: set derivation proposals to empty (no decisions, no comprehension, no state.md edit). Proceed to Phase 3c, which still compiles the archive list and the close log entry.
-   - On `N`: fall through to the normal derivation flow.
-
-2. **Partial coverage** (some applicable categories are `covered`, some are `missing`):
-
-   Print what's covered and what's missing:
-   ```text
-   Partial wiki coverage found:
-     [found]   comprehension/ — <matched-filename>
-     [missing] decisions/ — not found
-     [found]   state.md — entry found
-
-   Deriving proposals for missing categories only.
-   ```
-
-   Then run the normal derivation logic below, but scoped to only the `missing` categories. Read all necessary inputs (reconciliation report, spec) as usual — only the drafting/proposal step is scoped to missing categories. The Phase 3a exclusion list still applies within the derivation scope.
-
-3. **No coverage** (no applicable categories are `covered`):
-
-   No output from the fast-path. Fall through to the normal derivation flow unchanged.
-
-#### Normal derivation (when fast-path does not fully exit)
-
-1. Read the reconciliation report's "Wiki-ready" section and the spec's "Decisions" sections.
-2. For each decision worth extracting (non-trivial, reusable, or constraining — skip implementation-detail decisions like "use `git mv` not `mv`"):
-   - Check against the duplicate exclusion list. Skip if covered.
-   - Draft a wiki decision entry following SCHEMA.md's standard or multi-judgment format. Include: Context (from spec's Goal), Options Considered (from spec's Decision rationale), Decision (what was chosen), Consequences, Related links.
-3. If the spec describes a significant architectural change (new module, new data flow, new integration):
-   - Draft a comprehension entry following SCHEMA.md's template. Include: What Changed, Why, What Would Break, Files Touched, Judgment Calls.
-4. For `state.md` updates:
-   - If the ticket was in "What's Next" or "What's Active", propose moving it to "What's Shipped" with the evidence triple:
-     ```markdown
-     ### <Title> (<TICKET-ID>, <ship-date>, commit <merge-sha>)
-     Verification: <file>:<line> -- '<excerpt>'.
-     ```
-   - The ship date: try `completed_at` from the Plane ticket first (date source only — never a gate signal); if null, fall back to the merge commit date from `git log --format=%ci <merge-sha>`, then to today's date as last resort (with a warning). The merge SHA comes from the reconciliation report. The verification line comes from the reconciliation report's acceptance criteria evidence.
-
-### 3c. Compile proposals
-
-Collect all proposed actions into a single summary:
-- Wiki decisions to create (with filenames and content previews)
-- Wiki comprehension entries to create
-- `state.md` edits (as diffs)
-- Files to archive (list of `TODO/` -> `DONE/` moves, showing the rename mapping per file)
-- `log.md` entry (full text)
-
-For partial-close, this section contains only the archive list and the log.md entry (or the archive list alone when the wiki is unavailable, Phase 1 row 8).
-
-## Phase 4 — Consolidated confirmation
-
-One checkpoint covers every post-report mutation. Present the compiled proposals:
+One checkpoint covers every change after the report. Run the archive block (Phase 5) with `--dry-run` added after the ticket id, and paste its output, or its `archive NOT run` line, into the plan verbatim:
 
 ```text
 === CLOSE PLAN: <TICKET-ID> ===
-Mode: <full-close | partial-close>
-Reconciliation: <RECONCILED: yes|no, DRIFT: n | skipped (partial-close)>
+Mode: <full-close | partial-close | archive-only>
+Reconciliation: <RECONCILED: yes|no, DRIFT: n | skipped>
 Wiki: <available | not found — log.md entry omitted>
 
 Wiki entries to create:
   1. decisions/YYYY-MM-DD-<slug>.md — "<title>"
      <3-line preview>
-  2. comprehension/YYYY-MM-DD-<slug>.md — "<title>"
-     <3-line preview>
 
 State.md update:
   File: projects/<project>/state.md
-  Move "<Title>" from What's Active → What's Shipped
-  Evidence: (<TICKET-ID>, YYYY-MM-DD, commit <SHA>)
+  <What's Shipped entry and the new Last updated line>
 
-Archive (TODO/ → DONE/<TICKET-ID>/, ticket prefix stripped):
-  - <TICKET-ID>.spec.md → spec.md
-  - <TICKET-ID>.brief.md → brief.md
-  - <TICKET-ID>.reconciliation.md → reconciliation.md
-  - <TICKET-ID>.reviews/ → reviews/ (N files)
+Archive (dry run):
+  <archive_spec.py --dry-run output>
 
 Log.md entry (prepended):
-  ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <title>
-  <summary>
+  ## [<date>] close | <PREFIX> — <TICKET-ID>: <title>
+  <body>
 
 Proceed? [y/N]
 ```
 
-Halt for user confirmation. On `N`: exit with zero post-report mutations. On `y`: continue to Phase 5.
+On `N`, stop: nothing changes after the report.
 
 ## Phase 5 — Execute
 
-All post-report file operations happen here, after user approval.
+1. **Wiki** (full-close only). Write the approved pages, then the state.md edit.
+2. **Archive.** Run this block and show its output:
 
-1. **Wiki entries** (full-close only). Write each approved decision/comprehension file to `<wiki_root>/decisions/` or `<wiki_root>/comprehension/`.
-
-2. **State.md update** (full-close only). Apply the approved `state.md` edit. The edit must include the evidence triple — if the evidence is incomplete (no merge SHA, no verification grep), skip the `state.md` edit and warn: `state.md update skipped: incomplete evidence triple. Run /wiki-state-update manually.`
-
-3. **Archive.** In the target repo:
    ```bash
-   mkdir -p docs/specs/DONE/<TICKET-ID>
-   ```
-   For each artifact, apply the rename mapping — the ticket prefix is stripped because the `DONE/<TICKET-ID>/` directory name already carries the ID (and the fleet's existing archives use exactly this shape):
-   - `<TICKET-ID>.spec.md` → `spec.md`
-   - `<TICKET-ID>.brief.md` → `brief.md`
-   - `<TICKET-ID>.reconciliation.md` → `reconciliation.md`
-   - `<TICKET-ID>.reviews/` → `reviews/`
-   - any other companion `<TICKET-ID>.<rest>` → `<rest>` (e.g., `VHS-3.test-output.txt` → `test-output.txt`)
-
-   Per artifact:
-   - If the source path no longer exists, skip it and print `already archived: <name>` — this is what makes an interrupted run re-runnable.
-   - If `<destination>` already exists as a file, directory, or symlink (`[ -e <destination> ] || [ -L <destination> ]`), do not move: print `destination exists: <destination>`, leave the source in `TODO/`, and do not count that artifact as staged. Neither command refuses an existing directory: `git mv` and `mv` both exit 0 and nest the source inside it.
-   - Check tracking status: `git ls-files --error-unmatch <file> 2>/dev/null`
-   - Tracked source (`git ls-files --error-unmatch` exits 0): `git mv <source> <destination>`. `<destination>` is the full path from the destination set, never the stripped filename. Do not consult the destination class. A tracked file, and a tracked directory, moved onto a destination the gitignore matches, exits 0 and stays staged when that destination does not exist yet. If `git mv` exits non-zero, print the error, leave the artifact, and do not count it as staged.
-   - Tracked source with untracked files: `git mv <source> <destination>`. It moves every file but stages only the tracked ones. When the held destination is `not-ignored`, follow it with `git add <destination>` to stage the rest. If that add exits non-zero, print it and report `partially archived: <destination>`: the tracked files are staged and the untracked ones are not. When it is `ignored`, do not `git add`; print `untracked files kept local under <destination>`.
-   - Untracked source, held destination `not-ignored`: filesystem `mv <source> <destination>`. If `mv` exits non-zero, print the error, leave the artifact, and do not `git add` or count it as staged. Otherwise `git add <destination>`; if the add fails, print it and do not count the artifact as staged. This is the only `git add` of that destination.
-   - Untracked source, held destination `ignored`: filesystem `mv <source> <destination>` only. If `mv` exits non-zero, print the error and leave the artifact. Do not `git add`.
-
-   A directory follows the same branches. `git add` of an ignored directory is the failing add named in Failure modes; the third branch is what avoids it. The commit suggestion does not `git add` again. A later `git add` of a destination `git mv` already staged, when a gitignore rule matches that destination, exits 1 and leaves the staged rename in place.
-
-4. **Log.md** (skipped when Phase 1 row 8 dropped it). Write the approved entry to the **top** of `<wiki_root>/log.md`, above the newest existing dated entry — the file is newest-first, and an entry at the bottom is out of contract. The byte work belongs to `scripts/prepend_log_entry.py`, which owns anchor location, the idempotency guard, and an atomic write; this step supplies the entry and reads the result. `<PROJECT>` is `project_prefix` from Phase 0 step 1. Format:
-   ```markdown
-   ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <spec title> (archived from TODO/)
-
-   <1-3 sentences: what the spec covered, reconciliation status, wiki entries created.>
+   ARCHIVE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-close/scripts/archive_spec.py"
+   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+   cd "<project_root>"
+   if test -f "$ARCHIVE"; then "$PY" "$ARCHIVE" <TICKET-ID> < /dev/null; else echo "archive NOT run: archive_spec.py not found at $ARCHIVE — install with 'python sync.py install'"; fi
    ```
 
-   **The guard literal is `close | <PROJECT> — <TICKET-ID>:`**, built here and passed as `--guard`. Both halves are load-bearing: the `close |` prefix distinguishes close entries from wiki-after-merge's merge-event entries (which also contain the ticket ID), and the trailing colon keeps closing `<PROJECT>-1` after `<PROJECT>-11` from false-matching and silently skipping the entry. The script refuses a guard that lacks the colon, one that still contains `<` or `>` (an unsubstituted template, which would otherwise land a literal-placeholder entry at position 1), and one absent from the entry's first line.
+   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It skips sources already gone and never moves onto an existing path. It stages tracked moves, and untracked ones only when git does not ignore the destination. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
 
-   **Resolve the script, the log path and the interpreter first.** The script path resolves relative to the **installed skill directory**, never relative to `project_root` — /spec-close runs with cwd set to the *target* repo, which is normally not the repo this skill is authored in:
+   On exit 0, continue. On any other exit, or `archive NOT run`, the archive is incomplete: skip the log write, report `Archive: incomplete` with the script's problem lines, and ask the operator to clear each one and re-run `/spec-close <TICKET-ID>`. A `destination exists` line means two artifacts claim one path: show the operator both paths and let them resolve it by hand before the re-run. Never delete, overwrite or rename either one yourself. For a tracked file, the operator uses `git mv`, so the index follows. To clear `moved, NOT staged`, run `git add` on that path. The re-run archives what is left and writes the log line. If it rewrites a reconciliation report that was already staged, run `git add` on the report again; leave an ignored one alone.
+3. **Log** (skipped when there is no wiki). Prepend the entry with `prepend_log_entry.py`; it places the entry above the newest dated one, checks the guard, and writes atomically.
+   - Spec-flow heading: `## [<date>] close | <PREFIX> — <TICKET-ID>: <spec title> (archived from TODO/)`, with a 1–2 sentence body.
+   - Guard: `close | <PREFIX> — <TICKET-ID>:`. The `close |` keeps it apart from spec-land's merge lines. The colon keeps `VHS-1` from matching `VHS-11`.
+   - `<date>` is today in UTC, or the newest date already heading `log.md` when that is later; the script refuses an entry older than the newest one.
 
    ```bash
    SCRIPT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-close/scripts/prepend_log_entry.py"
    LOGPATH="<wiki_root>/log.md"
    command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-   ```
-
-   All three assignments are required — the invocation reads `"$PY"`, and an omitted assignment expands to the empty string and fails at the shell. The interpreter probe tests *executability*, not presence: `python` is absent from `PATH` on a stock Debian/Ubuntu host, and on Windows `python3.exe` can be an App Execution Alias stub that exits without reading stdin. Write `$HOME` / `$CLAUDE_CONFIG_DIR`, never `~` or `%USERPROFILE%` — bash does not expand a tilde inside the double quotes every later use requires, so a tilde-rendered path makes the pre-check below report not-found for an installed script.
-
-   **Pre-check, then invoke.** A missing script and a refusing script both exit 2, so the install hint cannot be inferred from the code afterwards:
-
-   ```bash
-   test -f "$SCRIPT" || echo "log.md NOT written: prepend_log_entry.py not found at $SCRIPT — install with 'python sync.py install'"
-   ```
-
-   **If that check reports not-found, the invocation block below is skipped entirely** — do not run it. There is no `prepend_log_entry_exit` to read in that case, so there is nothing to branch on; report the not-found line above and go straight to step 5. Running it anyway would print the install hint and then a second, contradictory failure from the interpreter (`can't open file …`, exit 2) for one underlying cause.
-
-   ```bash
-   if "$PY" "$SCRIPT" "$LOGPATH" --guard 'close | <PROJECT> — <TICKET-ID>:' <<'PREPEND_LOG_ENTRY_EOF'
-   ## [YYYY-MM-DD] close | <PROJECT> — <TICKET-ID>: <title>
+   if test -f "$SCRIPT"; then
+   if "$PY" "$SCRIPT" "$LOGPATH" --guard 'close | <PREFIX> — <TICKET-ID>:' <<'PREPEND_LOG_ENTRY_EOF'
+   ## [<date>] close | <PREFIX> — <TICKET-ID>: <title>
 
    <body>
    PREPEND_LOG_ENTRY_EOF
    then rc=0; else rc=$?; fi
    echo "prepend_log_entry_exit=$rc"
+   else echo "log.md NOT written: prepend_log_entry.py not found at $SCRIPT — install with 'python sync.py install'"; fi
    ```
 
-   Four details in that block are load-bearing, and three of them fail silently or misleadingly rather than loudly:
-   - **Single-quote the guard.** It contains ` | ` by construction; unquoted, bash splits it into a pipeline, the script receives `--guard close`, and the shell then tries to run the ticket prefix as a command.
-   - **Double-quote both paths, expanded.** An unquoted Windows path has its backslashes consumed as escapes, yielding a *relative* path that does not exist — which takes the missing-file outcome, creates a stray `log.md` in the target repo's cwd, and exits 0. Python accepts `/` separators on Windows.
-   - **Keep the `PREPEND_LOG_ENTRY_EOF` delimiter.** Quoting a heredoc suppresses *expansion*, not *termination*: a body line equal to the delimiter ends the entry there and hands the remainder to the shell as commands, in a tree step 3 has already moved files in. The truncated entry still validates and still lands, reporting success. Close bodies are hundreds of words of composed prose, so `EOF` and `ENTRY` are reachable; this delimiter is not.
-   - **Capture the exit code through the `if`.** A bare `"$PY" … ; echo "$?"` loses the value under a `set -e` shell on exactly the two paths that matter. `$?` after `fi` is **always 0** — both branches end in an assignment, and a compound command returns the status of its last command — so it is not a shorthand for this.
+   Single-quote the guard. Double-quote both paths. Keep the `PREPEND_LOG_ENTRY_EOF` delimiter. Branch on the echoed integer, not on the harness's pass or fail:
 
-   **Branch on the echoed integer**, never on the harness's success/failure signal: a harness reports only pass/fail, so 1 and 2 both read as failure and a correctly-skipped idempotent re-run — an expected path, per the *Interrupted execute* and *Partial-then-full re-run* failure modes below — would be reported as a write that did not happen.
+   | Exit | Report |
+   |---|---|
+   | 0 | `Prepended: log.md` on `prepend_log_entry_outcome=prepended`; on `=fresh` or `=created`, the script's stderr notice verbatim |
+   | 1 | `log.md: entry already present — skipped` |
+   | other | `log.md NOT written: <stderr>` |
 
-   | `prepend_log_entry_exit` | Meaning | Report in the completion block |
-   |---|---|---|
-   | 0 | Entry written; stdout carries `prepend_log_entry_outcome=prepended`, `=fresh`, or `=created` | On `=prepended`: `Prepended: log.md`. On `=fresh` (no dated entry existed, so the entry went at the end of the file) or `=created` (`log.md` did not exist and now holds this entry alone): surface the script's stderr notice **verbatim, in place of** that line, so a bottom placement or a file creation is never reported as a prepend. Branch on the token, never on whether stderr was empty. |
-   | 1 | **Only:** the guard is already present in `log.md`; nothing written | `log.md: entry already present — skipped` |
-   | 2 — **and any other nonzero value not listed above** | Everything else: input validation; a populated `log.md` the anchor cannot place an entry in — no dated entry it can describe, a heading-like line sitting *above* the newest dated one, an entry dated *older* than the newest one already in the file, or a date in either that is not a real calendar day (all refusals, never a silent misplacement); a concurrent change; or any I/O failure. A value the script itself never returns comes from the shell rather than the script — **127** being the one to expect: it means `$PY` resolved to nothing on `PATH`, *not* that the script is missing (a missing script is the interpreter's `can't open file …`, which is exit 2). Treat every nonzero value the same way. | Surface stderr verbatim: `log.md NOT written: <stderr>`, then the recovery below |
+   A failed log write never stops the close. To recover, re-run `/spec-close <TICKET-ID>`.
+4. **Never commit.**
 
-   **A failed log write never aborts the close.** Step 3 has already moved every spec artifact from `TODO/` to `DONE/`, across two repos neither of which is committed. On **any** nonzero exit — and on the not-found pre-check above, whose invocation is skipped — continue to step 5 and print the completion block, with `log.md NOT written: <stderr>` and the recovery: re-run `/spec-close <DONE-path>`, which the guard makes idempotent.
-
-5. **Do not commit.** The skill writes to two separate repos (target repo for archive, wiki repo for entries). Neither is committed — the user controls commit timing.
-
-Print at the end:
 ```text
 === CLOSE COMPLETE: <TICKET-ID> ===
-Land: /spec-land already ran
 
 Target repo (<project_root>):
   Reconciliation: docs/specs/DONE/<TICKET-ID>/reconciliation.md
-  Archived: TODO/<TICKET-ID>.* → DONE/<TICKET-ID>/ (ticket prefix stripped)
+  Archived: TODO/<TICKET-ID>.* → DONE/<TICKET-ID>/
+  Staged: <each path from the script's staged: lines>
   Status: uncommitted — review with `git diff --stat` then commit.
 
 Wiki (<wiki_root>):
   Created: decisions/YYYY-MM-DD-<slug>.md
-  Created: comprehension/YYYY-MM-DD-<slug>.md
   Updated: projects/<project>/state.md
-  <log.md line, exactly one, per the step 4 exit table — `Prepended: log.md` only on `outcome=prepended`>
-  Status: uncommitted — review with `git diff --stat` then commit.
+  <the log.md report line>
+  Status: uncommitted.
 
 Suggested commits:
   (in target repo)  git commit -m "close(<ticket-lower>): archive spec to DONE/"
-  Staged: <destination> <destination>
-  (in wiki)         git add <each wiki file this run wrote, by name, from the Wiki block above> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
-
-The suggestion does not `git add`. Do not `git add docs/specs/` and do not `git add -A`.
+  (in wiki)         git add <each wiki file this run wrote> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 ```
 
-When this run staged at least one destination (`git mv` that exited 0, or the archive-step `git add`), those paths are already staged. Name them, and no others, on the `Staged:` line, then print the target-repo commit with no `git add` and no pathspec. Do not `git add` those paths in the suggestion. A later `git add` of a destination `git mv` already staged exits 1 when a gitignore rule matches that destination and does not drop the rename, so a second add is not runnable. Do not pass the destinations as a commit pathspec.
+The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Name in the wiki suggestion only the files this run wrote; `log.md` only when the script wrote it. Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
 
-When this run staged nothing, omit the `(in target repo)` line only. Keep one warning line: do not `git add -A` in the wiki. Leave the wiki suggestion unchanged. Set the target-repo status line to `Status: local-only — nothing staged.` Print, in place of the target-repo suggestion: `Archive is local-only. Nothing was staged in the target repo.`
+## Re-runs
 
-The wiki suggestion names only the files this run wrote: each `decisions/` and `comprehension/` file under `Created:`, `projects/<project>/state.md` only when it is under `Updated:`, and `log.md` only when the step 4 script wrote it (`outcome=prepended`, `=fresh` or `=created`) — never on the skipped or not-written rows. Naming a file this run left alone stages whatever unrelated edit it carries, and naming one that does not exist fails the whole `git add`. When the run wrote no wiki file, omit the `(in wiki)` line.
-
-The `log.md` line is the step 4 table's third column verbatim, and never `Prepended:` on a path that did not prepend: the script's stderr notice on `outcome=fresh` or `=created`, `log.md: entry already present — skipped` on exit 1, and `log.md NOT written: <stderr>` on any other nonzero exit or on the skipped not-found pre-check. A close that reports a prepend over a bottom-placed, unwritten or absent entry sends the operator looking at the top of a file that does not hold it.
-
-For partial-close, omit the wiki block (or show only the log.md line when it was written) — the `(in wiki)` suggestion follows it, naming `log.md` alone or dropping out — and the reconciliation line unless a pre-existing report was archived.
+- **Interrupted execute.** Re-run with the DONE path or the ticket id. The archive script skips what already moved, and the guard skips the log line.
+- **Partial, then full.** The later full close's guard matches the partial's `close |` line, so there is no second log line, by design.
+- Keep the em dash in the guard: a tool that turns it into `-` breaks the match.
 
 ## Tool-use notes
 
-- Read, Grep for code verification, duplicate detection, and evidence extraction. `gh pr view` / `gh pr diff` for PR data (`vcs-host?`; the SHA path needs no `gh`).
-- The tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host) and its retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"` and `fields` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for the mode gate and the ticket read.
-- Bash for `git log --grep` (read-only), `git show`, `git mv`, `mkdir -p`, `scripts/prepend_log_entry.py` (the Phase 5 `log.md` write, invoked through the resolved `$PY`), `grep -rlw` / `grep -c` (duplicate detection and fast-path coverage checks), `sed` (Wiki-ready section extraction), `git ls-files --error-unmatch`, `git check-ignore -q`, `git status`, and the Phase 0 origin-sync read-only probes (`git remote get-url`, `git fetch origin` bounded by `timeout`, `git symbolic-ref`, `git rev-parse --verify`, `git rev-list --count`). The origin-sync step never mutates the tree — no `git merge`/`pull`/`checkout`.
-- Write for the reconciliation report and wiki entries. Edit for state.md updates (surgical line replacement). `log.md` is deliberately **not** a Write target: `scripts/prepend_log_entry.py` owns it, which makes the duplicate check and the insert one operation rather than a check this skill could read and then write anyway.
-- **Mutation boundary:** no file mutation before the Phase 4 confirmation except the reconciliation report (generated audit-trail output, Phase 2c). All other writes — wiki entries, state.md, archive moves, log.md — happen in Phase 5, after explicit user approval.
-- This skill never commits. Do not push. Do not open PRs.
-
-## Failure modes
-
-- **Merge commit not found.** Fall back through the three strategies to the user prompt. Common for tickets where commit messages don't include the ticket ID (older conventions).
-- **Large diffs.** PRs with >500 lines of diff: summarize by file, don't try to read every line. Focus grep on the specific code paths the spec's decisions describe.
-- **Ticket read fails at 2a.** Print `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` or `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`, and continue with git log and the brief.
-- **Plane unreachable or ticket not found.** Surface the partial-or-abort prompt (Phase 1 row 6) — partial-close is the safer path (archive only, no wiki writes or state.md edits). Re-run once Plane is available to get full-close with wiki decomposition.
-- **`completed_at` is not a gate.** Some Plane workspaces have non-completed states that still set `completed_at`; the state UUID → group match is the only gate signal (Phase 1). `completed_at` is used solely as a ship-date source, with merge-commit-date and today-with-warning fallbacks.
-- **State UUID unresolvable.** A ticket state UUID missing from the state map (stale `project_id` in states.json, or a null state field) lands on Phase 1 row 4 — prompt, never infer a group.
-- **Wiki path missing.** Per-mode behavior (Phase 1 rows 7–8): full-close prompts partial-or-abort before any reconciliation work; partial-close degrades to archive-only with a printed notice. Never discovered mid-execute.
-- **Interrupted execute.** If Phase 5 dies mid-sequence (a move fails, user interrupts), re-run `/spec-close` with the **DONE** path (`docs/specs/DONE/<TICKET-ID>/spec.md`). Duplicate detection, the log idempotency guard, and the skip-if-source-missing archive steps make re-execution idempotent.
-- **Partial-then-full re-run.** A prior partial-close wrote a `close |` log entry; the later full-close's idempotency guard matches it and skips a second entry by design — the wiki-harvest event is visible in the created entry files and state.md, not in a second log line.
-- **Log-guard encoding.** The `--guard` substring compare depends on the literal em dash (`—`) in the entry format; tools that normalize it to `--`/`-` will break dedup and produce duplicate entries on re-run. The script pins UTF-8 on every file open, on stdin, and on both output streams, which is what makes that compare reliable on platforms whose default encoding is not UTF-8.
-- **`state.md` evidence incomplete.** Skip the `state.md` update, warn, and suggest `/wiki-state-update` as a follow-up. Don't block the rest of the close.
-- **Spec artifact tracking.** Four states, per artifact. Tracked source: `git mv` of the full destination path, and the result stays staged even when the destination matches a gitignore rule and that destination does not exist yet. An existing destination is never moved onto: `git mv` and `mv` both nest a source inside an existing directory and exit 0, so the archive step checks first and leaves that artifact unstaged. Tracked source with untracked files: `git mv`, then `git add` only when the destination is not ignored; a failed add leaves it partially archived. Untracked source, destination not ignored: filesystem `mv`, then `git add`. Untracked source, destination ignored: filesystem `mv` only. `git add` on that ignored path exits 1 and prints `The following paths are ignored by one of your .gitignore files:`, including when the path is already staged by `git mv`. Source tracking is `git ls-files --error-unmatch` with stderr discarded; exit 1 is untracked. Destination class is the Phase 0 captured `git check-ignore -q` integer: exit 0 ignored, exit 1 not ignored.
-- **Cross-repo commit discipline.** The skill writes to two repos but commits to neither. Print a target-repo suggestion only when this run staged at least one destination. That suggestion is the commit of what is already staged, with those paths named beside it, and no `git add`. Omit it when nothing was staged. A filesystem move into an ignored destination is a write, and it is not a reason to print a target-repo `git add`. The wiki one names only the files this run wrote and is omitted when it wrote none. Never `git add docs/specs/` or `git add -A`. The user controls when and how to commit.
-- **Cross-repo specs.** The skill runs in the target repo (where the spec lives). Wiki path comes from that repo's CLAUDE.md. No cross-repo file access is needed during reconciliation.
+- File read and write: the report, the wiki pages, and the state.md edit. `log.md` changes only through `prepend_log_entry.py`.
+- Shell with git; `archive_spec.py` and `prepend_log_entry.py` run through the resolved interpreter.
+- `gh`, optional (`vcs-host?`): only for a PR-number-only diff.
+- The issue tracker's ticket read (`issue-tracker?`).
+- Never commit, push, or open a PR.
