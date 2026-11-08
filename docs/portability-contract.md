@@ -137,7 +137,7 @@ Parity is judged on these outcomes plus honored control-flow — **not** on stri
 
 ## Worked reference
 
-`skills/spec-cycle/SKILL.md` carries the first capability declaration as a worked reference. It exercises every field of the schema: `git fetch` (`shell`, `network`), reading briefs and writing spec/review files (`filesystem: [read, write]`), dispatching reviewer subagents in parallel (`subagents`), and calling Plane, warn-and-proceed (`services: [issue-tracker?]`):
+`skills/spec-cycle/SKILL.md` carries the first capability declaration as a worked reference. It exercises every field of the schema: `git fetch` (`shell`, `network`), reading briefs and writing spec/review files (`filesystem: [read, write]`), dispatching reviewer subagents in parallel (`subagents`). The skill keeps the optional `services: [issue-tracker?]` declaration and its body does not call the tracker:
 
 ```yaml
 requires:

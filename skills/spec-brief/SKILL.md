@@ -38,14 +38,37 @@ Read each reply for intent. Numbered lines are the fast path; a person may answe
 1. `project_root` = cwd. Read its project-instructions file (`CLAUDE.md`, or `AGENTS.md` where that holds the instructions). Resolve `wiki_root` and `project_slug` if a wiki is configured; if a hardcoded wiki path with a username does not exist, retry with the current user's name.
 2. **Output collision.** If only a stale `docs/specs/TODO/.<TICKET-ID>.brief.md.tmp` exists, remove it, log `stale temp removed`, and continue. If the brief, the spec, or `docs/specs/TODO/<TICKET-ID>.reviews/` exists, list what exists and offer `1. Write the brief` or `2. Abort. The files stay.`, then wait. On 1, an existing brief is read as grounding; a spec is never read as grounding. Never overwrite silently.
 3. **Origin sync (warn only).** Run a bounded `git fetch origin`. If the current branch is behind its origin branch, print `ORIGIN SYNC: local <branch> is <N> commits behind origin/<cmp> — the brief's "verified against current files" claim may be stale.` and log `origin: behind-N`. Any git error, no remote, or detached HEAD logs `origin: skipped`. Never update the tree.
-4. **Ticket resolution.** Uppercase the identifier first; a lower-case ref is not found. Read it with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "id,name,state,description_stripped,priority,assignees,created_at"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). `id` is the header `<uuid>`, `state.name` the `<state>`, `created_at` the `**Created:**` date, `name` the title, `description_stripped` the ticket text and `priority` `**Priority:**`. `assignees` holds member ids: print the id, and `unassigned` only for an empty list. A field you did not request comes back null, or `[]` for an array, and that never means the ticket lacks it. On a failed read, print `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` (`<error>` is `no tracker connected` when no tracker tool is connected), then `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.`, and wait. On not-found, print `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`, then that same unresolved line, and wait. The brief header stays `**Plane:** unresolved (local-only)`. No retry and no cache; warn once per run.
+4. **Ticket resolution.** Uppercase the identifier first; a lower-case ref is not found. Read it with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "id,name,state,description_stripped,priority,assignees,created_at,project"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). `id` is the header `<uuid>`, `state.name` the `<state>`, `created_at` the `**Created:**` date, `name` the title, `description_stripped` the description and `priority` `**Priority:**`. `assignees` holds member ids: print the id, and `unassigned` only for an empty list. A field you did not request comes back null, or `[]` for an array, and that never means the ticket lacks it. On a failed read, print `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` (`<error>` is `no tracker connected` when no tracker tool is connected), then `ticket: unresolved (local-only) — describe the problem in a paragraph and I will proceed from that.`, and wait. On not-found, print `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`, then that same unresolved line, and wait. The brief header stays `**Plane:** unresolved (local-only)`. No retry and no cache; warn once per run.
+
+A successful read then lists that ticket's comments. A failed or not-found read does not attempt the list, prints no second warning, and the header is `**Comments:** not read`.
+
+`project_id` is the `project` string and `workitem_id` is the `id` string, never the identifier. Either value missing or not a non-empty string is a failed comment read. Do not guess a project id and do not open `skills/ship-spec/states.json`. Use the string the read returned.
+
+List with the tracker's comment-list capability (e.g., `workitem_comment` with `action: list`, or the equivalent in your host; load the tool first if your host defers tool schemas). `per_page` is 100. While `next_page_results` is true, pass `next_cursor` as the next `cursor`. `next_cursor` is present on the last page too, so `next_page_results` is the stop signal. Any failed call is a failed comment read: discard what was collected. No retry and no cache.
+
+Judge `comment_stripped`. Do not filter on `access`, `created_by`, or `created_via`, and do not parse `comment_html`. Blank or missing stripped text is not carried, and the comment still counts as read. Stripped text that is empty after trim is blank.
+
+Carry a comment that asks for work on this ticket or records a decision about it. Do not carry a pure status report. A comment that both reports status and asks for work, or both reports status and records a decision, is carried whole. These shapes are examples, not a filter. `PR opened: <pr-url>` is status, including extra sentences that only report what that PR contained or that tests passed. The post-merge checklist `land_check.py` builds begins `Post-merge checklists for PR #` and its last line begins `spec-land:checklist PR #`; unchecked boxes in it are the merged PR's test plan, not work for this brief. A request or a decision in the same comment carries the whole comment.
+
+`n` is the number of comments read and `c` is how many of those were carried. A finished list, including zero comments, sets the header to `**Comments:** <n> read, <c> carried`.
+
+A carried comment that contradicts `description_stripped` wins. Between two carried comments that contradict each other, the later readable `created_at` wins. Compare `created_at` as times; a missing or unreadable one loses. Cite a comment the brief follows as `comment <YYYY-MM-DD HH:MM> on <TICKET-ID>`, taken from `created_at` as written. Never cite `created_by`, `actor`, or `created_via`. `created_by` is not a signal. A carried comment that loses is not operative text. There is no contradiction parser: you judge, Confirm shows the citation, and `ticket_contract` holds each carried or not-carried label so the doubt pass can challenge the selection.
+
+On a failed comment read, print this once and still write the brief from the description. The header says the comments were not read.
+
+```text
+comments: could not read comments on <TICKET-ID> (<error>) — continuing from the description.
+```
+
+`<error>` is `no tracker connected` when no comment-list tool is connected, `missing id or project` when either value is missing or empty, and the tool's error otherwise. When `<error>` is `no tracker connected` or the tool's own error, add ` Usually a login problem: re-authenticate the tracker connection.` When `<error>` is `missing id or project`, stop after the first sentence.
+
 5. Print `ticket: <tracker | local-only> · wiki: <resolved|none> · origin: <token> · grill: on (rounds=N, questions=M) | off (--no-grill)`.
 
 ## Phase 1 — Grounding (read-only)
 
 Retrieval-first, stopping when the seed is sufficient:
 
-1. The ticket text, or the local-only paragraph.
+1. The ticket text, or the local-only paragraph. Ticket text is `description_stripped` plus each carried comment with its date and citation, after step 4's contradiction rule. A not-carried comment is not ticket text. On a failed comment read, ticket text is the description only.
 2. If `wiki_root` resolved: `<wiki_root>/projects/<project_slug>/state.md` (header plus touched sections) and `filemap.md`.
 3. The files the ticket names.
 
@@ -57,7 +80,7 @@ Assemble `seed`: the problem statement, established facts with sources, related 
 
 ## Seed gate
 
-Runs in every mode. If the ticket (or paragraph) states no problem — under two sentences, or nothing a decision could hang off — ask once (`Ticket <ID> states no problem — describe it in a paragraph and I will proceed from that.`), then halt with nothing written. Grilling's `empty-seed` exit halts the same way. Hold the ticket text, plus any paragraph collected here labelled `Seed-gate paragraph:`, as `ticket_contract` for Phase 3.
+Runs in every mode. If the ticket text (or the local-only paragraph) states no problem — under two sentences, or nothing a decision could hang off — ask once (`Ticket <ID> states no problem — describe it in a paragraph and I will proceed from that.`), then halt with nothing written. Grilling's `empty-seed` exit halts the same way. `ticket_contract`, held here for the doubt pass, is the description (or the local-only paragraph) plus every comment read, newest-first, each with its date, `carried: yes` or `carried: no`, and its stripped text, plus any paragraph collected here labelled `Seed-gate paragraph:`. On a failed comment read the contract is the description plus any Seed-gate paragraph. The seed and this gate use ticket text, not the not-carried comments.
 
 ## Tier gate
 
@@ -308,6 +331,7 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md`: the exact candidate the operator c
 # <TICKET-ID> — <title>
 **Status:** … · **Priority:** … · **Assignee:** …
 **Created:** <YYYY-MM-DD> · **Plane:** <TICKET-ID> (<uuid>, <state>) | unresolved (local-only)
+**Comments:** <n> read, <c> carried | not read
 **Origin:** <one paragraph: where this came from>
 
 ## Problem
@@ -323,6 +347,8 @@ Write `docs/specs/TODO/<TICKET-ID>.brief.md`: the exact candidate the operator c
 ## Risks / decisions
 ## References
 ```
+
+`**Comments:**` is a header line under `**Plane:**`, not a new `##` section. The section list is unchanged.
 
 **`## Tier`**, immediately before the conditional `## Scale`, with the chosen level:
 
@@ -374,8 +400,8 @@ fi
 
 **Mapping rules.** Phase 3 applies these once, to render the candidate.
 
-- `## Problem`, `## Why it matters` and `## Done when` are transcribed from the ticket (or local-only paragraph), never inferred; after that only a verified fold or an operator replacement changes them.
-- Local-only header: `**Status:** local-only · **Priority:** unset · **Assignee:** unassigned`.
+- `## Problem`, `## Why it matters` and `## Done when` are transcribed from the ticket text (or the local-only paragraph), never inferred; after that only a verified fold or an operator replacement changes them. A followed comment that asks for work lands in Problem, Scope, or Out of scope; one that records a decision may land in Decisions carried forward. A carried work request the brief does not follow is fenced in Out of scope with its citation. Not-carried comments are never a source.
+- Local-only header: `**Status:** local-only · **Priority:** unset · **Assignee:** unassigned`, and `**Comments:** not read`.
 - A Settled decision framed as a fence ("X is not in scope") → `## Out of scope`.
 - Other Settled items → `## Decisions carried forward`, numbered, each with the chosen branch and a one-line why. If none, write `_(none settled — see Risks / decisions)_` and print `warning: interview settled no decisions — the brief pins everything to the spec author`.
 - `## Premises` follows Decisions and is always present, in the § Premises shape.
@@ -416,11 +442,12 @@ Its only filesystem mutations are creating `docs/specs/TODO/`, writing and renam
 - Read, Grep, and read-only or ref-only Bash (`git fetch origin` bounded by a timeout, `git rev-list`, `git status`), plus the mutations above and the bounded `check_premises.py` run, which only reads the temp.
 - Agent for the Phase 1 exploration; the Phase 3 reviewer is a read-only native agent, skill, or command-line tool of another model family.
 - Skill for `grilling`.
-- The tracker's read capability, optional.
+- The tracker's read capability, optional, and its comment-list capability after a successful read.
 
 ## Failure modes
 
-- **Ticket unresolvable** → local-only mode; the seed gate still applies.
+- **Ticket unresolvable** → local-only mode; the seed gate still applies. The comment list is not attempted, and the header says the comments were not read.
+- **Comment list failed** → one warning, the brief is still written from the description, and the header says the comments were not read.
 - **Wiki path missing** → skip grounding step 2.
 - **Host cannot invoke a nested skill** → halt naming `--no-grill`.
 - **Doubt dispatch never returns** → it blocks the run; use the longest timeout the host offers and print the bound when it times out.

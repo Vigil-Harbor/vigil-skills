@@ -12,7 +12,7 @@ The orchestrator passes these in your prompt:
 - `spec_path` — the spec to review
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
-- `ticket_id` — the Plane ticket ID, if any
+- `ticket_id` — artifact id only, not a ticket read
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
 - `closure_manifest` — author-stated disposition of each predecessor P0/P1 finding (present when this pass has a closure predecessor); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred.
 - `scale_lens` — whether the optional scalability lens ran this round (`on` / `off`). Used only for closure tracking in step 7: when `off`, ignore any stale `scalability.md` left in the prior-round directory by an earlier on-run.
@@ -25,7 +25,7 @@ Execute these steps in order. Do not skip:
 
 1. **Read the spec from disk at `spec_path` fresh.** Do not trust prior context.
 2. **Read the brief at `brief_path`.**
-3. **Retrieve the Plane ticket if `ticket_id` is given**, using the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
+3. **Do not read the ticket.** When `ticket_id` is given, it names the artifact only. The brief is the only statement of the ticket. Do not file a finding that the ticket was unread or missing.
 4. **Read `<project_root>/CLAUDE.md`.**
 5. **Read the actual files the spec proposes to change.** You need to understand the existing control flow to identify which edges aren't handled.
 6. **Identify external dependencies** the spec touches: MCP server, Plane, model runtimes, file I/O, network, child processes. Each is a failure axis.
@@ -223,6 +223,4 @@ The **last non-blank line MUST be exactly one of**:
 
 - Use `Read`, `Grep`, `Glob` for spec, brief, CLAUDE.md, and source verification.
 - Use `Bash` only for read-only git introspection. Do not mutate state.
-- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
-
 Do not edit any file. You are read-only.
