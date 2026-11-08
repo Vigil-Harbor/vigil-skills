@@ -6,16 +6,17 @@ Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → s
 
 ### Skills
 
-- **`/spec-brief <TICKET-ID>`** *(new)* — Produce the brief `/spec-cycle` consumes. Resolves the ticket (tracker optional — degrades to conversation), grounds against your repo and wiki, runs a bounded design interview (three rounds, seven items each, fenced to decisions that change the brief), runs or explicitly skips a fresh-context cross-model doubt pass on the draft, confirms, then writes `docs/specs/TODO/<TICKET-ID>.brief.md`.
-- **`/spec-cycle <brief-path> [--attest "<reason>" | --full]`** — Author a spec from a brief, then run a parallel review loop (correctness / edge-cases / repo-conventions, plus an optional scalability lens) until findings clean or 4 passes complete. Authors live-verify runtime claims, and each dispatched round carries a ground-truth ledger sampled by correctness. Halts at a session boundary with a structural drift-check checklist before any implementation. Records its verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`; `--attest` records a green verdict reached by hand; `--full` forces a full review on a re-run. Pair with `/ship-spec`.
-- **`/spec-tickets <spec-path>`** *(new, optional)* — Break a green-lit spec into verifiable pieces with blocking edges, stop for your approval, then file each piece as a child of the spec's ticket. The dependency graph lives in the tracker (blocked-by relations, or a `Blocked by` section), or in one local file per piece when no tracker is connected. Reads the spec's verdict marker first: red halts, anything else is shown in the approval block. `/ship-spec` runs the same with or without it.
-- **`/ship-spec <spec-path>`** — Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Reads the spec's verdict marker in preflight: green passes, red halts, anything else asks for confirmation. An optional pre-commit review gate runs when the project declares a review command.
-- **`/spec-close <spec-path> [--report-only | --partial]`** *(new)* — After the PR merges, close the spec in one pass: reconcile it against shipped code, propose wiki entries, archive artifacts from `TODO/` to `DONE/<TICKET-ID>/`, and prepend the wiki's `log.md` entry. Plane state gates full vs. partial close.
-- **`/grill-me <topic>`** *(new)* — Ad-hoc bounded interview on a plan, decision, or idea. Same design-tree interview `/spec-brief` runs, with no lifecycle artifact — the summary is the deliverable.
-- **`/review-pr [<num>]`** — Process one round of CodeRabbit review findings on a GitHub PR. Triages by severity, fixes real issues, pushes, resolves threads, and verifies the resolve actually took.
+- **`/spec-brief <TICKET-ID>`** — Produce the brief `/spec-cycle` consumes. Resolves the ticket (tracker optional — degrades to conversation), grounds against your repo and wiki, runs a bounded design interview (three rounds, seven items each, fenced to decisions that change the brief), runs or explicitly skips a fresh-context cross-model doubt pass on the draft, confirms, then writes `docs/specs/TODO/<TICKET-ID>.brief.md`.
+- **`/spec-cycle <brief-path> [--attest "<reason>" | --full]`** — Author a spec from a brief, then run a parallel review loop (correctness / edge-cases / repo-conventions, plus an optional scalability lens) until findings clean or `round_cap` passes complete (2 for `small`, 4 otherwise). Authors live-verify runtime claims, and each dispatched round carries a ground-truth ledger sampled by correctness. Halts at a session boundary with a structural drift-check checklist before any implementation. Records its verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`; `--attest` records a green verdict reached by hand; `--full` forces a full review on a re-run. A green NEXT may recommend `/spec-tickets`. Pair with `/ship-spec`.
+- **`/spec-tickets <spec-path>`** *(optional)* — Invoking it files verifiable pieces with blocking edges as children of the spec's ticket, after its draft checks pass. A one-piece spec files nothing and points at `/ship-spec`. Any existing child of the parent, or a matching local `<PARENT-ID>.ticket-*.md` file, stops it; split the spec by hand when those children are unrelated. The dependency graph lives in the tracker (blocked-by relations, or a `Blocked by` section), or in one local file per piece when no tracker is connected. Red halts; any other verdict is recorded and filing continues.
+- **`/ship-spec <spec-path>`** — Take a green-lit spec through implementation, test gate, PR, and Plane update. Cuts an isolated git worktree from your default branch (your primary working tree is never touched), implements + tests in a tight loop, captures test output for the PR audit trail, and pushes a PR. Reads the spec's verdict marker in preflight: green passes, red halts, anything else warns and continues with an unchecked PR-body line. An optional pre-commit review gate runs when the project declares a review command.
+- **`/spec-land <PR-number | PR-URL | spec-path>`** — After the PR merges, confirm the landed code matches the recorded head and patch-id, move the Plane ticket, write the wiki merge line and filemap delta, and clean up the worktree and branch. Never merges and never commits.
+- **`/spec-close <spec-path | TICKET-ID | docs/specs/TODO/<TICKET-ID>/>`** — After `/spec-land`, close the spec in one pass: reconcile it against shipped code, propose wiki entries, archive artifacts from `TODO/` to `DONE/<TICKET-ID>/`, and prepend the wiki's `log.md` entry. A ticket with artifacts but no spec gets an archive-only close. Plane state gates full vs. partial close.
+- **`/grill-me <topic>`** — Ad-hoc bounded interview on a plan, decision, or idea. Same design-tree interview `/spec-brief` runs, with no lifecycle artifact — the summary is the deliverable.
+- **`/review-pr [<num>]`** — Process one round of CodeRabbit review findings on a GitHub PR. Triages by severity, fixes real issues, pushes, posts per-thread replies, and leaves threads for CodeRabbit to resolve.
 - **`/key-rotation`** — Guide a credential-exposure response. The operator performs every provider action. The skill keeps a gitignored record of names and dispositions and never prints or stores a secret value.
 
-`grilling` is the model-invocable interview primitive behind `/grill-me`, `/spec-brief`, and `/spec-cycle`'s post-round-4 option 4 — not a slash command.
+`grilling` is the model-invocable interview primitive behind `/grill-me`, `/spec-brief`, and `/spec-cycle`'s red-halt option 4 — not a slash command.
 
 ### Subagents
 
@@ -48,7 +49,7 @@ Flags: `--dry-run`, `--verbose`, `--prune` (install only — deletes files in `~
 
 ## Customizing for your project
 
-These skills delegate project-specific rules (test commands, await guardrails, lint conventions) to your project's `CLAUDE.md`. The skills read it during preflight and respect what's there. See [`docs/customizing.md`](docs/customizing.md) for details.
+These skills delegate project-specific rules (test commands, await guardrails, lint conventions) to your project's `CLAUDE.md` or `AGENTS.md`. The skills read them during preflight and respect what's there. See [`docs/customizing.md`](docs/customizing.md) for which file each key is read from.
 
 ## Cross-harness portability
 
@@ -63,8 +64,9 @@ The engine that emits these canonical `SKILL.md` sources as per-harness packages
 - **Python 3.8+** for `sync.py` (stdlib only — no pip install).
 - **Claude Code** — skills and subagents are Claude Code features.
 - For `/spec-cycle`, `/ship-spec`, and `/spec-close`: a Plane.so workspace with the Plane MCP connector, and `gh` CLI authenticated. `/spec-close`'s wiki half additionally needs a wiki checkout.
+- For `/spec-land`: `gh` CLI authenticated. Plane is optional; without it, spec-land prints the manual ticket steps.
 - For `/spec-brief` and `/grill-me`: no external services required — `/spec-brief` reads the ticket through the issue tracker when present and degrades to conversation when not. Both need a harness that can dispatch a read-restricted subagent. `/spec-brief`'s doubt pass also needs a session-available, fresh-context mechanism that itself states a different model family or provider and offers the narrowest read-restricted agent class or a read-only sandbox mode; a shell or installed-skill bridge counts when it meets the same checks. Without one, the pass degrades by tier: `small` and `big` skip and record it, `irreversible` halts.
-- For `/spec-tickets`: an operator is required at approval; the tracker is optional (local files only when no issue-tracker integration is connected); `gh` is not required.
+- For `/spec-tickets`: invoking it files; the tracker is optional (local files only when no issue-tracker integration is connected); `gh` is not required. A one-piece spec files nothing.
 - For `/review-pr`: `gh` CLI authenticated, CodeRabbit configured on your repo.
 
 ## License

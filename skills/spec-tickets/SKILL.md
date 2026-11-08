@@ -1,6 +1,6 @@
 ---
 name: spec-tickets
-description: Optional stage between /spec-cycle and /ship-spec. Break one green-lit spec into verifiable pieces with blocking edges, stop for operator approval, then file each piece as a child of the spec's ticket — blocked-by relations where the tracker has them, a Blocked by section where it does not, one local file per piece when no tracker is connected. Never files headless. Does not change how /ship-spec runs.
+description: Optional stage between /spec-cycle and /ship-spec. Splits one green-lit spec into verifiable pieces with blocking edges and files them as children of the spec's ticket — blocked-by relations where the tracker has them, a Blocked by section where it does not, one local file per piece when no tracker is connected. Files nothing for a spec that does not split. Does not change how /ship-spec runs.
 user_invocable: true
 requires:
   shell: optional
@@ -8,237 +8,121 @@ requires:
   services: [issue-tracker?]
 ---
 
-# /spec-tickets — break a green-lit spec into dependency-linked tickets
+# /spec-tickets — file verifiable pieces of one spec
 
-Invoked as:
+This skill reads one spec, drafts the fewest pieces that each deliver one end-to-end outcome and can be verified alone, and files them. The dependency graph lives in the tracker, not in the spec and not in an ordered list.
 
-```
-/spec-tickets <spec-path>
-```
-
-This skill reads one green-lit spec, drafts the fewest pieces that can each be verified alone, records which pieces block which, and stops for the operator. Only after approval does it file each piece as a child of the spec's ticket. The dependency graph lives in the tracker, not in the spec and not in an ordered list.
-
-The stage is optional. Not invoking it is the skip: a spec with no child tickets ships through `/ship-spec` exactly as before.
+The stage is optional. Not invoking it is the skip. Invoking it is the authorization to file.
 
 ## Invocation
 
-- `<spec-path>` is the only argument. There are no flags.
-- The repo root is the current directory when it contains `AGENTS.md` or `CLAUDE.md`; otherwise it is the nearest ancestor that contains one of them.
-- The only accepted path is `<root>/docs/specs/TODO/<TICKET-ID>.spec.md`, where the file stem before `.spec.md` is the whole ticket id and matches `^[A-Z][A-Z0-9]*-[0-9]+$`. Normalize path separators, and accept a path that resolves to that file. A stem that only begins with a ticket id does not match.
-- Anything else — a missing path, an unknown flag, a brief path, a bare ticket id, a path outside `docs/specs/TODO/`, a path containing `..`, or a request to work from the conversation — halts with `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` and writes nothing.
-
-`<PARENT-ID>` below is the ticket id taken from the file name.
+One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`. The file stem is the ticket id, `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` and stops with nothing written.
 
 ## Operator replies
 
-Read every operator reply for intent. The numbered lines in a prompt are the fast path. A headless caller or another agent may answer with those lines. A person may answer in their own words.
-
-Before you act, print one line: `Reading: <what you will do>.`
-
-Act only when the reply has one meaning. When it has more than one meaning, ask again. Name what is ambiguous. Do not print the grammar again. Keep every clear part of the reply. Do not invent an answer for an item the reply does not address. The prompt stays pending until the reply is clear or the operator aborts.
-
-Silence is never yes. An empty reply is not a yes.
-
-`abort` as the only non-blank line, after trim, still stops and writes nothing further. The compare is case-sensitive. Do not treat any other word as abort.
-
-An override still needs a stated reason. The reason may be free-form. A reason that is empty after trim is not an override.
-
-A host that cannot wait keeps its current stop. That stop is not a reply.
-
-Where a prompt below says an empty reply stops, that stop wins over the "ask again" sentence. Those prompts are the approval block and the integration pick. An empty reply there is the headless stop, not a human sentence to clarify.
+The one prompt is the integration pick. Read the reply for intent. The numbered list is the fast path. Print `Reading: <what you will do>.` before acting. An ambiguous reply is asked again, naming what is unclear. Silence or an empty reply is never yes, and at the integration pick it stops with nothing written. `abort` as the only non-blank line stops with nothing written.
 
 ## Phase 0 — Preflight
 
-1. Resolve the repo root and the spec path as above.
-2. Read the spec. It is the only source for the breakdown. Do not read the sibling brief, the reviews directory, or the conversation for pieces. The verdict marker inside the reviews directory is read in step 4 for the verdict and for nothing else.
-3. **Heading check.** Each of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, and `## Out of scope` must occur exactly once as a level-2 heading outside a fenced block. A missing heading, or a second heading of the same name, halts with the heading named. This skill does not re-run reviewers.
-4. **Verdict read.** Classify `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` — the marker `/spec-cycle` writes. `/spec-cycle`'s installed `verdict_marker.py` owns the marker format and its states. Classify the marker with this block, run as one shell call because a host may start each call in a fresh shell:
+Read the spec. It is the only source for pieces.
 
-   ```bash
-   VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
-   command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
-   "$PY" "$VERDICT" read --ticket <PARENT-ID> --marker docs/specs/TODO/<PARENT-ID>.reviews/verdict.md --no-fingerprint
-   ```
+**Heading check.** Halt, naming the heading, when the spec lacks `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Done when` or `## Out of scope`.
 
-   It prints the state as one JSON object. If `$VERDICT` does not exist, or the call exits non-zero or prints no valid JSON, the state is `unreadable` with reason `script missing — run python sync.py install` or `verdict_marker.py exit <n>`. On a host with no shell, the state is `unreadable` with reason `no shell — verdict not fully checked`. In every one of these fallback cases, first read the marker as plain text: a first `verdict:` line whose value is `red` halts as below.
+**Verdict read.** `verdict_marker.py` owns the marker. Run this block as one shell call:
 
-   This skill checks no fingerprint, so a `verdict: green` marker is always `green` here, including one whose `fingerprint:` is `none`. It never sees `changed`. What this skill does for each JSON `state`:
+```bash
+VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
+command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python3 || PY=python
+"$PY" "$VERDICT" read --ticket <PARENT-ID> --marker docs/specs/TODO/<PARENT-ID>.reviews/verdict.md --no-fingerprint
+```
 
-   - `missing`: shown in the approval block.
-   - `unreadable`: shown in the approval block, naming the `reason`.
-   - `pending`: shown in the approval block.
-   - `red`: halt.
-   - `green`: shown in the approval block.
+`red` halts before any draft:
 
-   `green` carries its kind, the JSON `kind`: `review, round <round>`, `operator-attested`, or `source not recorded`. Its date is the JSON `date`, which is `no date` when the marker has none.
+```text
+SPEC VERDICT: red (round <round>, gate <gate>, <date>).
+/spec-tickets does not file tickets for a red spec.
+Get a green verdict first: re-run /spec-cycle, or record your own review with
+  /spec-cycle <spec-path> --attest "<reason>"
+```
 
-   - `red`: halt here, before any draft, with the JSON `round`, `gate` and `date` (on the plain-text path, the marker's own lines):
+Any other state continues. The report line is `Verdict: <state>`, plus the JSON `kind` and `date` when the state is green, or the `reason` when the state is unreadable.
 
-     ```text
-     SPEC VERDICT: red (round <round>, gate <gate>, <date>).
-     /spec-tickets does not file tickets for a red spec.
-     Get a green verdict first: re-run /spec-cycle, or record your own review with
-       /spec-cycle <spec-path> --attest "<reason>"
-     ```
+A missing script, a non-zero exit, output that is not JSON, or a host with no shell reads the marker as plain text. A first `verdict:` line of `red` halts as above. Anything else is `Verdict: unreadable (<reason>)`. The reason is `script missing — run python sync.py install`, `verdict_marker.py exit <n>`, or `no shell — verdict not fully checked`.
 
-   - Anything else: keep one verdict line and continue. There is no separate prompt; `Approve and file` in Phase 3 is the operator's confirmation of that line.
-     - `Verdict: green (<kind>, <date>) — fingerprint not checked on this host`
-     - `Verdict: missing — no recorded review for this spec`
-     - `Verdict: pending — a review started and did not finish`
-     - `Verdict: unreadable (<reason>) — treated as no recorded review`
-
-   This step reads no reviewer report and recomputes no gate.
-5. **Deferred rows.** If the spec has a `## Deferred — follow-up required` section, count its `### D-<n>:` headings outside fenced blocks. Those rows are never filed as pieces. If the section exists and the count is zero, the count line later reads `Deferred rows not filed: 0 (no D-<n> headings)`.
-6. Print `ticket: <PARENT-ID> · headings: ok`, then the verdict line from step 4 on its own line.
+**Deferred rows.** Headings under `## Deferred — follow-up required` are never filed as pieces. Their count is shown in the report.
 
 ## Phase 1 — Storage probe
 
-Read-only. Decide, once, where the graph will be written. One integration per run.
+Read-only. One integration per run.
 
 | Mode | When | What is written |
 |------|------|-----------------|
-| `native` | An issue-tracker integration is connected, the parent ticket resolves through it, it can create a work item with a parent, and it offers an operation that creates a blocked-by relation between two work items | Child work items of the parent, plus one blocked-by relation per edge. No `Blocked by` section. No local files. |
-| `text` | The same, except it offers no such relation operation | Child work items of the parent, each with a `Blocked by` section. No relation writes. No local files. |
-| `local` | No issue-tracker integration is connected. This is the only `local` trigger | One file per piece at `docs/specs/TODO/<PARENT-ID>.ticket-<slug>.md`, including `Blocked by`. No tracker writes. |
-| `halt` | An issue-tracker integration is connected, and this probe or the parent retrieve does not answer or returns an error, or no connected integration can create a work item with a parent | Nothing. |
+| `native` | A connected integration resolves the parent, creates a work item with a parent, and creates a blocked-by relation | Child work items, plus one blocked-by relation per edge |
+| `text` | The same, except it creates no blocked-by relation | Child work items, each with a `Blocked by` section |
+| `local` | No issue-tracker integration is connected | One file per piece at `docs/specs/TODO/<PARENT-ID>.ticket-<slug>.md` |
+| `halt` | An integration is connected and the probe or the parent retrieve fails, or none can create a work item with a parent | Nothing; the run stops here. |
 
-Rules:
+`halt` is not `local`. Local files beside a live tracker would be a second graph.
 
-- **`halt` is not `local`.** An optional service that is unavailable would normally warn and proceed. Here it halts, because local files beside a live tracker would be a second graph.
-- **More than one candidate.** If more than one connected integration can create a work item with a parent, stop before the approval block, print their names, and wait for the operator to name one. A non-empty reply that names one printed integration selects it. A non-empty reply that names none asks again and names them. `abort` stops and writes nothing. An empty reply, end of input, a timeout, or a host that cannot wait still halts with no writes. The chosen name is part of the approved draft.
-- **Relation direction.** A `native` edge is one relation, created on the dependent child, of the blocked-by kind, with the blocker child as its target. An integration that offers only the inverse kind (a blocker pointing at what it blocks) is `text`.
-- **Parent.** On `native` and `text`, resolve the parent with the integration's retrieve-by-identifier capability. Keep the parent reference, and the project reference when a create needs one, in the form that integration's own create operation takes. If the retrieve fails, or lacks a reference the create needs, the mode is `halt`. Do not consult shared memory and do not read any state-id config file for this.
-- **Existing work.** On every mode except `halt`, make one read for work an earlier run may have left: the parent's children when the integration can list them, and the files matching `docs/specs/TODO/<PARENT-ID>.ticket-*.md`. Keep the two counts. If the children read is unavailable or fails, that count is `unknown`; it does not change the mode. The counts are a notice, not a census.
-- **The mode is fixed for the run.** Nothing after this phase switches it.
+More than one integration that can create a work item with a parent asks which one, before drafting. That pick is the prompt in Operator replies.
 
-The storage line has one grammar: `Storage: native via <name>`, `Storage: text via <name>`, `Storage: local`, or `Storage: halt via <name or none> (<reason>)`.
+A `native` edge is one blocked-by relation on the dependent, targeting the blocker. An integration that offers only the inverse kind is `text`.
 
-`halt` still lets the draft be shown in Phase 3. It does not allow filing.
+On `native` and `text`, resolve the parent through the integration's retrieve-by-identifier capability. A retrieve that fails, or that lacks a reference the create needs (the parent reference, or the project reference when a create takes one), is `halt`.
+
+**halt.** Print `Storage: halt via <name or none> (<reason>) — nothing filed.` and stop before drafting. The draft is not shown.
+
+**Duplicate guard.** Count the files matching `docs/specs/TODO/<PARENT-ID>.ticket-*.md`. In `native` and `text`, also count the parent's children through the integration. The applicable counts are the file count in `local`, and both counts in `native` and `text`. When any applicable count is above zero, print `NOT FILED: <PARENT-ID> already has children (<n>: <identifiers> | not checked (local)) and local ticket files (<n>). If they are pieces from an earlier /spec-tickets run, delete them by hand and run again; otherwise split this spec by hand.` When an applicable count cannot be read, print `NOT FILED: cannot count <PARENT-ID>'s children through <name> (<reason>) — children: unknown, local ticket files: <n | unknown>.` Either way stop with nothing written. A tracker with no list-children capability therefore never files in `native` or `text`.
 
 ## Phase 2 — Draft
 
-Draft from the spec's Design and Scope only. Do not explore the repo for extra work.
+Draft from the spec's Design and Scope only.
 
-**What a piece is.**
+**What a piece is.** A piece delivers one end-to-end outcome and can be verified without the other pieces. A slice of a single layer with no outcome of its own is not a piece. A piece is small enough for one agent to finish in a single fresh context. Draft the fewest pieces that satisfy those two rules. When the Design already calls for a seam a later piece needs, that seam is its own piece and must still be verifiable alone. Do not invent a seam the Design does not name. When the Design is one mechanical change across many Scope rows, use expand–contract: one piece that adds the new form beside the old; one or more pieces that move callers across, each blocked by the first; one piece that removes the old form, blocked by every mover. Do not add a final integrate-and-verify piece. The parent spec's full Done when and the pre-merge review run once on the assembled PR.
 
-- A piece is a narrow slice that delivers one end-to-end outcome and can be verified without the other pieces. A slice of a single layer with no outcome of its own is not a piece.
-- A piece is small enough for one agent to finish in a single fresh context. This is a sizing rule for the breakdown. It is not a token budget, a batch size, or a cap on parallel work.
-- Draft the fewest pieces that satisfy those two rules.
-- **Preparatory pieces.** When the spec's Design already calls for a seam that a later piece needs, that seam is its own piece ahead of the piece it unblocks, and it must still be verifiable alone. Do not invent a seam the Design does not name.
-- **Wide mechanical change.** When the spec's Design is one mechanical change across many Scope rows, so that no narrow slice could land working, use expand–contract: one piece that adds the new form beside the old; one or more pieces that move callers across, each blocked by the first; one piece that removes the old form, blocked by every mover.
-- Do not add a final "integrate and verify" piece. The parent spec's full Done when and the pre-merge review run once on the assembled PR and are that check.
-
-**Slugs.** Name each piece with a slug matching `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 40 characters, unique in the draft. Slugs are names, not an order. Do not label pieces with severity-style tokens such as `P1` or `P2`. Give each piece a short title as well; the short title is what gets stored.
+**Slugs.** Each piece has a short title and a unique kebab-case slug of at most 40 characters matching `^[a-z0-9]+(-[a-z0-9]+)*$`.
 
 **Edges.** For each piece, list the pieces that must be complete before it can start. An edge exists only when the blocker genuinely gates the piece. A piece with no blockers can start at once.
 
-**Acceptance criteria.** Each piece has at least one criterion. A criterion is one line, drawn from the spec's Done when or Test plan, and cites the bullet or row it comes from. The assignable units are the list items and table rows under `## Done when` and `## Test plan`. If `## Done when` has neither list items nor table rows, halt. Every unit is assigned to exactly one piece or marked assembled-only. A Test plan row follows the piece whose criterion cites it; a row that only the assembled PR can satisfy is assembled-only. Two things are assembled-only by default and never a child's criteria: the spec's full Done when taken as a whole, and the pre-merge review of the assembled PR. Anything the draft cannot place is listed as unassigned.
+**Acceptance criteria.** Each piece has at least one line citing the Done-when or Test-plan item it comes from. Every Done-when and Test-plan item goes to exactly one piece or is marked assembled-only. A Test plan row follows the piece whose criterion cites it. A row that only the assembled PR can satisfy is assembled-only. The spec's full Done when taken as a whole, and the pre-merge review of the assembled PR, are assembled-only.
 
-## Phase 3 — Approval
+**One-piece exit.** When the draft has fewer than two pieces, print `one piece — run /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md`, file nothing, and stop.
 
-Print the breakdown and wait. There is no bypass flag and no environment-variable bypass.
+**Draft checks.** Before any write: no cycle, no self-edge, no duplicate slug, no slug outside the grammar, no edge to an unknown slug, no piece without an acceptance criterion, no Done-when or Test-plan item left neither assigned nor assembled-only. Repair the draft once where the fix is clear (re-edge, rename, assign an item or mark it assembled-only), then run the one-piece exit again and re-run the checks. A check that cannot be cleared prints `NOT FILED: <check> — <detail>` and stops with nothing written.
 
-```text
-SPEC TICKETS: <PARENT-ID>
-Spec: <path>
-Storage: <storage line from Phase 1>
-Verdict: <verdict line from Phase 0 step 4>
-Deferred rows not filed: <n>
-Existing under parent: <n children or unknown>, <n local ticket files>
-<when either count is above zero: Approving files these pieces in addition to what exists.>
-<when a local target exists: Cannot file — these paths exist: <paths>>
+## Phase 3 — File
 
-Pieces:
-- <slug> — <short title>
-  Delivers: <one paragraph>
-  Acceptance: <one line per criterion, with spec anchor>
-  Blocked by: <slugs, or None — no blockers.>
-Unblocked (can run together; not an execution order): <slugs>
-Waiting: <slug> blocked by <slugs>
-Done-when assigned: <bullet → slug>
-Done-when assembled-only: <bullets>
-Unassigned: <bullets or none>
+Work from the checked draft. Do not redraft mid-filing. File blockers first, one at a time, so a blocker's id exists before anything refers to it.
 
-1. Approve and file. This files the pieces above.
-2. Revise. Say what to merge, split, or re-edge. This does not file.
-3. Abort. Nothing is filed.
-```
+- `native`: create the child under the parent, then create its blocked-by relations.
+- `text`: create the child under the parent with a `Blocked by` section.
+- `local`: write `docs/specs/TODO/<PARENT-ID>.ticket-<slug>.md`. Never overwrite an existing file.
 
-**Option 1 is omitted** while any of these holds:
+**Ticket contents.** The tracker name, or the local file's H1, is the short title. Body sections, in order: **Parent** (the parent's identifier); **Spec** (the spec path and the section anchors — point at the spec; no code blocks); **Delivers** (one paragraph); **Acceptance criteria** (the checklist); **Assembly** (this piece lands on the parent spec's single PR and does not open its own; `/ship-spec` on the parent does not read child tickets); **Blocked by** (`text` and `local` only: one reference per line, or `None — no blockers.`). A `local` file carries the line `local-only` directly after its H1.
 
-- the storage mode is `halt`;
-- the mode is `local` and the target path of any piece already exists (name the paths);
-- the draft has a cycle, a self-edge, a duplicate slug, a slug outside the grammar, or an edge to an unknown slug;
-- a piece has no acceptance criterion;
-- a Done-when unit or Test plan row is neither assigned nor marked assembled-only.
+**Failure.** On the first failed write, or a create that returns no identifier, stop with no retry and no fallback. Print the stop report. A create that committed but returned no identifier is `not created`; check the tracker before filing the rest by hand.
 
-**Replies.**
+**Create-only.** Never edit or delete a ticket, remove a relation, or change any ticket's state, the parent's included. Never edit the spec.
 
-- When option 1 was printed, a clear yes files, after the echo, with no second confirm. Clear yes includes `1` alone, "approve", "file them", and "go ahead" when the reply does not also ask for a change.
-- A yes while option 1 is omitted asks again and says filing is not offered.
-- A reply that asks for a change to the draft — merge, split, re-edge, rename a slug, reassign a Done-when unit or Test plan row, or add or edit a criterion — revises, even if it also says yes. `2: <change>` is the fast path. A bare `2` asks what to change. Re-render the block. Do not file. A revision never changes the storage mode; only a fresh run of Phase 1 can leave `halt`.
-- `3` or `abort`: abort and write nothing.
-- A non-empty reply that is neither a clear yes nor a clear revise nor abort asks again. Do not file it and do not treat it as revise.
-- An empty reply, end of input, a timeout, or a host that cannot wait: print `approval required — this skill does not file headless` and write nothing.
+## Report
 
-The block that was printed is what approval freezes — its pieces, edges, criteria, and anchors — not a later re-read of the spec.
-
-## Phase 4 — File
-
-1. If the spec file's contents changed since the approved block was printed, halt with no writes and ask for a new approval. If the spec is unchanged, read the verdict marker again with the whole step 4 block, as one shell call, and its fallbacks; if the verdict line it would now print differs from the line in the approved block, halt with no writes and ask for a new approval. A marker that turned red is caught here. If the spec cannot be read or compared, or the verdict marker cannot be read again, halt with no writes and ask for a new approval; an incomplete check is not proof that nothing changed. The new approval re-reads the current spec, drafts again (Phase 2), and renders a fresh Phase 3 approval block, with its omit list and the same reply map. Do not add a second confirm on top of it.
-2. Work only from the frozen draft. Do not redraft from the spec.
-3. **File blockers first.** A piece is filed only after every piece that blocks it. Among pieces that are ready together, use the approval block's order. File one piece at a time. This order exists so that a blocker's identifier exists before anything refers to it. It is not a build order, it is not written into any ticket, and it does not decide which pieces can run together — the edges do.
-4. **Per piece.**
-   - `native`: create the child work item under the parent, then create its blocked-by relations to its blockers.
-   - `text`: create the child work item under the parent with a `Blocked by` section in its body.
-   - `local`: write `docs/specs/TODO/<PARENT-ID>.ticket-<slug>.md`. Never overwrite an existing file; a target that exists at write time is a failure (step 6).
-5. **What a ticket contains.** The tracker name, or the local file's H1, is the piece's short title. Send the body as the integration's description field. Body sections, in order:
-   - **Parent** — the parent's identifier.
-   - **Spec** — the spec path and the section anchors the piece draws on. Point at the spec; do not copy its Design, its Test plan prose, or any code. No code blocks in a ticket.
-   - **Delivers** — one paragraph: the end-to-end outcome.
-   - **Acceptance criteria** — the checklist from the frozen draft.
-   - **Assembly** — this piece lands on the parent spec's single integration branch and single PR and does not open a PR of its own; the parent's full Done when and the pre-merge review run once on the assembled PR; a `/ship-spec` run on the parent does not read child tickets.
-   - **Blocked by** — `text` and `local` only. One reference per line, or the single line `None — no blockers.` On `text` a reference is the blocker's tracker identifier and its title. On `local` it is the blocker's file name and its title. This is a relation list, not a numbered procedure. `native` tickets omit the section.
-
-   A `local` file carries the line `local-only` directly after its H1.
-6. **Failure.** When a create, a relation write, or a file write returns an error, or a create returns no identifier, stop at once. No further writes, no retry, no switch of mode, no fall-back to local files. Print a stop report: each piece as `created <identifier or path>` or `not created`, each edge as `written` or `not written`, then the operation that failed and the error as it was returned. A stopped run never prints `FILED`. The operator files the rest by hand from that report, or deletes what was created and runs again.
-7. **Create-only.** Do not edit a ticket, delete a ticket, remove a relation, or change any ticket's state, including the parent's. A new child keeps the tracker's default state for a new item.
-8. **Success.** Only when every create and every relation write returned success, print:
+On success:
 
 ```text
 FILED: <PARENT-ID>
-Storage: <storage line>
+Storage: <native via <name> | text via <name> | local>
+Verdict: <line from Phase 0>
+Deferred rows not filed: <n>
 Pieces: <n> · Edges: <n>
-- <slug> → <identifier or path>
-Unblocked (can run together): <slugs>
+- <slug> — <short title> → <identifier or path>; blocked by <slugs | none>
+Unblocked (can run together; not an order): <slugs>
+Assembled-only: <Done-when and Test-plan items, or none>
+Repaired: <each draft-check repair, such as an edge dropped to break a cycle, or none>
+Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md
 ```
 
-**No resume.** This skill does not read its own writes back, and a second run does not find, reuse, or compare an earlier run's tickets. On a tracker, a second run files every approved piece again; the existing-work line in the approval block is the operator's warning. A second `local` run is refused while its target files exist.
-
-## What /spec-tickets never does
-
-Edits the spec. Edits or changes the behaviour of `/ship-spec`, `/spec-cycle`, or `/spec-close`. Creates a branch, a worktree, or a PR. Transitions or rewrites the parent ticket. Dispatches an implementer. Files from a brief, a ticket id, or a conversation. Files headless. Writes both tracker records and local files in one run. Writes the inverse of a blocked-by relation. Deletes or updates a ticket. Overwrites a local ticket file. Resumes or repairs an earlier run. Files a deferred follow-up row as a piece.
+On a stop after a failed write, the same header lines, then each piece as `created <identifier or path>` or `not created`, each edge as `written` or `not written`, then the failed operation and its error as returned. The first line reads `STOPPED: <PARENT-ID>`, never `FILED`. The operator files the rest by hand from that report, or deletes what was created and runs again. The duplicate guard stops a re-run until then. Check the tracker before filing by hand when a create's outcome is unknown.
 
 ## Tool-use notes
 
-- File reading and writing for the spec and, in `local` mode, the ticket files.
-- The issue tracker's capabilities, all optional: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, and create a blocked-by relation on the dependent. Use whatever the connected integration offers for each, or the equivalent in your host. This skill names no tracker response field; read what the integration returns the way that integration documents it.
-- A host whose tracker integration sets a parent and nothing else takes the `text` mode.
-- Reads the verdict marker at `docs/specs/TODO/<PARENT-ID>.reviews/verdict.md` for the verdict only, with one `verdict_marker.py read --no-fingerprint` call when a shell is available (step 4 and the Phase 4 re-read). The fingerprint is not checked here. With no shell, the state is `unreadable` (`no shell — verdict not fully checked`), and a plain-text first `verdict:` line of `red` still halts.
-- No shell use beyond that call, no network beyond the tracker integration, no subagents, no shared-memory lookup.
-- `local` file names fit `/spec-close`'s companion rule (`<TICKET-ID>.<rest>`), so a later close archives `ticket-<slug>.md` with the rest of the spec's artifacts.
-
-## Failure modes
-
-- **Wrong argument** → the usage line; nothing written.
-- **Spec incomplete** (a required heading missing or duplicated) → halt naming the heading.
-- **Red verdict** → halt in preflight with the `SPEC VERDICT: red` block; no draft, no writes.
-- **Tracker connected but failing, or unable to create with a parent** → `halt`; the draft is shown, filing is not offered, no local files are written.
-- **Parent does not resolve** → `halt`.
-- **Two capable integrations and no name given** → a non-empty reply that names none is asked again; an empty reply halts with no writes.
-- **Draft not approvable** (cycle, bad slug, unassigned unit) → option 1 omitted until a revision fixes it.
-- **No operator** → `approval required — this skill does not file headless`. A non-empty unclear reply to the approval block is asked again; it is not filed and not treated as revise.
-- **Spec changed after approval** → halt; ask for a new approval.
-- **Verdict changed while approval waited** → halt in Phase 4 with no writes; ask for a new approval.
-- **A write fails mid-run** → stop report; no `FILED`; no retry.
-- **Run twice on a tracker** → duplicates. The approval block's existing-work line is the only guard.
+The capability inventory: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, create a blocked-by relation on the dependent; or the equivalent in the host. `native` and `text` file only when the list-children read works. One `verdict_marker.py read --no-fingerprint` call. `local` file names fit spec-close's companion rule (`<TICKET-ID>.<rest>`), so a later close archives `ticket-<slug>.md` with the spec's artifacts.

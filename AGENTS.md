@@ -22,17 +22,17 @@ Flags: `--dry-run`, `--verbose`, `--prune` (install only), `--claude-dir <path>`
 
 Six skills form the spec lifecycle; the third is optional. The interview stage is separate so the brief — the artifact every reviewer treats as authority — is settled before review context is spent; the authoring/impl pair runs in separate sessions to avoid token-cap pressure; the post-merge close runs after code ships:
 
-1. **`/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`** — Produces the brief. Resolves the ticket (tracker optional — degrades to conversation), grounds against repo + wiki, runs the bounded `grilling` interview (round cap 3, seven items per round, brief-altitude fence), runs or explicitly skips a fresh-context cross-model doubt pass (at most two cycles), confirms, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. Reads tickets; never creates or transitions them. `grilling` is the shared model-invocable primitive (also behind `/grill-me` and `/spec-cycle`'s option 4 on the halt that follows the first invocation's `round_cap` passes — 2 when the tier is `small`, 4 otherwise — or a delta halt at cumulative round `C`); it is never fired unprompted. The interview's own cap of 3 stays.
+1. **`/spec-brief <TICKET-ID> [--no-grill] [--rounds N] [--questions N]`** — Produces the brief: resolves the ticket, grounds against the repo and wiki, runs the bounded interview, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. Reads tickets; never creates or transitions them.
 
-2. **`/spec-cycle <brief-path> [--attest "<reason>" | --full]`** — Authors a spec from a brief, then runs a parallel review loop — three default lenses plus an optional fourth scalability lens — up to `round_cap` passes (2 when the tier is `small`, 4 otherwise). Authors live-verify factual runtime claims; each dispatched round carries a ground-truth ledger that correctness samples, and revisions verify reviewer facts, compose overlapping edits, and re-read consumers. The first invocation is unchanged. A re-run over a reviewed green or red halt runs at most two delta passes over the spec diff and open P0/P1 findings; an unchanged green spec stops without a round. `--full`, or a missing, pending or attested marker, forces a full invocation. It halts at a session boundary with a drift-check checklist, or, when still red after the allowed passes, a menu whose fourth option grills the remaining findings. Records its verdict (green or red, with a fingerprint of the spec) at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`; `--attest` records a green verdict reached by hand. A review-produced green verdict is never recorded while an undischarged in-scope P0 or P1 remains in `## Deferred — follow-up required`. Each dispatched round writes `synthesis.md` without changing the STATUS gate. Does not implement or commit anything.
+2. **`/spec-cycle <brief-path> [--attest "<reason>" | --full]`** — Authors a spec from a brief and runs the parallel review until green or `round_cap` passes complete, then halts with a drift-check checklist. The green NEXT recommends `/spec-tickets` when the spec splits, else `/ship-spec`.
 
-3. **`/spec-tickets <spec-path>`** *(optional)* — Breaks a green-lit spec into verifiable pieces with blocking edges, stops for operator approval, then files each piece as a child of the spec's ticket: blocked-by relations where the tracker has them, a `Blocked by` section where it does not, one local file per piece when no tracker is connected. Never files headless. Reads the spec's verdict marker first: red halts, anything else is shown in the approval block. Skipping it changes nothing: `/ship-spec` does not read the children.
+3. **`/spec-tickets <spec-path>`** *(optional)* — Invoking it files the pieces after its draft checks pass: blocked-by relations where the tracker has them, a `Blocked by` section where it does not, one local file per piece when no tracker is connected. A one-piece spec files nothing, and existing pieces stop a re-run.
 
-4. **`/ship-spec <spec-path>`** — Reads the spec's verdict marker in preflight (green passes, red halts, anything else warns and continues with an unchecked PR-body line), then takes the spec through implementation in an isolated git worktree, test gate (up to 5 iterations), an optional pre-commit review gate that runs when the project declares a review command, commit, PR via `gh`, and Plane ticket state update. The user's primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/` beside the spec; git does not track that copy, and no tracked file or git state in the primary checkout changes.
+4. **`/ship-spec <spec-path>`** — Reads the spec's verdict marker in preflight (green passes, red halts, anything else warns and continues with an unchecked PR-body line), then implements in an isolated git worktree through the test gate, an optional review gate, commit, PR, and the issue-tracker update. The primary working tree is never touched, except a copy of an ignored test-output or review artifact into `docs/specs/TODO/`; git does not track that copy.
 
-5. **`/spec-land <PR-number | PR-URL | spec-path>`** — After the PR is merged and before spec-close, confirm the landed code matches the recorded head and patch-id, move the Plane ticket to Done or Post-merge Checklists, write the wiki merge line and the filemap delta when a wiki is configured, then remove the worktree and the local and remote feature branch and run the project's post-land command. Never merges and never commits. One confirmation. No argument uses the current branch's PR.
+5. **`/spec-land <PR-number | PR-URL | spec-path>`** — After the PR is merged and before spec-close, confirm the landed code, move the Plane ticket, write the wiki merge line and filemap delta, then remove the worktree and branch and run the post-land command. Never merges and never commits.
 
-6. **`/spec-close <spec-path> [--report-only | --partial]`** (the argument may also be a ticket id or a `docs/specs/TODO/<TICKET-ID>/` folder) — After `/spec-land`, close the spec in one pass: reconcile it against shipped code (writes `<TICKET-ID>.reconciliation.md` — the lone pre-confirmation write; the PR and merge SHA come from spec-land's `merge |` log line), propose wiki entries sized to the brief's tier, archive spec artifacts from `TODO/` to `DONE/<TICKET-ID>/` through `scripts/archive_spec.py` (ticket prefix stripped), and prepend a `close |` entry to the wiki's newest-first `log.md`. A ticket with artifacts but no spec gets an archive-only close (archive plus log entry). Partial-close is offered when the Plane ticket isn't in a completed state; `--report-only` writes just the reconciliation report; `--partial` forces archive-only. All mutations after the report require user confirmation before execution.
+6. **`/spec-close <spec-path> [--report-only | --partial]`** (the argument may also be a ticket id or a `docs/specs/TODO/<TICKET-ID>/` folder) — After `/spec-land`, reconcile the spec against shipped code, propose wiki entries sized to the brief's tier, archive artifacts from `TODO/` to `DONE/<TICKET-ID>/`, and prepend a `close |` entry to the wiki's `log.md`. A ticket with artifacts but no spec gets an archive-only close.
 
 **Stakes tier.** The operator sets a tier in `/spec-brief`, and ceremony follows it. `tweak` stops in spec-brief with nothing written. `small` is the three standing lenses, `round_cap` 2, and `/ship-spec` skips the review gate while keeping the test gate. `big` is today's behaviour and is what an absent tier means. spec-brief offers the doubt pass at every tier when a reviewer is eligible and requires it for `irreversible`. `irreversible` is `big` plus the tier on every reviewer prompt plus a review gate that stops instead of committing when the review did not run; spec-brief requires a doubt pass, halts before the interview when no reviewer is eligible, and never skips a failed dispatch. Scale stays its own `## Scale` declaration and never follows from the tier.
 
@@ -68,50 +68,23 @@ Process guide for a credential-exposure response. The operator performs every pr
 ### File layout
 
 - `skills/<name>/SKILL.md` — Skill definitions (YAML frontmatter + markdown body). Installed to `~/.claude/skills/<name>/SKILL.md`.
-- `skills/ship-spec/states.json` — Committed config mapping project identifiers to state UUIDs and review-state IDs. Synced alongside SKILL.md by `sync.py`.
-- `agents/<name>.md` — Subagent definitions (YAML frontmatter + markdown body). Installed to `~/.claude/agents/<name>.md`.
+- `agents/<name>.md` — Subagent definitions. Installed to `~/.claude/agents/<name>.md`.
+- `skills/ship-spec/states.json` — Committed map of project identifiers to state UUIDs and review-state IDs. Synced alongside SKILL.md by `sync.py`.
+- Bundled scripts: `skills/spec-cycle/scripts/verdict_marker.py`, `skills/spec-land/scripts/land_check.py`, `skills/spec-close/scripts/archive_spec.py` and `prepend_log_entry.py`, `skills/spec-brief/scripts/check_premises.py`, `skills/session-handoff/scripts/`, `skills/key-rotation/scripts/prepare_record.py`, `skills/hermes-kanban-awareness/scripts/read_board.py`.
+- `reference/` folders — templates and schemas a skill reads beside its script.
 - `sync.py` — Bidirectional file sync. Stdlib only, cross-platform via `pathlib`.
-- `skills/spec-close/SKILL.md` — Post-land close skill (reconciliation + wiki harvest + archive in one pass). Installed to `~/.claude/skills/spec-close/SKILL.md`. Its `scripts/archive_spec.py` moves a ticket's artifacts to `DONE/` and reports what it staged.
-- `skills/key-rotation/SKILL.md` — credential-exposure process guide.
-- `skills/key-rotation/reference/record-template.md` — record shape, read by the preflight script on create.
-- `skills/key-rotation/scripts/prepare_record.py` — gitignore, record preflight, and the read-only name, path, and hash modes.
-- `docs/customizing.md` — How downstream projects configure these skills via their own `AGENTS.md` / `CLAUDE.md`.
-- `docs/portability-contract.md` — What makes a skill portable across harnesses (VHS-17); the contract every cross-harness item targets.
-- `docs/authoring-portable-skills.md` — Authoring discipline for portable skills + the `lint.py` portability lint (VHS-18).
+- `lint.py` — Portability lint for skills (`python lint.py --strict` to gate).
+- `tests/` — Stdlib `unittest` suite.
+- `docs/customizing.md`, `docs/portability-contract.md`, `docs/authoring-portable-skills.md`, and `docs/spec-workflow-reference.md` — project setup, the portability contract, authoring discipline, and the lifecycle overview.
 
 ## Superseded vendor skills
 
-`skills/session-handoff/` (VHS-28) replaces the AgentCraft-managed
-`agentcraft-handoff` skill, whose validator capped its heading patterns at `##`
-and so could never see a `###` section. `sync.py` installs the replacement, but
-it cannot remove a vendor copy it never installed — that is an operator step:
+Remove a retired copy by hand with a targeted delete, never `python sync.py install --prune`, which deletes third-party skills.
 
-> For Claude Code, remove the vendor copy from the skill dir — `rm -rf ~/.claude/skills/agentcraft-handoff/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/agentcraft-handoff/`).
-
-Two warnings:
-
-- **Targeted removal only. Do not reach for `python sync.py install --prune`.**
-  Prune queues a delete for every path under `~/.claude/skills/` that this repo
-  does not contain, and that directory holds third-party skills installed
-  separately.
-- **This departs from recorded practice, deliberately.** `README.md` promises
-  that separately-installed skills are preserved. Deleting is right *here*
-  because this particular copy is broken and superseded — not a general licence
-  to delete third-party skills.
-
-If AgentCraft reinstalls its copy later, that is expected and not fatal: repeat
-the targeted removal. No vendor-managed file is ever edited.
-
-**`grilling` / `grill-me` (VHS-32) — superseded by overwrite, not removal.** These
-share directory names with `mattpocock/skills`; `sync.py install` overwrites a
-separately-installed upstream copy at those paths. Intended — the clean-room
-rewrite supersedes it, and because the install overwrites in place there is no
-operator removal step and no two-copies routing ambiguity. To keep both, rename
-the upstream copy before installing.
-
-**`bloat-check` (VHS-46) — retired, not replaced.** The skill is deleted from this repo; `/ship-spec`'s review gate carries its invariant veto. `sync.py install` does not remove a copy it installed earlier, so remove it by hand — for Claude Code, `rm -rf ~/.claude/skills/bloat-check/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/bloat-check/`). Targeted removal only; do not use `--prune`.
-
-**`talaria` — retired, not replaced (2026-10-11).** Another project is taking the name, and the skill (read Talaria operational state, propose safe actions, register heartbeat watches) had no remaining caller in this ecosystem. Deleted from this repo together with its two test modules, `tests/test_talaria_bridge.py` and `tests/test_talaria_watch.py`. `sync.py install` does not remove a copy it installed earlier, so remove it by hand — for Claude Code, `rm -rf ~/.claude/skills/talaria/` (PowerShell: `Remove-Item -Recurse -Force ~/.claude/skills/talaria/`). Targeted removal only; do not use `--prune`.
+- `agentcraft-handoff` (VHS-28, replaced by `session-handoff`, delete the vendor copy by hand).
+- `grilling` / `grill-me` (VHS-32, superseded by overwrite; rename an upstream copy to keep it).
+- `bloat-check` (VHS-46, retired; ship-spec's review gate carries its veto; delete by hand).
+- `talaria` (2026-10-11, retired; delete by hand).
 
 ## Plan & Spec Reviews
 
@@ -126,7 +99,7 @@ the upstream copy before installing.
 - Severity scale is shared across all reviewers (the three default lenses plus the optional scalability lens): P0/P1 block shipping — except that a finding the author routed, under the scope ceiling, to a well-formed row in the spec's `## Deferred — follow-up required` section is not re-filed by the reviewers and so never enters the gate — a malformed row, a duplicate section, a routing-changing scope error, or an undischarged in-scope P0 or P1 row, including a grill row the ceiling classifies as in-scope, is still filed as a P0; P2+ do not. Reserve P0/P1 for genuinely load-bearing issues. Those definitions do not change with tier.
 - `sync.py` mirrors only the `skills/` and `agents/` subtrees (defined in `SUBTREES`). Adding a new top-level subtree requires updating that tuple.
 - Specs, briefs, and reviews live in the **target project** at `docs/specs/TODO/<TICKET-ID>.*`, not in this repo.
-- A brief may carry an optional `## Scale` section to turn on the scalability reviewer: `**Factor:** yes` plus a `**Target:**` line (the target N the design must hold at — requests/sec, records, tenants, $/op, etc.) enables the lens; `**Factor:** no` (or `none` / `n/a`) records scale as an explicit non-factor. Absent the section, the lens stays off and the loop runs the three default lenses unchanged. See `docs/spec-workflow-reference.md` § "Optional scalability lens" for the full grammar. A brief may carry an optional `## Tier` section (`**Level:**` `small`, `big`, or `irreversible`); an absent tier is `big`.
+- A brief may carry an optional `## Scale` section to turn on the scalability reviewer: `**Factor:** yes` plus a `**Target:**` line (the target N the design must hold at — requests/sec, records, tenants, $/op, etc.) enables the lens; `**Factor:** no` (or `none` / `n/a`) records scale as an explicit non-factor. Absent the section, the lens stays off and the loop runs the three default lenses unchanged. The full grammar is spec-cycle's Phase 0 Scale step (`skills/spec-cycle/SKILL.md`). A brief may carry an optional `## Tier` section (`**Level:**` `small`, `big`, or `irreversible`); an absent tier is `big`.
 - `CLAUDE.md` is gitignored (it holds machine-local absolute paths). Anything that must ship in a PR — including "referenced from project guidance" pointers — belongs in a **tracked** file (`AGENTS.md`, `README.md`, or `docs/`), not `CLAUDE.md`.
 
 ## Post-merge wiki update
@@ -144,7 +117,7 @@ State.md edits require an evidence triple (Plane ID, date, commit hash) — the 
 
 ## External dependencies (runtime, not build)
 
-- **Plane connector** — ticket reads and state updates, live. Skills warn and proceed when a read fails; `wiki-state-update` refuses instead. `/spec-tickets` resolves the parent on the tracker itself, because that read is a create precondition. It uses the tracker when one is connected and its storage probe succeeds, writes local files only when no issue-tracker integration is connected, and halts otherwise.
+- **Plane connector** — ticket reads and state updates, live. Skills warn and proceed when a read fails; `wiki-state-update` refuses instead, and `/spec-tickets` halts when a connected tracker cannot read the parent or its children.
 - **`gh` CLI** — PR creation, CodeRabbit thread management. Must be authenticated.
 - **CodeRabbit** — configured on target repos for `/review-pr`.
 
