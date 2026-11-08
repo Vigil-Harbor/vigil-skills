@@ -76,7 +76,7 @@ Output path: `docs/specs/TODO/<TICKET-ID>.spec.md`.
 
 **A re-run does not re-author.** An existing spec is v1, and its `## Deferred — follow-up required` rows and `Follow-up:` values survive verbatim. If it lacks any of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, `## Out of scope`, halt: `existing spec is incomplete; delete docs/specs/TODO/<TICKET-ID>.spec.md to force a clean re-author, or patch it`. Deleting the spec is also how to re-author from a changed brief; copy its deferred rows first.
 
-Read the brief, the ticket (the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas); uppercase the identifier first; a failed read prints `ticket: could not read <TICKET-ID> from the issue tracker (<error>) — continuing without it. Usually a login problem: re-authenticate the tracker connection.` with `<error>` = `no tracker connected` when no tracker tool is connected, and a not-found read prints `ticket: <TICKET-ID> not found in the issue tracker — continuing without it.`; either way use the brief alone; no retry and no cache), and the files the brief points at.
+Read the brief and the files it points at. Do not read the ticket. The brief is the only statement of the ticket's text, including any comment it carried. A ticket edited after the brief was written is unseen until `/spec-brief` is re-run.
 
 **Ground truth.** Every sentence that states how existing code or a system behaves when run — a job fires, a path resolves, a guard blocks — carries a `file:line` anchor you opened and read while preparing this dispatch. A reviewer report, prior spec, wiki page or brief is only a pointer until you read the live line, and a mechanism inherited from a prior spec is verified against live code before it is cited. Outside the project root, anchor any path that identifies the file and still read it. When the source cannot be read, say the behavior is observed or assumed and hold `Anchor: none` with the evidence or the words `assumed, not verified`; never use it for behavior in a readable file. A Runbook step that invokes code is traced through its live call chain to the code that admits or rejects the operation, and anchored there. A requirement on the implementation is not a claim; its factual justification is. Hold each claim, its innermost heading, its anchor and the round for the ground-truth ledger.
 
@@ -156,7 +156,7 @@ Every prompt carries:
 - `spec_path: docs/specs/TODO/<TICKET-ID>.spec.md`
 - `brief_path: <the normalized path from Phase 0 step 1>`
 - `project_root: <absolute>`
-- `ticket_id: <TICKET-ID>`
+- `ticket_id: <TICKET-ID>` — artifact id only; do not read the ticket; the brief is the only statement of it.
 - `review_mode: <full|delta>`
 - `round_number: <C>` — a positive integer, not capped
 - `scale_lens: <on|off>` — `non-factor` is sent as `off`; the standing lenses use it only to ignore a stale `scalability.md` during closure
@@ -384,7 +384,7 @@ Attestation is allowed over no marker, a pending or red marker, a changed green,
 
 - Read, Edit, Write for authoring and revising the spec.
 - Bash for `verdict_marker.py`, read-only git (`git fetch` bounded by `timeout 30`, `git rev-list`, `git diff --no-index`), and `mkdir` for round directories.
-- Parallel Agent calls for the reviewers; the issue tracker's read capability for the ticket; the `grilling` skill only from 2f-i.
+- Parallel Agent calls for the reviewers; do not read the ticket; the `grilling` skill only from 2f-i.
 - Do not commit, push, or open PRs. That is `/ship-spec`'s job.
 
 ## Failure modes to watch for

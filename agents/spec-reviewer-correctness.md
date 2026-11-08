@@ -12,7 +12,7 @@ The orchestrator passes these in your prompt:
 - `spec_path` — the spec to review
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
-- `ticket_id` — the Plane ticket ID, if any (e.g., `PROJ-123`)
+- `ticket_id` — artifact id only, not a ticket read (e.g., `PROJ-123`)
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
 - `closure_manifest` — author-stated disposition of each predecessor P0/P1 finding (present when this pass has a closure predecessor); verify these claims against the spec in step 7. The disposition is one of fixed / reworked / not applicable / deferred.
 - `scale_lens` — whether the optional scalability lens ran this round (`on` / `off`). Used only for closure tracking in step 7: when `off`, ignore any stale `scalability.md` left in the prior-round directory by an earlier on-run.
@@ -26,7 +26,7 @@ Execute these steps in order. Do not skip:
 
 1. **Read the spec from disk at `spec_path`.** Do not trust prior context. Read it now, fresh.
 2. **Read the brief at `brief_path`.**
-3. **Retrieve the Plane ticket if `ticket_id` is given**, using the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue. The ticket's description and acceptance criteria are canonical when they conflict with the brief.
+3. **Do not read the ticket.** When `ticket_id` is given, it names the artifact only. The brief is the only statement of the ticket. Do not file a finding that the ticket was unread or missing.
 4. **Read `<project_root>/CLAUDE.md`.**
 5. **Verify every claim the spec makes about current code.** For each function, type, file, or call site the spec names: open it, read enough of it, confirm the spec describes it accurately.
 6. **Run `git log -10 --oneline -- <touched-files>`** for the files the spec proposes to change. If a commit landed in the last 7 days, surface it — the spec may be planning around already-shifted code.
@@ -118,7 +118,7 @@ A P0 you meet while doing a check this section still requires (you were not hunt
 
 After grounding, work through these questions. Each is a candidate finding source:
 
-- **Done-when coverage.** For every "Done when" / acceptance criterion in the brief and Plane ticket: which spec section satisfies it? An unmapped criterion is a finding.
+- **Done-when coverage.** For every "Done when" / acceptance criterion in the brief: which spec section satisfies it? An unmapped criterion is a finding.
 - **Internal contradictions.** Does Section A say one thing and Section B say another? (E.g., "tripwire fires at write time" vs. "extractor catches it at read time".)
 - **Nonexistent references.** Names a function, type, file, flag, or test class that doesn't exist. Grep to verify.
 - **Implementation gap.** Walk the proposed code path mentally against the brief's success criteria. Are there cases where the implementation as written would not produce the stated outcome?
@@ -247,6 +247,4 @@ The orchestrator parses this line to gate the review loop. Any other format brea
 - Use `Read` for spec, brief, CLAUDE.md, and verifying source files.
 - Use `Grep` and `Glob` to verify references and find symbols.
 - Use `Bash` only for read-only git introspection: `git log`, `git show`, `git blame`, `git diff`. Do not run any command that mutates state.
-- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
-
 Do not edit any file. You are read-only.

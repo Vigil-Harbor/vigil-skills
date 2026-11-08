@@ -12,7 +12,7 @@ The orchestrator passes these in your prompt:
 - `spec_path` — the spec to review
 - `brief_path` — the brief the spec was written from
 - `project_root` — the repo root
-- `ticket_id` — the Plane ticket ID, if any
+- `ticket_id` — artifact id only, not a ticket read
 - `wiki_root` — absolute path to the project wiki, if one is configured (e.g., `~/code/myproject-wiki`). May be omitted if the project has no wiki.
 - `project_slug` — the project subdir under `<wiki_root>/projects/` (e.g., `myproject`, `my-service`). Only meaningful if `wiki_root` is set.
 - `round_number` — which review pass this is (a positive integer, the cumulative review round)
@@ -34,6 +34,8 @@ Execute these steps in order. Do not skip:
 4. **Scan `<wiki_root>/decisions/` for entries whose subject overlaps the spec.** Read any that match. Decisions marked `superseded` still matter — note their replacements.
 5. **Grep the codebase for the conventions the spec is about to follow or break.** If the spec proposes a registry, grep for similar registries. If it proposes a new error-handling pattern, find the existing pattern.
 6. **Read the brief at `brief_path`** for context on intent.
+
+Do not read the ticket. The brief is the only statement of it.
 
 **Deferred findings (every round, including round 1).** Read the spec's `## Deferred — follow-up required` section if present. It
 runs from its heading to the next level-2 heading (exactly two `#`) that is not inside a blockquote or a fenced code block, or to end of file; a `###`-or-deeper heading does not end the section. A line prefixed `> `, or inside a fenced code block, is never a heading, never a section terminator, and never a row. A fence marker counts only when three or more backticks or tildes begin the line (after at most three spaces) and the line is not prefixed `> `, matched from the top of the file: a marker opens a fence only when no fence is open, and closes one only when it uses the same character as the opener and is at least as long — a shorter or different marker inside an open fence is content, and a marker inside a blockquote neither opens nor closes a fence, so a stored `Suggested fix` may quote fenced text safely.
@@ -142,19 +144,17 @@ Work through these axes:
 
 Walk the spec's Decisions / Design sections. For each load-bearing
 decision, classify it as one of:
-- **(a) Authorized by the brief** — the brief explicitly carries this
-  decision forward.
-- **(b) Authorized by the Plane ticket** — the ticket's acceptance
-  criteria require it.
-- **(c) Spec-level addition with rationale** — the spec adds something
-  the brief and ticket don't explicitly authorize, with explicit
-  rationale (e.g., a new section "Decision 0 — supersedes prior wiki
-  D1" with reasoning).
-- **(d) Silent addition** — the spec commits to a position the brief
-  and ticket don't authorize, without flagging it as an addition.
+- **(a) Authorized by the brief.** The brief explicitly carries the
+  decision. The brief is the only statement of the ticket.
+- **(b) Spec-level addition with rationale.** The spec adds something
+  the brief does not explicitly authorize, and it says so. Still
+  surfaced at P3.
+- **(c) Silent addition.** The spec commits to a position the brief
+  does not authorize, without flagging it. Still P2 minimum, P1 when
+  it would change scope, behavior, or downstream-ticket interactions.
 
-Surface all (d) items as P2 minimum (P1 if the silent addition would
-change scope, behavior, or downstream-ticket interactions). Surface (c)
+Surface all (c) items as P2 minimum (P1 if the silent addition would
+change scope, behavior, or downstream-ticket interactions). Surface (b)
 items at P3 — they're fine but the human drift-check needs to see them.
 
 This catches scope creep that survives correctness review (the addition
@@ -220,6 +220,4 @@ The **last non-blank line MUST be exactly one of**:
 
 - Use `Read`, `Grep`, `Glob` for spec, brief, CLAUDE.md, wiki pages, and source.
 - Use `Bash` only for read-only git introspection. Do not mutate state.
-- Use the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,description_stripped"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas) for ticket lookup whenever `ticket_id` is given. Uppercase the identifier first. If the read fails, or the ticket is not found, file one P3 finding titled `ticket not read: <error>` or `ticket not found`, say the review used the brief alone, and continue.
-
 Do not edit any file. You are read-only.

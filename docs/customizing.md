@@ -115,7 +115,7 @@ A project may gitignore `docs/specs/`. The lifecycle still runs: the skills reso
 
 ## Plane.so integration
 
-spec-brief, spec-cycle, spec-tickets, ship-spec, spec-land, and spec-close read the issue tracker. ship-spec and spec-land are the two that move a ticket's state, both through `skills/ship-spec/states.json`. Configure the tracker connection per your host's docs.
+spec-brief, spec-tickets, ship-spec, spec-land, and spec-close read the issue tracker. spec-cycle does not read the ticket; the brief is its only statement of the ticket. ship-spec and spec-land are the two that move a ticket's state, both through `skills/ship-spec/states.json`. Configure the tracker connection per your host's docs.
 
 `/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file; `skills/spec-land/scripts/land_check.py` holds the routing rule. With no entry for the project, or no state id for the target, it moves nothing and prints the manual steps. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
 
