@@ -28,6 +28,7 @@ class TestSkill(unittest.TestCase):
     def test_contract_phrases_present(self):
         text = read(SKILL)
         for phrase in ("in_reply_to_id",
+                       "A pull URL for another repository stops",  # VHS-112 item 2
                        'state != "COMMENTED"',
                        "Outside diff range",
                        "/<path>#L<line>`",

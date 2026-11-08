@@ -11,7 +11,7 @@ requires:
 
 # /review-pr — CodeRabbit review round handler
 
-One round of CodeRabbit findings on a GitHub PR. Triage, fix what is wrong on the current code, push, reply, then wait on the findings.
+One round of CodeRabbit findings on a GitHub PR.
 
 Run the `gh` and `git` examples in a POSIX shell.
 
@@ -21,7 +21,7 @@ REST login `coderabbitai[bot]`. GraphQL login `coderabbitai` with no `[bot]` suf
 
 ## Resolve
 
-`/review-pr 8`, a pull URL (the digits after `/pull/`), or no argument (`gh pr view --json number --jq .number`).
+`/review-pr 8`, a pull URL (the digits after `/pull/`), or no argument (`gh pr view --json number --jq .number`). A pull URL for another repository stops: `PR URL is for <owner/repo>; run /review-pr there.`
 
 ```bash
 gh repo view --json owner,name --jq '.owner.login + "/" + .name'
