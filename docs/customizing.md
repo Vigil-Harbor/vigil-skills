@@ -21,6 +21,8 @@ npm run lint        # eslint
 
 Per-spec overrides go in the spec's `## Test command` section, which takes precedence.
 
+A project whose interpreter is not on the worktree PATH puts that interpreter's full path in the command. `/ship-spec` builds no venv and runs no interpreter preflight. One way to keep a Python reviewer's bytecode out of the worktree is `PYTHONDONTWRITEBYTECODE=1 python -B -m pytest -p no:cacheprovider`.
+
 ### Review command section
 
 Read from `CLAUDE.md` first, then `AGENTS.md`. `/ship-spec` has a review gate between its test gate and the commit: it runs one review of the change, fixes what blocks, and fixes or records the rest. The skill ships no reviewer of its own — you declare the command.
@@ -44,6 +46,8 @@ The gate follows the spec's tier (`skills/ship-spec/SKILL.md` Phase 3b):
 - `irreversible` stops before the commit in those same three cases, and keeps the worktree.
 
 A non-zero exit that still returns readable findings counts as a run.
+
+When the test command is not `N/A`, the review prompt includes that command and the review must report a `Validation:` line for what ran and what it returned. A review that does not is a blocking finding.
 
 ### Key rotation (optional)
 

@@ -145,6 +145,10 @@ After Phase 3 is green, or when the command is `N/A`, including `--from-review` 
 - `big`, and a tier that fell through to `big`: the three skips stay skips.
 - On `irreversible`, if the review did not run, stop instead of committing. It did not run when no command is declared, the command is not available, or it errors or returns nothing readable as findings. An error about the command itself counts, even when the text also has a location. Print the case, keep the worktree, and do not continue to Phase 4. There is no re-run menu and no `ran:` line. Findings, or an explicit clean result, mean it did run: continue as for `big`.
 
+When the test command is not `N/A`, the prompt also carries `Test command:`, the exact command Phase 3 last ran green, and asks for one `Validation:` line: that command and its result. Judge the returned review before the skips below. The line counts only when its result shows that command ran to completion, with a pass or fail count or an exit status. A failing run counts; report it as a finding. No such line, a different command, or a result without a completed run is one Blocks finding, `review did not run the test command`. On `irreversible`, the stop for a review that did not run still comes first.
+
+Before the review starts and again when it returns, record outside both checkouts `git status --porcelain=v1 -uall -z` and `git hash-object --` of each changed or untracked regular file. If the records differ, that is one Blocks finding naming each path. Do not revert. The snapshot also runs on `N/A`.
+
 Skips for `big`. Each one ends this phase and goes to Phase 4. Do not then write the ran-form file.
 
 1. No command: one console line, the unchecked PR line, no review file, then Phase 4.
@@ -190,6 +194,7 @@ When the review ran, write `docs/specs/TODO/<TICKET-ID>.review.md` from the temp
 - Compared against: origin/<default-branch>
 - Result: ran | skipped — <reason>
 - Error: <first 20 lines; only when the review failed>
+- Validation: <line or absent>
 - Blocks: <n> (<fixed> fixed, <op> fixed by operator, <ov> overridden, <un> unresolved)
 - Fix or record: <n> (<fixed> fixed, <rec> recorded)
 - Record only: <n>
