@@ -342,14 +342,17 @@ DRIFT: a merge into a file this spec cites, while this review is open, restarts 
 
 === NEXT ===
 When ready, run:
-  /ship-spec docs/specs/TODO/<TICKET-ID>.spec.md
+  <recommended command>
+<only for /spec-tickets: Why: <one line naming the pieces>>
 ```
 
 The `Verdict:` line gains ` (fingerprint not computed)` when the marker has `fingerprint: none`, and reads `Verdict: green — marker NOT written` when the write failed. The FOLLOW-UPS block uses 2f's render. Scale lines use the Phase 0 values; do not re-parse the brief.
 
+**NEXT.** Recommend `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` when the spec's Done-when items fall into two or more pieces that each deliver one end-to-end outcome and can each be verified alone: each piece's items can be checked, and its Test plan rows run, with only that piece's changes made. The `Why:` line names the pieces in a few words. Otherwise recommend `/ship-spec docs/specs/TODO/<TICKET-ID>.spec.md` with no `Why:` line. This is advice; neither command runs from here.
+
 **Brief-section parsing.** Find these headers case-insensitively, allowing trailing punctuation: `Decisions carried forward` / `Decisions` / `Decisions made`; `Done when` / `Acceptance criteria`; `Out of scope`. Enumerate the numbered list under each, using the first bolded clause or first sentence of each item as its label. A missing header renders one bullet: `[ ] Did the spec address everything in the brief? Anything in the brief absent from the spec?`
 
-Do not auto-proceed. The operator runs `/ship-spec` when ready.
+Do not auto-proceed. The operator runs the NEXT command when ready.
 
 ## Attest mode
 

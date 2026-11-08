@@ -1,12 +1,12 @@
 # Customizing Vigil Skills for your project
 
-These skills are intentionally generic. Project-specific rules live in your project's `CLAUDE.md` — the skills read it during preflight and apply what's there.
+These skills are intentionally generic. Project-specific rules live in your project's `CLAUDE.md` or `AGENTS.md`. Each key below says which file is read.
 
 ## What to put in your `CLAUDE.md`
 
 ### Build & Run section
 
-`/ship-spec` and `/spec-cycle` look for a "Build & Run" section to discover your default test command. Example:
+Read from `CLAUDE.md` only, and only when the spec has no `## Test command`. `/ship-spec` reads it as the test-gate fallback. `/review-pr` follows that same rule before it commits fixes. Example:
 
 ````markdown
 ## Build & Run
@@ -19,11 +19,11 @@ npm run lint        # eslint
 ```
 ````
 
-`/ship-spec` will form a combined command like `npm run build && npm test && npm run lint` as its test-gate fallback. Per-spec overrides go in the spec's `## Test command` section, which takes precedence.
+Per-spec overrides go in the spec's `## Test command` section, which takes precedence.
 
 ### Review command section
 
-`/ship-spec` has a review gate between its test gate and the commit: it runs one review of the change, fixes what blocks, and fixes or records the rest. The skill ships no reviewer of its own — you declare the command, and it is read from `CLAUDE.md` first and then `AGENTS.md`.
+Read from `CLAUDE.md` first, then `AGENTS.md`. `/ship-spec` has a review gate between its test gate and the commit: it runs one review of the change, fixes what blocks, and fixes or records the rest. The skill ships no reviewer of its own — you declare the command.
 
 Add a `## Review command` heading whose content is one line: how to run a review of uncommitted changes on your host. It is either a skill invocation (a line beginning `/`) or a shell command:
 
@@ -66,18 +66,28 @@ If your project has load-bearing rules — async handling, error patterns, order
 
 ### Wiki integration (optional)
 
-The `spec-reviewer-conventions` agent can read a wiki for prior decisions. If you have one, point at it:
+The `spec-reviewer-conventions` agent can read a wiki for prior decisions. If you have one, point at it. spec-land takes the `Slug:` value raw, so leave it unquoted: a backticked slug becomes part of the filemap path.
 
 ```markdown
 ## Wiki
 
-Path: `~/code/myproject-wiki`
-Slug: `myproject`
+Path: ~/code/myproject-wiki
+Slug: myproject
 ```
 
-The agent will read `<wiki>/projects/<slug>/architecture.md`, `state.md`, `filemap.md`, and scan `<wiki>/decisions/` for relevant prior decisions.
+spec-land reads the wiki path from a line naming the wiki or from a line under `## Wiki`, and reads `Slug:` under `## Wiki`. It reads `CLAUDE.md` first, then the landed `AGENTS.md`. The other lifecycle skills resolve `wiki_root` and `project_slug` from the same files. The agent reads `<wiki>/projects/<slug>/architecture.md`, `state.md`, `filemap.md`, and scans `<wiki>/decisions/` for relevant prior decisions.
 
 If you don't have a wiki, omit `wiki_root` from the orchestrator prompt and the agent skips this step gracefully.
+
+### Post-land command
+
+Read from the first of `CLAUDE.md` and the landed `AGENTS.md` that holds a `## Post-land command` section. That file is the only one read. Fence lines do not count. The section is exactly one non-blank line. spec-land runs it in the main checkout only when that checkout holds the landed commit. A section with more lines is skipped with a warning.
+
+```markdown
+## Post-land command
+
+python sync.py install
+```
 
 ## Spec & brief layout
 
@@ -89,6 +99,9 @@ Skills assume:
 - The spec's recorded verdict at `docs/specs/TODO/<TICKET-ID>.reviews/verdict.md` (written by `/spec-cycle`, read by `/ship-spec` and `/spec-tickets`)
 - Test output captured to `docs/specs/TODO/<TICKET-ID>.test-output.txt`
 - The review gate's record at `docs/specs/TODO/<TICKET-ID>.review.md` (one file, written by `/ship-spec`; distinct from the `<TICKET-ID>.reviews/` directory `/spec-cycle` writes)
+- Local ticket files at `docs/specs/TODO/<TICKET-ID>.ticket-<slug>.md` (spec-tickets, `local` mode)
+- The reconciliation report at `docs/specs/TODO/<TICKET-ID>.reconciliation.md` (spec-close)
+- The archive at `docs/specs/DONE/<TICKET-ID>/` (spec-close)
 
 Adjust the layout in your fork if needed; the skills hardcode the spec/reviews/test-output paths today (brief location is tolerant on input per the bullet above).
 
@@ -96,9 +109,9 @@ A project may gitignore `docs/specs/`. The lifecycle still runs: the skills reso
 
 ## Plane.so integration
 
-`/spec-cycle` and `/ship-spec` use the Plane MCP connector for ticket lookup and state updates. Configure it per Plane's docs.
+spec-brief, spec-cycle, spec-tickets, ship-spec, spec-land, and spec-close read the issue tracker. ship-spec and spec-land are the two that move a ticket's state, both through `skills/ship-spec/states.json`. Configure the tracker connection per your host's docs.
 
-`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads `skills/ship-spec/states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. To add a new project, call the tracker's state-list capability (e.g., `mcp__claude_ai_Plane__state` with `action: list` and `project_id`, in Claude Code, or the equivalent in your host) for the project and add an entry to `states.json`.
+`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
 
 ## Default branch
 
