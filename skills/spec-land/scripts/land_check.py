@@ -566,8 +566,10 @@ def _diff_patch_id(base: str, tip: str) -> str:
 
 def _verify(number: int, pr_head: str, landed: str, commits: int) -> dict:
     """Marker read and SHA checks. A mismatch is a warning, never a halt."""
+    parents = len(_must(["git", "rev-list", "--parents", "-n", "1", landed],
+                        "git rev-list --parents").split()) - 1
     result = {"status": "skipped", "kind": None, "review": None, "warnings": [],
-              "drift": [], "diff_base": landed + "^1"}
+              "drift": [], "diff_base": landed + "^1", "landed_parents": parents}
     try:
         found = _read_latest(number)
     except _ReadFailed as exc:
@@ -587,8 +589,6 @@ def _verify(number: int, pr_head: str, landed: str, commits: int) -> dict:
         result["warnings"].append("PR head {} != recorded head {}".format(pr_head, head))
         return result
     single = _diff_patch_id(landed + "^1", landed)
-    parents = len(_must(["git", "rev-list", "--parents", "-n", "1", landed],
-                        "git rev-list --parents").split()) - 1
     range_id = None
     if parents == 1 and commits > 1 and single != recorded:
         range_id = _diff_patch_id("{}~{}".format(landed, commits), landed)
@@ -877,7 +877,8 @@ def _confirmation(state: dict) -> str:
     if v["drift"]:
         rows.append("Base drift (clear of PR files): " + "; ".join(v["drift"]))
     diff = "Filemap diff: {} {}".format(v["diff_base"], pr["landed"])
-    if v["status"] != "match" and pr["commits"] > 1:
+    # Regression for VHS-113: a merge commit's first-parent diff is the whole PR; no caveat.
+    if v["status"] != "match" and pr["commits"] > 1 and v.get("landed_parents", 1) == 1:
         diff += " (landed first parent; may omit earlier rebased commits)"
     rows.append(diff)
     if plane["problem"]:
@@ -1188,6 +1189,7 @@ def _cleanup(state_path: str) -> int:
                 print("remote branch: skipped (lease rejected or push failed: {})".format(_text(err).strip()))
 
     contains = False
+    ff_ran = False
     main_ref = records[0]["branch"] if records else None
     if not default:
         print("fast-forward: skipped (default branch unknown)")
@@ -1202,6 +1204,7 @@ def _cleanup(state_path: str) -> int:
             print("fast-forward: skipped (main checkout has uncommitted changes)")
         else:
             code, _, err = git("merge", "--ff-only", "origin/" + default)
+            ff_ran = code == 0
             if code != 0:
                 print("fast-forward: failed ({})".format(_text(err).strip()))
                 failed = True
@@ -1214,7 +1217,14 @@ def _cleanup(state_path: str) -> int:
     if not command:
         print("post-land command: none declared")
     elif not contains:
-        print("post-land command: skipped (main checkout does not hold the landed commit)")
+        # Regression for VHS-113: name the fast-forward as the reason when it did not run.
+        if ff_ran:
+            reason = "main checkout does not hold the landed commit"
+        elif git("merge-base", "--is-ancestor", pr["landed"], "HEAD")[0] == 0:
+            reason = "fast-forward did not run; the main checkout holds the landed commit, run it by hand"
+        else:
+            reason = "fast-forward did not run"
+        print("post-land command: skipped ({})".format(reason))
     else:
         code = _shell(command, main)
         print("post-land command: exit {}".format(code))

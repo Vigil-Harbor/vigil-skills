@@ -876,6 +876,17 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("may omit earlier rebased commits", out)
 
+    def test_preflight_merge_commit_has_no_filemap_caveat(self):
+        # Regression for VHS-113: a two-parent landed commit diffs the whole PR.
+        router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b""),
+                              ("gh", "pr", "view", "7"): ok(self.pr_json(commits=[{}, {}])),
+                              ("git", "rev-list", "--parents"): ok(
+                                  LANDED + " " + PARENT + " " + "e" * 40 + "\n")})
+        code, out, _, state = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertNotIn("may omit earlier rebased commits", out)
+        self.assertEqual(state["verification"]["landed_parents"], 2)
+
     def test_preflight_warnings_allow_land_anyway(self):
         overlap_walk = {
             ("git", "rev-list", "--reverse"): ok(PARENT + "\n"),
@@ -1169,6 +1180,22 @@ class TestPreflightWikiCleanup(unittest.TestCase):
                     ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over), shell)
                 shell.assert_not_called()
                 self.assertIn("post-land command: skipped", out)
+
+    def test_cleanup_post_land_skip_names_the_fast_forward(self):
+        # Regression for VHS-113: a skipped fast-forward is the reason, not "does not hold".
+        state = self.preflight_state()
+        cases = {
+            "holds landed": (ok(), "fast-forward did not run; the main checkout holds the landed commit"),
+            "lacks landed": ((1, b"", b""), "post-land command: skipped (fast-forward did not run)"),
+        }
+        for name, (ancestor, expected) in cases.items():
+            with self.subTest(case=name):
+                over = {("git", "worktree", "list"): ok(self.porcelain(main_branch="other")),
+                        ("git", "merge-base", "--is-ancestor"): ancestor}
+                _, out, _ = self.run_main(
+                    ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over))
+                self.assertIn(expected, out)
+                self.assertNotIn("does not hold the landed commit", out)
 
 
 if __name__ == "__main__":
