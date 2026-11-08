@@ -37,7 +37,13 @@ Example value: `/ponytail-review` *(e.g., the review skill of the ponytail plugi
 
 A section that is empty, or has more than one non-blank line, is ignored with a warning. A spec can override the project's command with its own `## Review command` section, which takes precedence; the section is optional in a spec.
 
-If no review command is declared anywhere, the gate is skipped: `/ship-spec` prints a one-line note, puts `Review gate: skipped — no review command declared` in the PR body, and commits as before. A declared command that is not available on the host, or that fails, is also skipped and never blocks the commit.
+The gate follows the spec's tier (`skills/ship-spec/SKILL.md` Phase 3b):
+
+- `small` skips the review, with an unchecked `Review gate: skipped — small tier` line in the PR body.
+- `big` (and a spec with no tier) records a skip and commits when no command is declared, the command is not available, or it errors or returns nothing readable as findings.
+- `irreversible` stops before the commit in those same three cases, and keeps the worktree.
+
+A non-zero exit that still returns readable findings counts as a run.
 
 ### Key rotation (optional)
 
@@ -111,7 +117,7 @@ A project may gitignore `docs/specs/`. The lifecycle still runs: the skills reso
 
 spec-brief, spec-cycle, spec-tickets, ship-spec, spec-land, and spec-close read the issue tracker. ship-spec and spec-land are the two that move a ticket's state, both through `skills/ship-spec/states.json`. Configure the tracker connection per your host's docs.
 
-`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file. It picks Post-merge Checklists only when the PR body still has unchecked items under `## Test plan` and the project's entry has that state in both `states` and `state_groups`; otherwise it moves the ticket to Done and posts no checklist comment. With no entry for the project, or no state id for the target, it moves nothing and prints the manual steps. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
+`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file; `skills/spec-land/scripts/land_check.py` holds the routing rule. With no entry for the project, or no state id for the target, it moves nothing and prints the manual steps. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
 
 ## Default branch
 
