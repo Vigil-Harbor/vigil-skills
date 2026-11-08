@@ -14,7 +14,7 @@ requires:
 
 Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | --full]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
-Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything. Stop at the Phase 3 HARD STOP or the 2f halt; the operator runs `/ship-spec` in a separate session.
+Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything. Stop at the Phase 3 HARD STOP or the 2f halt; the operator runs the NEXT command in a separate session.
 
 ## The verdict marker
 

@@ -117,6 +117,7 @@ Pieces: <n> · Edges: <n>
 - <slug> — <short title> → <identifier or path>; blocked by <slugs | none>
 Unblocked (can run together; not an order): <slugs>
 Assembled-only: <Done-when and Test-plan items, or none>
+Repaired: <each draft-check repair, such as an edge dropped to break a cycle, or none>
 Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md
 ```
 
