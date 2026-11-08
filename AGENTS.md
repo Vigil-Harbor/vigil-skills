@@ -117,7 +117,7 @@ State.md edits require an evidence triple (Plane ID, date, commit hash) — the 
 
 ## External dependencies (runtime, not build)
 
-- **Plane connector** — ticket reads and state updates, live. Skills warn and proceed when a read fails; `wiki-state-update` refuses instead, and `/spec-tickets` halts when a connected tracker cannot read the parent.
+- **Plane connector** — ticket reads and state updates, live. Skills warn and proceed when a read fails; `wiki-state-update` refuses instead, and `/spec-tickets` halts when a connected tracker cannot read the parent or its children.
 - **`gh` CLI** — PR creation, CodeRabbit thread management. Must be authenticated.
 - **CodeRabbit** — configured on target repos for `/review-pr`.
 
