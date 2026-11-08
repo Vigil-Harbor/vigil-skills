@@ -81,7 +81,7 @@ If you don't have a wiki, omit `wiki_root` from the orchestrator prompt and the 
 
 ### Post-land command
 
-Read from the first of `CLAUDE.md` and the landed `AGENTS.md` that holds a `## Post-land command` section. That file is the only one read. Fence lines do not count. The section is exactly one non-blank line. spec-land runs it in the main checkout only when that checkout holds the landed commit. A section with more lines is skipped with a warning.
+Read from the first of `CLAUDE.md` and the landed `AGENTS.md` that holds a `## Post-land command` section. That file is the only one read. Fence lines do not count. The section is exactly one non-blank line. spec-land runs it in the main checkout only when that checkout is clean, on the default branch, and holds the landed commit after cleanup's fast-forward. A section with more lines is skipped with a warning.
 
 ```markdown
 ## Post-land command
@@ -111,7 +111,7 @@ A project may gitignore `docs/specs/`. The lifecycle still runs: the skills reso
 
 spec-brief, spec-cycle, spec-tickets, ship-spec, spec-land, and spec-close read the issue tracker. ship-spec and spec-land are the two that move a ticket's state, both through `skills/ship-spec/states.json`. Configure the tracker connection per your host's docs.
 
-`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
+`/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file. It picks Post-merge Checklists only when the project's entry has that state in both `states` and `state_groups`; otherwise it moves the ticket to Done and posts no checklist comment. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
 
 ## Default branch
 

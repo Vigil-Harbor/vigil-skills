@@ -28,7 +28,7 @@ The rules are in skills/spec-cycle/SKILL.md.
 
 ## spec-tickets
 
-Optional. Invoking it files verifiable pieces, with blocking edges, as children of the spec's ticket. Where the tracker can relate work items, the edges are blocked-by relations. Where it cannot, each child carries a Blocked by section. With no tracker connected, each piece is one local file beside the spec. A spec that does not split files nothing and points at `/ship-spec`. Existing pieces stop a re-run until they are removed by hand. `/ship-spec` still ships the whole spec either way.
+Optional. Invoking it files verifiable pieces, with blocking edges, as children of the spec's ticket. Where the tracker can relate work items, the edges are blocked-by relations. Where it cannot, each child carries a Blocked by section. With no tracker connected, each piece is one local file beside the spec. A spec that does not split files nothing and points at `/ship-spec`. Any existing child of the parent stops the run: delete the pieces of an earlier run, or split the spec by hand when the children are unrelated. `/ship-spec` still ships the whole spec either way.
 
 Invocation: `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md`.
 
@@ -44,7 +44,7 @@ The rules are in skills/ship-spec/SKILL.md.
 
 ## spec-land
 
-After the pull request is merged, confirm the landed code matches the recorded head and patch-id, move the ticket, write the wiki merge line and the filemap delta, and clean up the worktree and the branch. It is the step between the merge and the close. It never merges and never commits. Cleanup removes the worktree and the feature branch, then runs the project's post-land command from the main checkout.
+After the pull request is merged, confirm the landed code matches the recorded head and patch-id, move the ticket, write the wiki merge line and the filemap delta, and clean up the worktree and the branch. It is the step between the merge and the close. It never merges and never commits. Cleanup removes a clean worktree and its branches (a dirty one is kept), then runs the project's post-land command only when the main checkout holds the landed commit.
 
 Invocation: `/spec-land <PR-number | PR-URL | spec-path>`.
 
@@ -82,7 +82,7 @@ These are load-bearing. Leave them as the skills state them.
 - **Session boundary between spec-cycle and ship-spec.** Combining them is the main failure mode: context exhaustion mid-implementation, with no recovery point. A green spec on disk is what you re-run from.
 - **Parallel multi-lens review.** Sequential reviews let later reviewers anchor on earlier findings. Parallel dispatch forces independent reads.
 - **Reviewers are read-only.** They never edit files. spec-cycle owns the edits, so a reviewer cannot change the spec and introduce a new issue while reviewing it.
-- **STATUS line protocol.** A machine-parseable last line, `GREEN` or `RED P0=<n> P1=<n> ...`, gates the loop. The orchestrator sums P0+P1 across the reviewers it dispatched.
+- **STATUS line protocol.** A machine-parseable last line, `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...`, gates the loop. The orchestrator sums P0+P1 across the reviewers it dispatched.
 - **Round 2+ closure tracking.** Reviewers read the predecessor round when a closure manifest is provided, and they produce a closure table. Without that, the loop does not converge: reviewers re-raise issues that were already fixed.
 - **Targeted rewrite at the last pass, not a blank slate.** A blank-slate rewrite regresses closed findings. The rewrite keeps sections that already converged. A delta pass never runs that rewrite.
 - **Worktree isolation in ship-spec.** Working in the user's checkout means one bad git operation can lose uncommitted work. The worktree is the boundary.
