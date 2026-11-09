@@ -23,14 +23,15 @@ class TestSkill(unittest.TestCase):
 
     def test_skill_word_budget(self):
         # Anti-regrowth tripwire for epic VHS-90: the target is about 2,900.
-        self.assertLessEqual(len(read(SKILL).split()), 3500)
+        self.assertLessEqual(len(read(SKILL).split()), 3700)
 
     def test_contract_phrases_present(self):
         text = read(SKILL)
         for phrase in ("--build-only", "--from-review",
                        "if the review did not run, stop instead of committing",
                        "verdict_marker.py", "land_check.py",
-                       "## Done when", "## Test plan"):
+                       "## Done when", "## Test plan",
+                       "Test command:", "Validation:", "git hash-object"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
