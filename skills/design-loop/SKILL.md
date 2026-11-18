@@ -126,7 +126,8 @@ When the gate passes:
 1. If anything changed after the scoring round, run one **confirmation round** on the final build, or state plainly which changes are unscored.
 2. Run the product's own tests for anything you touched outside the UI.
 3. Commit and produce the deliverable. Offer the harness as a separate commit; it is not part of the product change.
-4. Give the final report: the scores, what the operator gets, where it differs from what they might expect, what was verified and what was not, and a list of what is waiting on them.
+4. **Run the project's code review before calling it done**, if it declares one (a `## Review command` section, or a merge gate the project documents). The design reviewer scores the experience; it is not looking for merge risk, and a code reviewer reading the same files finds different things: a guard that depends on a request having answered, state that outlives the thing it described, a control that vanished from an error branch. Fix what it finds, add a behaviour check for each, and say in the report that these changes came after the design scores.
+5. Give the final report: the scores, what the operator gets, where it differs from what they might expect, what was verified and what was not, and a list of what is waiting on them.
 
 ## Failure modes
 
