@@ -49,8 +49,8 @@ class TestLint(unittest.TestCase):
         # Regression for VHS-18: lint runs clean (zero ERRORs) against the shipped skills; VHS-51: and zero WARNs
         skills = sorted((REPO_ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual(
-            len(skills), 12,
-            f"expected the 12 currently-shipped skills, including spec-land and key-rotation (talaria retired 2026-10-11); found {len(skills)} — "
+            len(skills), 13,
+            f"expected the 13 currently-shipped skills, including spec-land, key-rotation and design-loop (talaria retired 2026-10-11); found {len(skills)} — "
             f"if you added a skill, bump this count after confirming it lints clean "
             f"(deliberate inventory tripwire, not a clean-run check)",
         )

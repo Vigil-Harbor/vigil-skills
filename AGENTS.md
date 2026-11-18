@@ -65,12 +65,16 @@ Standalone skill for triaging CodeRabbit review comments. Reads findings, verifi
 
 Process guide for a credential-exposure response. The operator performs every provider action. The record lives in the target project and is gitignored by the preflight script. The optional project section is documented in `docs/customizing.md`.
 
+### /design-loop
+
+Standalone skill for UI work that has to hold up to an independent read. The designer works in an isolated working copy against a mock with made-up data, and proves each round with screenshots and a script of browser behaviour checks. An outside reviewer in a fresh context returns scores and concerns in the shape of `reference/score-schema.json`; it is never told the target. `scripts/score_gate.py` turns a review into an exit code (0 pass, 1 short, 2 void), and a round with incomplete evidence is void rather than counted. Changes made after a scoring round are unscored until a confirmation round. Project settings come from an optional `## Design loop` section (see `docs/customizing.md`).
+
 ### File layout
 
 - `skills/<name>/SKILL.md` — Skill definitions (YAML frontmatter + markdown body). Installed to `~/.claude/skills/<name>/SKILL.md`.
 - `agents/<name>.md` — Subagent definitions. Installed to `~/.claude/agents/<name>.md`.
 - `skills/ship-spec/states.json` — Committed map of project identifiers to state UUIDs and review-state IDs. Synced alongside SKILL.md by `sync.py`.
-- Bundled scripts: `skills/spec-cycle/scripts/verdict_marker.py`, `skills/spec-land/scripts/land_check.py`, `skills/spec-close/scripts/archive_spec.py` and `prepend_log_entry.py`, `skills/spec-brief/scripts/check_premises.py`, `skills/session-handoff/scripts/`, `skills/key-rotation/scripts/prepare_record.py`, `skills/hermes-kanban-awareness/scripts/read_board.py`.
+- Bundled scripts: `skills/spec-cycle/scripts/verdict_marker.py`, `skills/spec-land/scripts/land_check.py`, `skills/spec-close/scripts/archive_spec.py` and `prepend_log_entry.py`, `skills/spec-brief/scripts/check_premises.py`, `skills/session-handoff/scripts/`, `skills/key-rotation/scripts/prepare_record.py`, `skills/hermes-kanban-awareness/scripts/read_board.py`, `skills/design-loop/scripts/score_gate.py`.
 - `reference/` folders — templates and schemas a skill reads beside its script.
 - `sync.py` — Bidirectional file sync. Stdlib only, cross-platform via `pathlib`.
 - `lint.py` — Portability lint for skills (`python lint.py --strict` to gate).
