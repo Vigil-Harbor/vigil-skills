@@ -62,6 +62,21 @@ Notify: the operator's on-call channel
 Record path: .key-rotation/record-YYYY-MM-DD.md
 ````
 
+### Design loop (optional)
+
+`/design-loop` reads an optional section for the loop's settings, from project-instructions text the host already supplied, else `CLAUDE.md` then `AGENTS.md` at the project root. Each line is `key: value`. A missing section or key uses the default, and anything the operator says in the request wins over the section.
+
+````markdown
+## Design loop
+
+target: 8
+categories: design, usability, conventions
+reviewer: <a model name, or one line that runs your outside reviewer>
+deliverable: pull request
+````
+
+`target` is the score every category must reach, out of 10. `reviewer` should be a model from a different family than the one doing the design, run in a fresh context each round; with no value the skill asks. The skill ships no reviewer and no browser tooling of its own: it uses what the host and the project have.
+
 ### Project guardrails
 
 If your project has load-bearing rules — async handling, error patterns, ordering constraints — list them here. The reviewers and `/ship-spec` will respect them. Example:

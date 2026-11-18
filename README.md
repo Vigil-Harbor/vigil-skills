@@ -16,6 +16,8 @@ Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → s
 - **`/review-pr [<num>]`** — Process one round of CodeRabbit review findings on a GitHub PR. Triages by severity, fixes real issues, pushes, posts per-thread replies, and leaves threads for CodeRabbit to resolve.
 - **`/key-rotation`** — Guide a credential-exposure response. The operator performs every provider action. The skill keeps a gitignored record of names and dispositions and never prints or stores a secret value.
 
+- **`/design-loop <surfaces>`** — Redesign a user interface through a designer/reviewer loop. The agent designs in an isolated working copy on synthetic data and proves each round with screenshots and scripted browser checks; an outside reviewer in a fresh context scores design, usability and conventions without being told the target; the loop exits when every score reaches it (default 8 of 10) on the build that will ship. Bundles a reviewer brief template, the score schema, harness guidance, and a stdlib gate script.
+
 `grilling` is the model-invocable interview primitive behind `/grill-me`, `/spec-brief`, and `/spec-cycle`'s red-halt option 4 — not a slash command.
 
 ### Subagents
