@@ -16,13 +16,13 @@ The stage is optional. Not invoking it is the skip. Invoking it is the authoriza
 
 ## Invocation
 
-One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`. The file stem is the ticket id, `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written.
+One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`. The name minus `.spec.md` is `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written.
 
 ## Operator replies
 
 The one prompt is the integration pick. Read the reply for intent. The numbered list is the fast path. Print `Reading: <what you will do>.` before acting. An ambiguous reply is asked again, naming what is unclear. Silence, an empty reply, or `abort` as the only non-blank line stops with nothing written.
 
-**Unattended.** `--unattended` means nobody will answer: the integration pick stops with nothing written. That stop, and every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop: comment `UNATTENDED STOP: <PARENT-ID> · spec-tickets · <reason>` (the exit's own line) on the parent when exactly one connected issue tracker resolves the id (a failed comment prints `stop comment NOT posted: <error>`), then print that line last.
+**Unattended.** `--unattended` means nobody will answer: the integration pick stops before filing. That stop, and every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop: comment `UNATTENDED STOP: <PARENT-ID> · spec-tickets · <reason>` (the exit's own line) on the parent when exactly one connected issue tracker resolves the id (a failed comment prints `stop comment NOT posted: <error>`), then print the `UNATTENDED STOP` line last.
 
 ## Phase 0 — Preflight
 
@@ -102,7 +102,7 @@ Work from the checked draft. Do not redraft mid-filing. File blockers first, one
 
 **Ticket contents.** The tracker name, or the local file's H1, is the short title. Body sections, in order: **Parent** (the parent's identifier); **Spec** (the spec path and the section anchors — point at the spec; no code blocks); **Delivers** (one paragraph); **Acceptance criteria** (the checklist); **Assembly** (this piece lands on the parent spec's single PR and does not open its own; `/ship-spec` on the parent does not read child tickets); **Blocked by** (`text` and `local` only: one reference per line, or `None — no blockers.`). A `local` file carries the line `local-only` directly after its H1.
 
-**Failure.** On the first failed write, or a create that returns no identifier, stop with no retry and no fallback. Print the stop report. A create that committed but returned no identifier is `not created`; check the tracker before filing the rest by hand.
+**Failure.** On the first failed write, or a create that returns no identifier, stop with no retry and no fallback. Print the stop report. An unconfirmed create is `not created`; check the tracker before filing the rest by hand.
 
 **Create-only.** Never edit or delete a ticket, remove a relation, or change any ticket's state, the parent's included. Never edit the spec.
 

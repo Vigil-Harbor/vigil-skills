@@ -64,7 +64,7 @@ class TestSkill(unittest.TestCase):
                        "UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>",
                        "when exactly one connected issue tracker resolves the id",
                        "stop comment NOT posted: <error>",
-                       "then print that line last",
+                       "then print the `UNATTENDED STOP` line last",
                        "each is exclusive with `--attest`",
                        "a `red`, `pending` or `unreadable` state is a recorded stop here:",
                        "an unattended run does not resume a halted or unfinished review",

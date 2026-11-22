@@ -52,13 +52,13 @@ class TestSkill(unittest.TestCase):
                        "Any halt or stop short of the mode's end, except a usage halt, is then a recorded stop",
                        "UNATTENDED STOP: <TICKET-ID> · ship-spec · <reason>",
                        "never under `--build-only`",
-                       "if unsure, ask; with `--unattended`, use `chore`",
+                       "if unsure, ask, or with `--unattended` use `chore`",
                        "Flagged, a step the spec's own words give to the operator",
                        "is left undone and is no stop: Phase 5 lists every such step as `- [ ] Operator: <step>`",
                        "A flagged `--build-only` also prints those lines, and its `--from-review` command with `--unattended`",
                        "never give the operator a step on your own judgment",
                        "each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`",
-                       "else add at that section's end each `- [ ] Operator:` line it lacks"):
+                       "else, flagged, append there each `- [ ] Operator:` line it lacks"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 

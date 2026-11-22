@@ -20,13 +20,13 @@ Default runs Phases 0–7. `--build-only` runs Phases 0–3 and stops before Pha
 
 A host that cannot wait prints the prompt and stops. It does not commit, roll the branch back, or delete, reuse, or rename a branch or worktree, and it does not take a numbered option whose text does one of those.
 
-`--unattended` goes with any mode and makes the run that host. Any halt or stop short of the mode's end, except a usage halt, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · ship-spec · <reason>` on the ticket when exactly one connected issue tracker resolves the id (never under `--build-only`; a failed comment prints `stop comment NOT posted: <error>`), then print that line last. `<reason>` is the halt's own line; a missing id reads `no ticket`. Flagged, a step the spec's own words give to the operator (an `operator step`; a deploy, a secret to mint, a provider console) is left undone and is no stop: Phase 5 lists every such step as `- [ ] Operator: <step>`. A flagged `--build-only` also prints those lines, and its `--from-review` command with `--unattended`. Any other step the run cannot do is a recorded stop; never give the operator a step on your own judgment.
+`--unattended` goes with any mode and makes the run that host. Any halt or stop short of the mode's end, except a usage halt, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · ship-spec · <reason>` on the ticket when exactly one connected issue tracker resolves the id (never under `--build-only`; a failed comment prints `stop comment NOT posted: <error>`), then print the `UNATTENDED STOP` line last. `<reason>` is the halt's own line; a missing id reads `no ticket`. Flagged, a step the spec's own words give to the operator (an `operator step`; a deploy, a secret to mint, a provider console) is left undone and is no stop: Phase 5 lists every such step as `- [ ] Operator: <step>`. A flagged `--build-only` also prints those lines, and its `--from-review` command with `--unattended`. Any other spec step the run cannot do is a recorded stop; never give the operator a step on your own judgment.
 
 ## Modes
 
 **Build-only.** Phase 1 still cuts `<project-root>/../<TICKET-ID>-worktree` on a new branch from `origin/<default-branch>`. After Phase 3 is green, or skipped because the test command is `N/A`, print the branch, the worktree path, and `/ship-spec <spec-path> --from-review <worktree-path>`, then stop.
 
-**Start-at-review.** After Phase 0, before Phase 3, check the path against that porcelain list. The primary checkout is its first `worktree` record. The argument must be a later `worktree` record: a linked worktree of this repository, not the primary checkout. Resolve both to absolute paths, strip a trailing separator, treat slashes alike, and on Windows compare case-insensitively. Print both strings on failure. Its `branch` line must be `refs/heads/<name>`, and `<name>` must not equal the default branch from step 5. Stop and do not commit when the path is missing, is the primary checkout, has no `branch` line, or is on the default branch. Name which of those four failed. If `<name>` does not contain the lowercased ticket id, warn, naming both, and continue.
+**Start-at-review.** After Phase 0, before Phase 3, check the path against that porcelain list. The primary checkout is its first `worktree` record. The argument must be a later `worktree` record: a linked worktree of this repository, not the primary checkout. Resolve both to absolute paths, strip a trailing separator, treat slashes alike, and on Windows compare case-insensitively. Print both strings on failure. Its `branch` line must be `refs/heads/<name>`, and `<name>` must not equal the default branch from step 5. Stop and do not commit when the path is missing, is the primary checkout, has no `branch` line, or is on the default branch. Name which of those four failed. If `<name>` lacks the lowercased ticket id, warn, naming both, and continue; flagged, halt.
 
 Phases 3–7 use that worktree as cwd. The branch is `git -C <path> branch --show-current`. The spec stays the absolute path from Phase 0. After the check and before Phase 3, `git fetch origin <default-branch>`. A failed fetch, or a missing `origin/<default-branch>`, stops before Phase 3 and commits nothing. Then classify both artifact paths, cwd the linked worktree, and hold the primary checkout for the copy. Run Phase 3 before Phase 3b unless the command is `N/A`; then skip the command and enter Phase 3b. The review diff is uncommitted changes plus `origin/<default-branch>...HEAD`, not a two-dot diff.
 
@@ -106,7 +106,7 @@ The suffix, once, is ` (kept locally at <primary>/docs/specs/TODO/<file>; not in
 
 The primary checkout changes only when the artifact rule copies an ignored artifact; git does not track that copy, and no other git state in the primary checkout changes.
 
-1. Branch `<type>/<ticket-id-lower>-<slug>`. `<type>` is `fix`, `feat`, or `chore`; if unsure, ask; with `--unattended`, use `chore`. `<slug>` is 3–5 lowercase hyphenated words.
+1. Branch `<type>/<ticket-id-lower>-<slug>`. `<type>` is `fix`, `feat`, or `chore`; if unsure, ask, or with `--unattended` use `chore`. `<slug>` is 3–5 lowercase hyphenated words.
 2. Path `<project-root>/../<TICKET-ID>-worktree`.
 3. Halt if the directory exists, or the branch exists locally (`git rev-parse --verify`) or on origin (`git ls-remote --heads`). Do not delete, reuse, or rename.
 4. Create it. A non-zero fetch or `git worktree add` stops before Phase 2 and does not edit the primary checkout.
@@ -151,7 +151,7 @@ When the test command is not `N/A`, the prompt also carries `Test command:`, the
 
 Before the review starts and again when it returns, record outside both checkouts `git status --porcelain=v1 -uall -z` and `git hash-object --` of each changed or untracked regular file. If the records differ, that is one Blocks finding naming each path. Do not revert. The snapshot also runs on `N/A`.
 
-Skips for `big`. Each one ends this phase and goes to Phase 4. Do not then write the ran-form file.
+On `big`, skips go to Phase 4 only with no unresolved Blocks finding. Do not then write the ran-form file.
 
 1. No command: one console line, the unchecked PR line, no review file, then Phase 4.
 2. Not available (no skill of that name, or the shell says the command was not found): skipped-form file, the unchecked PR line, then Phase 4.
@@ -214,11 +214,11 @@ PR line: checked when the review ran, unchecked when skipped; append the suffix 
 
 Stage by name every path `git status --porcelain -uall` lists, including untracked, deleted, and renamed paths. Skip ignored paths and the two artifact paths; those follow the artifact rule. A non-zero `git add` of an ignored artifact does not abort that rule. Never `git add -A`, `.`, or `-f`.
 
-Write the message to a temp file outside the worktree, then place the two artifacts. Subject: `<type>(<ticket-id-lower>): <one-line, ≤72 chars>`, plus a short narrative. Do not hard-code a model attribution trailer. If the host's instructions name one, add that line; otherwise omit it. Nothing staged and `HEAD` not ahead of `origin/<default-branch>`: stop, do not push. Nothing staged and `HEAD` ahead: skip the empty commit and go to Phase 5. Otherwise `git commit -F` that file. Do not pass `--no-verify`.
+Write the message to a temp file outside the worktree, then place the two artifacts. Subject: `<type>(<ticket-id-lower>): <one-line, ≤72 chars>`, plus a short narrative. Do not hard-code a model attribution trailer. If the host's instructions name one, add that line; otherwise omit it. Nothing staged and `HEAD` not ahead of `origin/<default-branch>`: stop, do not push. Nothing staged and `HEAD` ahead: skip the empty commit and go to Phase 5. Otherwise `git commit -F` that file.
 
 ## Phase 5 — Push and PR
 
-`git push -u origin <branch>`. A rejected push halts. Do not force-push. An existing PR: print its URL, do not create another, with `gh pr edit --body-file` append the section below if the body has no `## Test plan`, else add at that section's end each `- [ ] Operator:` line it lacks, and still post the marker and run Phase 6. Otherwise `gh pr create --title "<type>(<ticket-id-lower>): <one-line>" --body-file <file>`, with that file outside the worktree, same as the commit message. `<N>` is the pull number in that URL. If the URL has none, `gh pr view --json number --jq .number` for this branch only. A non-zero create or view, or no integer, halts before the marker and before Phase 6. Do not substitute the ticket's integer.
+`git push -u origin <branch>`. A rejected push halts. Do not force-push. An existing PR: print its URL, do not create another, with `gh pr edit --body-file` append the section below if the body has no `## Test plan`, else, flagged, append there each `- [ ] Operator:` line it lacks, and still post the marker and run Phase 6. Otherwise `gh pr create --title "<type>(<ticket-id-lower>): <one-line>" --body-file <file>`, with that file outside the worktree, same as the commit message. `<N>` is the pull number in that URL. If the URL has none, `gh pr view --json number --jq .number` for this branch only. A non-zero create or view, or no integer, halts before the marker and before Phase 6. Do not substitute the ticket's integer.
 
 Body: Summary, Files changed, and `## Test plan`. Test plan has `- [x] <test command> — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)`, with the suffix instead of that path when the log is ignored. For `N/A`: `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced`. Then the verdict line, the review line, each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`. No harness trailer unless the host's instructions name one.
 
@@ -251,5 +251,5 @@ Do not remove the worktree. Print the PR URL, spec path, branch, worktree path, 
 
 ## Tool-use notes
 
-- No interactive git.
+- No interactive git, no `--no-verify`.
 - Do not push to the default branch. Do not force-push unless the user asks.

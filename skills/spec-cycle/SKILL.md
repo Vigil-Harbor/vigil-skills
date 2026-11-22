@@ -33,14 +33,14 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 ### Reading the marker
 
-`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
+`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
 
 - `missing` — no marker file.
 - `unreadable` — the marker cannot be classified; the reason is named.
 - `pending` — a review started and did not finish.
 - `red` — the review ended red, whether or not the spec has changed.
 - `green` — the spec is the text that was judged.
-- `changed` — the spec is not the text that was judged.
+- `changed` — the fingerprint or tier check failed.
 
 `green` carries its kind: `review, round <n>` or `operator-attested`.
 
@@ -48,7 +48,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. A host that cannot wait keeps the prompt's own stop.
 
-**Unattended.** `--unattended` means nobody will answer: the run is a host that cannot wait, every prompt is a stop, and the 2f halt prints its block and takes no option. Any halt or stop short of the Phase 3 block, except a usage halt and the unchanged-green stop, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>` on the ticket when exactly one connected issue tracker resolves the id (for that write only; a failed comment prints `stop comment NOT posted: <error>`), then print that line last. `<reason>` is the halt's own line; a missing id reads `no ticket`.
+**Unattended.** `--unattended` means nobody will answer: the run is a host that cannot wait, every prompt is a stop, and the 2f halt prints its block and takes no option. Any halt or stop short of the Phase 3 block, except a usage halt and the unchanged-green stop, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>` on the ticket when exactly one connected issue tracker resolves the id (for that write only; a failed comment prints `stop comment NOT posted: <error>`), then print the `UNATTENDED STOP` line last. `<reason>` is the halt's own line; a missing id reads `no ticket`.
 
 ## Phase 0 — Preflight
 
@@ -362,7 +362,7 @@ Do not auto-proceed. The operator runs the NEXT command when ready.
 
 1. The spec at `docs/specs/TODO/<TICKET-ID>.spec.md` must exist, or halt. If it lacks any of the seven Phase 1 sections, halt: `cannot attest: <heading> is missing`.
 2. Read its tier by Phase 0 step 6's spec-line rule and no other: no line is `big`; a malformed line halts `tier: malformed (<value>) — halting` and writes nothing.
-3. Classify the marker with `"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec docs/specs/TODO/<TICKET-ID>.spec.md`, with no `--spec-tier`. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. On `green`, print `already green and unchanged — nothing to attest` and stop.
+3. Classify the marker with `"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec docs/specs/TODO/<TICKET-ID>.spec.md`, with no `--spec-tier`. On `green`, print `already green and unchanged — nothing to attest` and stop.
 4. Print:
 
    ```text

@@ -41,7 +41,7 @@ PRESENT = (
     # Regression for VHS-115: the flag and the flagged outcome of the one prompt.
     "then an optional `--unattended`",
     "Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]",
-    "`--unattended` means nobody will answer: the integration pick stops with nothing written",
+    "`--unattended` means nobody will answer: the integration pick stops before filing",
     "every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop",
     "UNATTENDED STOP: <PARENT-ID> · spec-tickets · <reason>",
     # Regression for VHS-115: a run that files is unchanged.
@@ -133,7 +133,7 @@ class TestUnattended(unittest.TestCase):
                            " · {} · <reason>".format(name),
                            "when exactly one connected issue tracker resolves the id",
                            "a failed comment prints `stop comment NOT posted: <error>`",
-                           "then print that line last"):
+                           "then print the `UNATTENDED STOP` line last"):
                 with self.subTest(skill=name, phrase=phrase):
                     self.assertIn(phrase, text)
 
