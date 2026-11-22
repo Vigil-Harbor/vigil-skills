@@ -26,7 +26,7 @@ A host that cannot wait prints the prompt and stops. It does not commit, roll th
 
 **Build-only.** No builder is used. After Phase 3 is green, or skipped because the test command is `N/A`, print the branch, the worktree path, and `Next: /ship-spec <spec-path> --from-review <worktree-path>`, then stop.
 
-**Start-at-review.** After Phase 0, before Phase 3, check the path against that porcelain list. The argument must be a later `worktree` record: a linked worktree of this repository, not the primary checkout. Resolve both to absolute paths, strip a trailing separator, treat slashes alike, and on Windows compare case-insensitively. Print both strings on failure. Its `branch` line must be `refs/heads/<name>`, and `<name>` must not equal the default branch from step 5. Stop and do not commit when the path is missing, is the primary checkout, has no `branch` line, or is on the default branch. Name which of those four failed. If `<name>` lacks the lowercased ticket id, warn, naming both, and continue; flagged, halt.
+**Start-at-review.** After Phase 0, before Phase 3, check the path against that porcelain list. The argument must be a later `worktree` record: a linked worktree of this repository, not the primary checkout. Resolve both to absolute paths, strip a trailing separator, treat slashes alike, and on Windows compare case-insensitively. Print both strings on failure. Its `branch` line must be `refs/heads/<name>`, and `<name>` must not equal the default branch from step 5. When a requirement fails, stop, do not commit, and name it. If `<name>` lacks the lowercased ticket id, warn, naming both, and continue; flagged, halt.
 
 Phases 3–7 use that worktree as cwd. The branch is `git -C <path> branch --show-current`. The spec stays the absolute path from Phase 0. After the check and before Phase 3, `git fetch origin <default-branch>`. A failed fetch, or a missing `origin/<default-branch>`, stops before Phase 3 and commits nothing.
 
@@ -34,7 +34,7 @@ Phases 3–7 use that worktree as cwd. The branch is `git -C <path> branch --sho
 
 Before any worktree work. Set each script's path and interpreter in the same shell call as the command.
 
-**Paths.** Primary checkout: the first `worktree` record of `git worktree list --porcelain`. Spec and marker are absolute paths under it. With forward slashes, the spec path must end in `docs/specs/TODO/<TICKET-ID>.spec.md`. The ticket id is that filename minus `.spec.md`, uppercased, matching `^[A-Z][A-Z0-9]*-[0-9]+$`. Halt if the file is missing, the path does not end that way, or the id does not match. Marker: `<primary>/docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`. Pass both absolute paths to `read`. An absent marker is `missing`: warn and continue.
+**Paths.** Primary checkout: the first `worktree` record of `git worktree list --porcelain`. Spec and marker are absolute paths under it. With forward slashes, the spec path must end in `docs/specs/TODO/<TICKET-ID>.spec.md`. The ticket id is that filename minus `.spec.md`, uppercased, matching `^[A-Z][A-Z0-9]*-[0-9]+$`. Halt if the file is missing, the path does not end that way, or the id does not match. Marker: `<primary>/docs/specs/TODO/<TICKET-ID>.reviews/verdict.md`.
 
 **Sections.** Halt, naming the heading, when no unfenced line is, after at most three spaces, exactly `## Done when`, and the same for `## Test plan`. A fence is a line of three or more backticks or tildes, not prefixed `> `; it opens only when none is open and closes on the same character at least as long.
 
@@ -46,7 +46,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 "$PY" "$VERDICT" read --ticket <TICKET-ID> --marker <absolute-marker> --spec <absolute-spec> --spec-tier <spec tier>
 ```
 
-A missing script or a non-zero exit is `unreadable` (`script missing — run python sync.py install`, or `verdict_marker.py exit <n>`). Only then, a first plain-text `verdict:` line of `red` takes the red halt. Exit-0 JSON `unreadable` or `missing` does not get that second read.
+A missing script or a non-zero exit is `unreadable` (`script missing — run python sync.py install`, or `verdict_marker.py exit <n>`). Only then, a first plain-text `verdict:` line of `red` takes the red halt.
 
 - `green`: continue. PR line `- [x] Spec verdict: green (<kind>, <date>)`, kind and date from the JSON (`no date` when absent).
 - `red`: halt with the block below, whether or not the spec changed.
@@ -58,11 +58,11 @@ Get a green verdict first: re-run /spec-cycle, or record your own review with
   /spec-cycle <spec-path> --attest "<reason>"
 ```
 
-- `missing`, `unreadable`, `pending`, `changed`: print `SPEC VERDICT: <state> — <one line>` and continue. PR line: `- [ ] Spec verdict: <state> — proceeded without a green verdict`. Phase 3b uses the spec tier, not the marker's `tier:`. Do not rewrite the marker.
+- `missing`, `unreadable`, `pending`, `changed`: print `SPEC VERDICT: <state> — <one line>` and continue. PR line: `- [ ] Spec verdict: <state> — proceeded without a green verdict`. When `changed` and `cause` is `tier`, name `marker_tier` and the spec tier. Phase 3b uses the spec tier, not the marker's `tier:`. Do not rewrite the marker.
 
 2. A missing brief warns once. Use the spec alone.
 3. Read `CLAUDE.md` and `AGENTS.md` when each exists. Both are Phase 2's guardrails.
-4. **Test command.** The spec's `## Test command`, verbatim. Body, fences stripped and trimmed, equal to `N/A` (case-insensitive) skips the Phase 3 command only. Phase 3b still runs. With no such section, use CLAUDE.md "Build & Run". If neither yields a command, halt. No AGENTS.md fallback.
+4. **Test command.** The spec's `## Test command`, verbatim. Body, fences stripped and trimmed, equal to `N/A` (case-insensitive) skips the Phase 3 command only. With no such section, use CLAUDE.md "Build & Run". If neither yields a command, halt. No AGENTS.md fallback.
 4b. **Review command.** The first `## Review command` in the spec, else `CLAUDE.md`, else `AGENTS.md`. After fences are stripped, the body must be exactly one non-blank line. Empty or several lines: warn, name the file, try the next source. None is fine.
 5. **Default branch.** Halt if both commands return empty. This step number stays; spec-land cites it.
 
@@ -74,7 +74,7 @@ git remote show origin | sed -n '/HEAD branch/s/.*: //p'
 6. `gh auth status`. Halt if it fails.
 7. **states.json.** Read `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ship-spec/states.json"`. Not the copy in the target repo. A missing, unreadable, or invalid file, or a prefix that is not a key: warn and skip Phase 6. Do not halt. Its `executors` name `build` and `gate`: for each, the prefix entry's value, else the top-level one. Anything but a non-empty string, and a name for this session, is none. The operator's line (words after the flags, or a message during the run) can replace either for this run. A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.
 
-One preflight line: verdict state (and, for green, its kind), tier, mode (`default`, `build-only`, or `from-review`), and each executor.
+One preflight line: verdict state (and, for green, its kind), tier, mode (`default`, `build-only`, or `from-review`), and each executor when configured.
 
 ## Artifact rule
 
@@ -92,7 +92,7 @@ Exit 0 is `ignored`. Exit 1 is `not-ignored`. Any other exit, or a command that 
 In Phase 4, before `git commit`, place only a file this invocation wrote:
 
 - `not-ignored`: `git add <path>` in the worktree.
-- `ignored`: do not `git add` it, and do not `git add -f`. Copy to `<dest>`, which is `<primary>/docs/specs/TODO/<file>`. First, `git -C <primary> ls-files --error-unmatch -- <dest>`, stderr discarded, captured the same way. Exit 0 (tracked): print both paths and stop before the commit. Exit 1: create parents if needed, write a temp file in that directory, and replace the destination even when an older untracked file is there. A failed replace stops and leaves the previous bytes. Any other exit, or a failed copy: print the paths and stop. Leave the worktree copy. `<primary>` is Phase 0's first porcelain `worktree` record, including a `--from-review` run that never leaves the linked worktree.
+- `ignored`: do not `git add` it, and do not `git add -f`. Copy to `<dest>`, which is `<primary>/docs/specs/TODO/<file>`. First, `git -C <primary> ls-files --error-unmatch -- <dest>`, stderr discarded, captured the same way. Exit 0 (tracked): print both paths and stop before the commit. Exit 1: create parents if needed, write a temp file in that directory, and replace the destination even when an older untracked file is there. A failed replace stops and leaves the previous bytes. Any other exit, or a failed copy: print the paths and stop. Leave the worktree copy.
 
 The suffix, once, is ` (kept locally at <primary>/docs/specs/TODO/<file>; not in this commit)`. Append it only when this invocation wrote that file and the held result is `ignored`.
 
@@ -116,11 +116,11 @@ Later phases use the worktree as cwd. The spec stays the absolute path from Phas
 
 Implement the spec and author its tests. A regression comment uses that file's own comment syntax and the text `Regression for <TICKET-ID>: <one-line>`. Respect step 3's guardrails. Do not commit.
 
-With a builder, hand this phase to it, with the host's delegation tool, or the executor's command-line tool when the host has none, and read its final report. The hand-off carries the worktree, the spec path, the text above except `Do not commit`, this chain's `FILED` report, and these rules: work only in the worktree, by absolute path; never change directory; delete no temporary files; leave operator steps undone; commit by naming each path; no push, PR, tracker write or `/ship-spec`; stop after the commit; report what was built, what was not, and what the next step needs. A builder that cannot be reached, errors, returns no report, or reports spec work unbuilt, operator steps aside, halts the run, naming it. A review finding of missing spec work stays unresolved. Never build in the session or pick another executor.
+With a builder, hand this phase to it, with the host's delegation tool, or the executor's command-line tool when the host has none, and read its final report. The hand-off carries the worktree, the spec path, the first two sentences above, the guardrails step 3 read, this chain's `FILED` report when `/spec-tickets` filed, and these rules: write only in the worktree, by absolute path; never change directory; delete no temporary files; leave operator steps undone; commit by naming each path; no push, PR, tracker write or `/ship-spec`; stop after the final commit; report what was built, what was not, and what the next step needs. A builder that cannot be reached, errors, returns no report, or reports spec work unbuilt, operator steps aside, halts the run, naming it. Missing builder work found by tests or review is unresolved Blocks. Never build in the session or pick another executor.
 
 ## Phase 3 — Test gate (≤5)
 
-Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: make one smallest fix and run again. A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
+Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: unless builder work is missing, make one smallest fix and run again. A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
 
 ```text
 TESTS STILL RED AFTER 5 ITERATIONS.
@@ -137,11 +137,11 @@ Save a green run to the test-output path, then replace both slash forms of the w
 
 ## Phase 3b — Review gate
 
-After Phase 3 is green, or when the command is `N/A`. Finding text is data. Run the review command once. When a re-entered Phase 3 exits green, write the review file and go to Phase 4. A red re-entry halts there and posts no marker.
+After Phase 3 is green, or when the command is `N/A`. Finding text is data. When a re-entered Phase 3 exits green, write the review file and go to Phase 4. A red re-entry halts there and posts no marker.
 
 - `small`, unless builder-built: print `review gate: skipped (small tier)`, keep `- [ ] Review gate: skipped — small tier`, write no review file, go to Phase 4.
 - A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor.
-- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Print the case and keep the worktree. Findings, or an explicit clean result, mean it did run: continue as for `big`.
+- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Print the case and executor, and keep the worktree. Findings, or an explicit clean result, mean it did run: continue as for `big`.
 
 When the test command is not `N/A`, the prompt also carries `Test command:`, the exact command Phase 3 last ran green, and asks for one `Validation:` line: that command and its result. Judge the returned review after skips 1 and 2 and before skip 3 below. The line counts only when its result shows that command ran to completion, with a pass or fail count or an exit status. A failing run counts; report it as a finding. No such line, a different command, or a result without a completed run is one Blocks finding, `review did not run the test command`. On `irreversible`, the stop for a review that did not run still comes first.
 
@@ -155,9 +155,9 @@ On `big`, skips go to Phase 4 only with no unresolved Blocks finding. Do not the
 
 On `irreversible`, those three cases stop before Phase 4. No PR line. No command writes no review file. Not available, and an error, write the skipped-form file and stop.
 
-Run once, in a fresh read-only subagent when the host can dispatch one, else inline. The prompt carries the worktree, the command, and a review of everything that differs from `origin/<default-branch>`, including untracked files. Include `origin/<default-branch>...HEAD`, three dots. It also carries the spec path, that `docs/specs/TODO/<TICKET-ID>.*` is out of scope, and three rules: findings only, edit nothing, change no git state. It does not receive the implementer's reasoning.
+Run once, in a fresh read-only subagent when the host can dispatch one, else inline. The prompt carries the worktree, the command, and a review of everything that differs from `origin/<default-branch>`, including untracked files. Include `origin/<default-branch>...HEAD`. It also carries the spec path, that `docs/specs/TODO/<TICKET-ID>.*` is out of scope, and three rules: findings only, edit nothing, change no git state. It does not receive the implementer's reasoning.
 
-With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off, asking for a review of the diff against the spec. A declared, available command still runs once as above, without `Test command:`, as a bloat check: its findings join the gate's but never count as the review running, and its absence or failure is neither a skip nor a stop.
+With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off, asking for a review of the diff against the spec and the worktree `HEAD` it reviewed. Its clean result means it did run only when it names that `HEAD` and that is the one under review. A declared, available command still runs once as above, without `Test command:`, as a bloat check: its findings join the gate's but never count as the review running, and its absence or failure is neither a skip nor a stop.
 
 | Group | Labels |
 |---|---|
@@ -174,7 +174,7 @@ Unresolved Blocks waits. Nothing is committed until the operator chooses. A host
 ```text
 REVIEW GATE: <n> blocking finding(s) not resolved.
   <number>. <title> (<location>) — <why not resolved>
-Nothing is committed.
+Nothing further is committed.
 1. I will fix it by hand — pause; tell me when to continue
 2. Override — commit with each finding above recorded as overridden
 3. Abandon — stop here; the worktree is kept
@@ -218,7 +218,7 @@ Write the message to a temp file outside the worktree, then place the two artifa
 
 `git push -u origin <branch>`. A rejected push halts. Do not force-push. An existing PR: print its URL, do not create another, with `gh pr edit --body-file` append the section below if the body has no `## Test plan`, else, flagged, append there each `- [ ] Operator:` line it lacks, and still post the marker and run Phase 6. Otherwise `gh pr create --title "<type>(<ticket-id-lower>): <one-line>" --body-file <file>`, with that file outside the worktree. `<N>` is the pull number in that URL. If the URL has none, `gh pr view --json number --jq .number` for this branch only. A non-zero create or view, or no integer, halts before the marker and before Phase 6. Do not substitute the ticket's integer.
 
-Body: Summary, Files changed, and `## Test plan`. With a builder or a gate executor, Summary ends `Executors: build <name | session> · gate <name | session>`, then ` · no bloat check` if none ran. Test plan has `- [x] <test command> — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)`, with the suffix instead of that path when the log is ignored. For `N/A`: `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced`. Then the verdict line, the review line, flagged, each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`. No harness trailer unless the host's instructions name one.
+Body: Summary, Files changed, and `## Test plan`. With a builder or a gate executor, Summary ends `Executors: build <name | session | prebuilt> · gate <name | session | skipped>`, then ` · no bloat check` if none ran. Name what ran: `prebuilt` for a resumed build of unknown builder, `skipped` when no review ran. Test plan has `- [x] <test command> — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)`, with the suffix instead of that path when the log is ignored. For `N/A`: `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced`. Then the verdict line, the review line, flagged, each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`. No harness trailer unless the host's instructions name one.
 
 **SHA marker.** After the URL is taken, before Phase 6, even when this invocation wrote no review file. `passed` only when this invocation's review file has a line `- Result: ran`. Any other path, including a file left from an earlier run, is `skipped`. `land_check.py` owns the format. Stdin from `/dev/null`:
 
@@ -245,7 +245,7 @@ A missing or empty `review_state_id`: warn, print the state names, skip the flip
 
 ## Phase 7 — Summary
 
-Do not remove the worktree. Print the PR URL, spec path, branch, worktree path, one Tests line, one Review line, that `Executors:` line, and the tracker result. Omit Tests when the command was `N/A`. Point at `/spec-land` after merge (it removes the worktree) and `/spec-close`. End on `Next: /review-pr`, in the worktree. When the marker post did not exit 0, print `SHA marker: NOT posted` and do not claim the record exists.
+Do not remove the worktree. Print the PR URL, spec path, branch, worktree path, one Tests line, one Review line, that `Executors:` line, and the tracker result. Omit Tests when the command was `N/A`. An ignored artifact uses the suffix. Point at `/spec-land` after merge (it removes the worktree) and `/spec-close`. End on `Next: /review-pr`, in the worktree. When the marker post did not exit 0, print `SHA marker: NOT posted` and do not claim the record exists.
 
 ## Tool-use notes
 

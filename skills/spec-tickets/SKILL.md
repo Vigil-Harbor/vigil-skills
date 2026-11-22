@@ -16,7 +16,7 @@ Invoking it is the authorization to file.
 
 ## Invocation
 
-One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`; later non-flag words are the operator's line. The name minus `.spec.md` is `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written.
+One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`; later non-flag words that are not a path are the operator's line. The name minus `.spec.md` is `<PARENT-ID>`. Anything else, a second path included, prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written. So does an unclear operator's line, naming what is unclear.
 
 ## Operator replies
 
@@ -30,7 +30,7 @@ Read the spec.
 
 **Heading check.** Halt, naming the heading, when the spec lacks `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Done when` or `## Out of scope`.
 
-**Verdict read.** `verdict_marker.py` owns the marker. Run this block as one shell call:
+**Verdict read.** `verdict_marker.py` owns the marker. Run this block as one shell call; a run that `/spec-cycle`'s **Chain** started passes `--spec <spec-path>` in place of `--no-fingerprint`:
 
 ```bash
 VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
@@ -47,7 +47,7 @@ Get a green verdict first: re-run /spec-cycle, or record your own review with
   /spec-cycle <spec-path> --attest "<reason>"
 ```
 
-Any other state continues. The report line is `Verdict: <state>`, plus the JSON `kind` and `date` when the state is green, or the `reason` when the state is unreadable.
+Any other state continues, except that a chain-started run needs `green`: otherwise print `NOT FILED: verdict <state>` and stop. The report line is `Verdict: <state>`, plus the JSON `kind` and `date` when the state is green, or the `reason` when the state is unreadable.
 
 A missing script, a non-zero exit, output that is not JSON, or a host with no shell reads the marker as plain text. A first `verdict:` line of `red` halts as above. Anything else is `Verdict: unreadable (<reason>)`. The reason is `script missing — run python sync.py install`, `verdict_marker.py exit <n>`, or `no shell — verdict not fully checked`.
 
@@ -62,9 +62,7 @@ Read-only. One integration per run.
 | `native` | A connected integration resolves the parent, creates a work item with a parent, and creates a blocked-by relation | Child work items, plus one blocked-by relation per edge |
 | `text` | The same, except it creates no blocked-by relation | Child work items, each with a `Blocked by` section |
 | `local` | No issue-tracker integration is connected | One file per piece at `docs/specs/TODO/<PARENT-ID>.ticket-<slug>.md` |
-| `halt` | An integration is connected and the probe or the parent retrieve fails, or none can create a work item with a parent | Nothing; the run stops here. |
-
-`halt` is not `local`. Local files beside a live tracker would be a second graph.
+| `halt` | An integration is connected and the probe or the parent retrieve fails, or none can create a work item with a parent | Nothing: print `Storage: halt via <name or none> (<reason>) — nothing filed.` and stop before drafting |
 
 More than one integration that can create a work item with a parent asks which one, before drafting.
 
@@ -72,15 +70,13 @@ A `native` edge is one blocked-by relation on the dependent, targeting the block
 
 On `native` and `text`, resolve the parent through the integration's retrieve-by-identifier capability. A retrieve that fails, or that lacks a reference the create needs (the parent reference, or the project reference when a create takes one), is `halt`.
 
-**halt.** Print `Storage: halt via <name or none> (<reason>) — nothing filed.` and stop before drafting.
-
 **Duplicate guard.** Count the files matching `docs/specs/TODO/<PARENT-ID>.ticket-*.md`. In `native` and `text`, also count the parent's children through the integration. The applicable counts are the file count in `local`, and both counts in `native` and `text`. When any applicable count is above zero, print `NOT FILED: <PARENT-ID> already has children (<n>: <identifiers> | not checked (local)) and local ticket files (<n>). If they are pieces from an earlier /spec-tickets run, delete them by hand and run again; otherwise split this spec by hand.` When an applicable count cannot be read, print `NOT FILED: cannot count <PARENT-ID>'s children through <name> (<reason>) — children: unknown, local ticket files: <n | unknown>.` Either way stop with nothing written. A tracker with no list-children capability therefore never files in `native` or `text`.
 
 ## Phase 2 — Draft
 
 Draft from the spec's Design and Scope only.
 
-**What a piece is.** A piece delivers one end-to-end outcome and can be verified without the other pieces. A slice of a single layer with no outcome of its own is not a piece. A piece is small enough for one agent to finish in a single fresh context. Draft the fewest pieces that satisfy those two rules. When the Design already calls for a seam a later piece needs, that seam is its own piece and must still be verifiable alone. Do not invent a seam the Design does not name. When the Design is one mechanical change across many Scope rows, use expand–contract: one piece that adds the new form beside the old; one or more pieces that move callers across, each blocked by the first; one piece that removes the old form, blocked by every mover. Do not add a final integrate-and-verify piece. The parent spec's full Done when and the pre-merge review run once on the assembled PR.
+**What a piece is.** A piece delivers one end-to-end outcome and can be verified without the other pieces. A slice of a single layer with no outcome of its own is not a piece. A piece is small enough for one agent to finish in a single fresh context. Draft the fewest pieces that satisfy those two rules. When the Design already calls for a seam a later piece needs, that seam is its own piece and must still be verifiable alone. Do not invent a seam the Design does not name. When the Design is one mechanical change across many Scope rows, use expand–contract: one piece that adds the new form beside the old; one or more pieces that move callers across, each blocked by the first; one piece that removes the old form, blocked by every mover. Do not add a final integrate-and-verify piece.
 
 **Slugs.** Each piece has a short title and a unique kebab-case slug of at most 40 characters matching `^[a-z0-9]+(-[a-z0-9]+)*$`.
 

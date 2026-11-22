@@ -51,9 +51,14 @@ PRESENT = (
     "one blocked-by relation per edge",
     "Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md",
     # Regression for VHS-54: free words, the one-piece Next line and the chain.
-    "later non-flag words are the operator's line",
+    "later non-flag words that are not a path are the operator's line",
+    "Anything else, a second path included, prints `Usage:",
+    "So does an unclear operator's line, naming what is unclear.",
     "and the Report's `Next:` line, file nothing, and end as its **Chain** says",
     "when the verdict read `green` and `/ship-spec` Phase 0 step 7 resolves a builder, start the `Next:` command by `/spec-cycle`'s **Chain** rule",
+    # Regression for VHS-54: a chain-started run files only for the spec that went green.
+    "a run that `/spec-cycle`'s **Chain** started passes `--spec <spec-path>` in place of `--no-fingerprint`",
+    "a chain-started run needs `green`: otherwise print `NOT FILED: verdict <state>` and stop",
 )
 
 ABSENT = (

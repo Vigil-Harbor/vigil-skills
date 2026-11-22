@@ -14,7 +14,7 @@ requires:
 
 Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
-Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything. The run ends at the 2f halt or in Phase 3.
+Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything.
 
 ## The verdict marker
 
@@ -33,7 +33,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 ### Reading the marker
 
-`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
+`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`.
 
 - `missing` — no marker file.
 - `unreadable` — the marker cannot be classified; the reason is named.
@@ -351,7 +351,7 @@ The `Verdict:` line gains ` (fingerprint not computed)` when the marker has `fin
 
 **Brief-section parsing.** Find these headers case-insensitively, allowing trailing punctuation: `Decisions carried forward` / `Decisions` / `Decisions made`; `Done when` / `Acceptance criteria`; `Out of scope`. Enumerate the numbered list under each, using the first bolded clause or first sentence of each item as its label. A missing header renders one bullet: `[ ] Did the spec address everything in the brief? Anything in the brief absent from the spec?`
 
-**Chain.** When the green marker was written and `/ship-spec` Phase 0 step 7 resolves a builder, start the `Next:` command with `--unattended`, then the operator's line, in this session and print `Chain: started <command> — build <name>, gate <name | session>`. Start nothing when the operator's line (words after the path, before any flag, or a message during the run) says to hold or is unclear, or the host cannot start it: the operator runs the `Next:` command.
+**Chain.** When the green marker was written, `/ship-spec` Phase 0 step 7 resolves a builder, and this spec is the file `/ship-spec` will read (the same absolute path under its primary checkout), start the `Next:` command with `--unattended` alone, in this session, and print `Chain: started <command> — build <name>, gate <name | session>`. Never forward the operator's line (words after the path, before any flag, or a message during the run): this session acts on it and carries any executor it names, which replaces that role for this run. Start nothing when it says to hold or is unclear, or the host cannot start it: the operator runs the `Next:` command. With no builder, the operator starts `Next:` in a fresh session.
 
 ## Attest mode
 
