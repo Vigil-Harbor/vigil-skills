@@ -232,7 +232,7 @@ class TestHeadingMatcher(unittest.TestCase):
             self.S.REQUIRED_SECTIONS,
             ("Current State Summary", "Immediate Next Steps", "Important Context"),
         )
-        self.assertEqual(len(self.S.RECOMMENDED_SECTIONS), 6)
+        self.assertEqual(len(self.S.RECOMMENDED_SECTIONS), 7)
 
 
 # --- 2. Template round-trip --------------------------------------------------
@@ -263,7 +263,7 @@ class TestTemplateRoundTrip(TempDirCase):
                 self.assertEqual(text.count(self.S.todo_marker(name)), 1)
         # The per-name assertion above is what makes this non-vacuous: a bare
         # count cannot tell nine right sections from nine markers in one.
-        self.assertEqual(len(self.S.TODO_MARKER_RE.findall(text)), 9)
+        self.assertEqual(len(self.S.TODO_MARKER_RE.findall(text)), 10)
 
     def test_files_modified_marker_sits_outside_the_generated_table(self):
         text = self.S.normalize(self.scaffold().read_bytes())
@@ -289,6 +289,28 @@ class TestTemplateRoundTrip(TempDirCase):
         code, out, _ = run_main(self.V, [str(self.scaffold())])
         self.assertEqual(code, 1)
         self.assertIn("VERDICT: NEEDS WORK", out)
+
+    def test_open_question_comes_first(self):
+        path = self.scaffold()
+        text = self.S.normalize(path.read_bytes())
+        self.assertEqual(
+            headings_of(self.S, text)[:3],
+            ["Handoff: round trip", "Open Question", "Session Metadata"])
+        self.assertEqual(text.count(self.S.todo_marker("Open Question")), 1)
+        code, out, _ = run_main(self.V, [str(path)])
+        self.assertEqual(code, 1, out)
+        self.assertIn("VERDICT: NEEDS WORK", out)
+        path.write_text(fill_markers(self.S, path.read_text(encoding="utf-8")),
+                        encoding="utf-8", newline="\n")
+        code, out, _ = run_main(self.V, [str(path)])
+        self.assertEqual(code, 0, out)
+        self.assertIn("VERDICT: READY", out)
+        minimal = self.tmp / "minimal.md"
+        minimal.write_text(minimal_document(), encoding="utf-8", newline="\n")
+        code, out, _ = run_main(self.V, [str(minimal)])
+        self.assertEqual(code, 0, out)
+        self.assertIn("VERDICT: READY", out)
+        self.assertIn("missing: Open Question", out)
 
 
 # --- 3. Legacy-corpus compatibility, both shapes -----------------------------
