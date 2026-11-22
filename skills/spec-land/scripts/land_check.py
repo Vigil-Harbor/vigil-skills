@@ -1179,8 +1179,9 @@ def _cleanup(state_path: str) -> int:
                 refused = _text(err)
                 if code == 0:
                     print("local branch: deleted")
-                elif "error: the branch '{}' is not fully merged".format(branch) not in [
-                        line.strip().rstrip(".") for line in refused.splitlines()]:
+                elif "error: the branch '{}' is not fully merged".format(branch).lower() not in [
+                        # git 2.39 and older print "The branch ... merged."
+                        line.strip().rstrip(".").lower() for line in refused.splitlines()]:
                     print("local branch: NOT deleted ({})".format(" ".join(refused.split())))
                     failed = True
                 elif matched and tip == head:

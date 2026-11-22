@@ -1322,6 +1322,20 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
 
+    def test_branch_delete_reads_the_older_git_wording(self):
+        # Regression for VHS-122: git 2.39 and older capitalise the refusal and end it with a period.
+        state = self._eligible_state()
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (1, b"", (
+                "error: The branch '{0}' is not fully merged.\n"
+                "If you are sure you want to delete it, run 'git branch -D {0}'.\n"
+            ).format(BRANCH).encode()),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 0, out)
+        self.assertIn("local branch: deleted (-D", out)
+
     def test_post_land_rechecks_the_checkout_before_and_after(self):
         state = self._eligible_state()
         armed = {"status_seen": False}
@@ -1611,13 +1625,13 @@ class TestCleanupRealGit(unittest.TestCase):
         self._identity(dest)
         return dest
 
-    def _cleanup(self, clone):
+    def _cleanup(self, clone, branch="feat/vhs-122-missing", head=None):
         self._git(clone, "fetch", "origin")
         state = {
             "version": 1,
             "main": clone.as_posix(),
-            "pr": {"number": 7, "branch": "feat/vhs-122-missing",
-                   "head": self.first, "landed": self.tip},
+            "pr": {"number": 7, "branch": branch,
+                   "head": head or self.first, "landed": self.tip},
             "ticket": "VHS-122",
             "verification": {"status": "match"},
             "wiki": {"path": None},
@@ -1699,6 +1713,23 @@ class TestCleanupRealGit(unittest.TestCase):
         self.assertTrue(
             any(line.startswith("fast-forward: failed") for line in out.splitlines()), detail)
         self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), detail)
+
+    def test_unmerged_branch_at_the_head_is_deleted(self):
+        # Real git writes the refusal here, so the wording parse is not fed its own string.
+        clone = self._clone("squash")
+        branch = "feat/vhs-122-squashed"
+        self._git(clone, "checkout", "-q", "-b", branch)
+        (clone / "c.txt").write_bytes(b"c-v1\n")
+        self._git(clone, "add", "--", "c.txt")
+        self._git(clone, "commit", "-q", "-m", "squashed away")
+        head = self._rev(clone)
+        self._git(clone, "checkout", "-q", "main")
+        code, out, err = self._cleanup(clone, branch, head)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 0, detail)
+        self.assertIn("local branch: deleted (-D", out, detail)
+        gone = self._git(clone, "rev-parse", "--verify", "-q", "refs/heads/" + branch, check=False)
+        self.assertNotEqual(gone.returncode, 0, detail)
 
     def test_rename_overlap_is_not_a_match(self):
         # Main edits old.txt. A branch renames it to new.txt with the same bytes.
