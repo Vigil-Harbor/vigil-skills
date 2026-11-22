@@ -92,7 +92,7 @@ class TestSkill(unittest.TestCase):
                        "report what was built, what was not, and what the next step needs",
                        "or reports spec work unbuilt, operator steps aside, halts the run, naming it",
                        # Regression for VHS-54: missing builder work is never a test fix; the red gate halts on it.
-                       "is red: halt on missing builder work; otherwise make one smallest fix and retry",
+                       "is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry",
                        "A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.",
                        "Never build in the session or pick another executor.",
                        "- `small`, unless builder-built: print",

@@ -120,7 +120,7 @@ With a builder, hand this phase to it, with the host's delegation tool, or the e
 
 ## Phase 3 — Test gate (≤5)
 
-Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt on missing builder work; otherwise make one smallest fix and retry. A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
+Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry. At the cap, a host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
 
 ```text
 TESTS STILL RED AFTER 5 ITERATIONS.
@@ -153,7 +153,7 @@ On `big`, skips go to Phase 4 only with no unresolved Blocks finding. Do not the
 2. Not available (no skill of that name, or the shell says the command was not found): skipped-form file, the unchecked PR line, then Phase 4.
 3. Errors, or nothing readable as findings: skipped-form file with the first 20 lines of the error, unchecked PR line, then Phase 4. A non-zero exit with readable findings did run.
 
-On `irreversible`, those three cases stop before Phase 4. No PR line. No command writes no review file. Not available, and an error, write the skipped-form file and stop.
+On `irreversible`, those three cases stop before Phase 4. No PR line. Write no file for an absent command. Otherwise write the skipped-form file with the reason.
 
 Run once, in a fresh read-only subagent when the host can dispatch one, else inline. The prompt carries the worktree, the command, and a review of everything that differs from `origin/<default-branch>`, including untracked files. Include `origin/<default-branch>...HEAD`. It also carries the spec path, that `docs/specs/TODO/<TICKET-ID>.*` is out of scope, and three rules: findings only, edit nothing, change no git state. It does not receive the implementer's reasoning.
 
