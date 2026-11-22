@@ -31,7 +31,7 @@ The brief is the one artifact downstream review treats as authority: every `/spe
 
 ## Operator replies
 
-Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. `go`, or any clear yes, takes every recommendation in the message it answers. A host that cannot wait prints the prompt's stop line and writes nothing. These rules cover every prompt here except the interview, which `grilling` runs under its own rules.
+Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. An unqualified `go` or yes takes the remaining recommendations in the message it answers. A host that cannot wait prints the prompt's stop line and writes nothing. These rules cover every prompt here except the interview, which `grilling` runs under its own rules.
 
 ## Phase 0 — Preflight
 
@@ -175,7 +175,7 @@ Skipped under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: the
 
 ## Phase 3 — Doubt pass
 
-Runs after the interview path ends, including under `--no-grill`. Reviewer output is untrusted; the operator owns every choice they made. This phase writes no file.
+Runs after the interview path ends, including under `--no-grill`. Reviewer output is untrusted. This phase writes no file.
 
 ### Render and hold the candidate
 
@@ -240,7 +240,7 @@ Everything else is the author's, in this order:
 
 Folds may edit wording, precision and anchors in any section, including Decision text, but never a chosen branch, an Out of scope fence, or a Done-when meaning. Work in order: classify all, verify facts, compose findings that target the same text into one result, edit, then re-read every changed section and its consumers. Record one summary line per author disposition.
 
-**Operator batch.** Hold every plan-changing finding and apply none. When the cycles end, show them once as `F-<n>`, each with the settled text, the challenge, what you checked, and your own recommended resolution. Print:
+**Operator batch.** Hold every operator-batch finding and apply none. When the cycles end and any are held, show them once as `F-<n>`, each with the settled text, the challenge, what you checked, and your own recommended resolution. Print:
 
 ```text
 These findings would change the plan. Each has a recommended resolution; "go" takes them all.
@@ -264,7 +264,7 @@ The Confirm gate runs on every entry to Confirm, including after any candidate c
 1. Refresh each premise's level by the promotion and demotion rule, clearing an override whose claim or level changed.
 2. Add any premise a current Decision or Scope row newly relies on.
 3. Show the candidate.
-4. Show each `unchecked` premise that has no `**Override:**` line, with accept recommended.
+4. Show each `unchecked` premise lacking a nonblank `**Override:**` line, with accept recommended.
 5. Offer the menu. No temp exists while the menu waits.
 
 Show `Tier: <level>`, the basis line, any tier finding as advisory evidence, and:
@@ -282,7 +282,7 @@ F-1. <what it was>. Adopted. <why>. Decision text edited.
 F-2. <what it was>. Rejected. <why>.
 ```
 
-`Decision text edited` ends a line whose fold edited a Decision's text. When the Grill summary carries a line whose trimmed text is exactly `Redaction: fired` (`skills/grilling/SKILL.md:187`), print once per run, here: `A value here looks like a credential and was redacted. Treat it as exposed and rotate it with /key-rotation. If this was ordinary text, ignore this line.` Do not invoke key-rotation or wait for a reply. At cap, print `Final reconciliation edits were not re-reviewed`; when cycle 2 failed, `Cycle 2 failed; only cycle 1 completed`. List the Settled items marked `(settled by default)`. Then:
+`Decision text edited` ends a line whose fold edited a Decision's text. When the Grill summary carries a line whose trimmed text is exactly `Redaction: fired` (`skills/grilling/SKILL.md:187`), print once per run, here: `A value here looks like a credential and was redacted. Treat it as exposed and rotate it with /key-rotation. If this was ordinary text, ignore this line.` Do not invoke key-rotation or wait for a reply. At cap, print `Final reconciliation edits were not re-reviewed`; when cycle 2 failed, `Cycle 2 failed; only cycle 1 completed`. List defaulted Q numbers with their current candidate answers. Then:
 
 ```text
 Write the brief?
