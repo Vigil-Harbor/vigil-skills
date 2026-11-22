@@ -243,7 +243,7 @@ Folds may edit wording, precision and anchors in any section, including Decision
 **Operator batch.** Hold every operator-batch finding and apply none. When the cycles end and any are held, show them once as `F-<n>`, each with the settled text, the challenge, what you checked, and your own recommended resolution. Print:
 
 ```text
-These findings would change the plan. Each has a recommended resolution; "go" takes them all.
+These findings need your decision. Each has a recommended resolution; "go" takes them all.
 Or answer one: `F-1: keep`, `F-1: replace: <text>`, `F-1: reopen`.
 ```
 

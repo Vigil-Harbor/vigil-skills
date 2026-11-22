@@ -80,7 +80,7 @@ Read each reply for intent. Before acting on it, print one line: `Reading: <what
 Applies only when the caller passes `ask_only`, a test for which questions must be asked. Where it conflicts with another rule here, this section wins.
 
 - An in-altitude frontier question with a clear recommendation that does not meet `ask_only` is not asked: settle it with the recommendation, number it, and recompute the frontier. Its Settled line reads `chose <answer> (settled by default)`.
-- A rendered round lists the defaults made since the last one under `Settled by default`. One the operator names reopens per the resume contract.
+- Each rendered round lists new defaults under `Settled by default`. Ask any default the operator names and reopen its descendants.
 - A round with nothing to ask is not rendered and uses no round; with none rendered, exit `empty-frontier`, `rounds: 0/<round_cap>`.
 - An unqualified `go` or yes answers each asked question the reply does not name with its recommendation, never a network approval.
 - Round 1's reply may also answer a prompt the caller printed above it; leave those parts to the caller, and stop if the caller ends the run.
