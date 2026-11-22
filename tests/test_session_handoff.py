@@ -806,5 +806,14 @@ class TestSkillLint(unittest.TestCase):
         self.assertIn("session-handoff", shipped)
 
 
+class TestSkillPins(unittest.TestCase):
+
+    def test_session_handoff_skill(self):
+        text = (REPO_ROOT / "skills" / "session-handoff" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLessEqual(len(text.split()), 1432)
+        self.assertIn("**Open Question**", text)
+        self.assertIn("**Immediate Next Steps #1**", text)
+
+
 if __name__ == "__main__":
     unittest.main()

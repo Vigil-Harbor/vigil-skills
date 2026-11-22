@@ -270,7 +270,7 @@ class TestSkillPins(unittest.TestCase):
 
     def test_word_ceiling(self):
         # Target about 2,200 words; this is the tripwire.
-        self.assertLessEqual(len(self.text.split()), 2600)
+        self.assertLessEqual(len(self.text.split()), 2272)
 
     def test_archive_lives_in_the_script(self):
         self.assertIn("archive_spec.py", self.text)

@@ -1546,5 +1546,23 @@ class TestCleanupRealGit(unittest.TestCase):
         self.assertEqual(self._rev(clone), before, detail)
 
 
+class TestSkillPins(unittest.TestCase):
+
+    def test_spec_land_skill(self):
+        text = (REPO_ROOT / "skills" / "spec-land" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLessEqual(len(text.split()), 1370)
+        for needle in (
+            "go to Step 3 with no reply",
+            ", wait, and read the reply for intent",
+            "the reply must say to land despite the warning",
+            "hand-over: eligible",
+            "Handing over to /spec-close <TICKET-ID>.",
+            "pr merge",
+            "or force anything",
+        ):
+            self.assertIn(needle, text)
+        self.assertNotIn("default branch and clean", text)
+
+
 if __name__ == "__main__":
     unittest.main()
