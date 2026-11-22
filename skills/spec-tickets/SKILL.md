@@ -16,11 +16,13 @@ The stage is optional. Not invoking it is the skip. Invoking it is the authoriza
 
 ## Invocation
 
-One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`. The file stem is the ticket id, `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` and stops with nothing written.
+One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`. The file stem is the ticket id, `<PARENT-ID>`. Anything else prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written.
 
 ## Operator replies
 
-The one prompt is the integration pick. Read the reply for intent. The numbered list is the fast path. Print `Reading: <what you will do>.` before acting. An ambiguous reply is asked again, naming what is unclear. Silence or an empty reply is never yes, and at the integration pick it stops with nothing written. `abort` as the only non-blank line stops with nothing written.
+The one prompt is the integration pick. Read the reply for intent. The numbered list is the fast path. Print `Reading: <what you will do>.` before acting. An ambiguous reply is asked again, naming what is unclear. Silence, an empty reply, or `abort` as the only non-blank line stops with nothing written.
+
+**Unattended.** `--unattended` means nobody will answer: the integration pick stops with nothing written. That stop, and every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop: comment `UNATTENDED STOP: <PARENT-ID> · spec-tickets · <reason>` (the exit's own line) on the parent when exactly one connected issue tracker resolves the id (a failed comment prints `stop comment NOT posted: <error>`), then print that line last.
 
 ## Phase 0 — Preflight
 
@@ -64,7 +66,7 @@ Read-only. One integration per run.
 
 `halt` is not `local`. Local files beside a live tracker would be a second graph.
 
-More than one integration that can create a work item with a parent asks which one, before drafting. That pick is the prompt in Operator replies.
+More than one integration that can create a work item with a parent asks which one, before drafting.
 
 A `native` edge is one blocked-by relation on the dependent, targeting the blocker. An integration that offers only the inverse kind is `text`.
 
@@ -121,8 +123,8 @@ Repaired: <each draft-check repair, such as an edge dropped to break a cycle, or
 Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md
 ```
 
-On a stop after a failed write, the same header lines, then each piece as `created <identifier or path>` or `not created`, each edge as `written` or `not written`, then the failed operation and its error as returned. The first line reads `STOPPED: <PARENT-ID>`, never `FILED`. The operator files the rest by hand from that report, or deletes what was created and runs again. The duplicate guard stops a re-run until then. Check the tracker before filing by hand when a create's outcome is unknown.
+On a stop after a failed write, the same header lines, then each piece as `created <identifier or path>` or `not created`, each edge as `written` or `not written`, then the failed operation and its error as returned. The first line reads `STOPPED: <PARENT-ID>`, never `FILED`. The operator files the rest by hand from that report, or deletes what was created and runs again.
 
 ## Tool-use notes
 
-The capability inventory: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, create a blocked-by relation on the dependent; or the equivalent in the host. `native` and `text` file only when the list-children read works. One `verdict_marker.py read --no-fingerprint` call. `local` file names fit spec-close's companion rule (`<TICKET-ID>.<rest>`), so a later close archives `ticket-<slug>.md` with the spec's artifacts.
+The capability inventory: retrieve a work item by identifier, list the children of a parent, create a work item with a parent, create a blocked-by relation on the dependent; or the equivalent in the host.

@@ -15,6 +15,8 @@ SKILL = REPO_ROOT / "skills" / "spec-tickets" / "SKILL.md"
 REFERENCE = REPO_ROOT / "docs" / "spec-workflow-reference.md"
 SPEC_CYCLE = REPO_ROOT / "skills" / "spec-cycle" / "SKILL.md"
 README = REPO_ROOT / "README.md"
+AGENTS_MD = REPO_ROOT / "AGENTS.md"
+SHIP_SPEC = REPO_ROOT / "skills" / "ship-spec" / "SKILL.md"
 
 REQUIRES = (
     "requires:\n"
@@ -36,6 +38,16 @@ PRESENT = (
     "Reading:",
     # Regression for VHS-99: the duplicate guard's stop line stays phrase-pinned.
     "already has children",
+    # Regression for VHS-115: the flag and the flagged outcome of the one prompt.
+    "then an optional `--unattended`",
+    "Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]",
+    "`--unattended` means nobody will answer: the integration pick stops with nothing written",
+    "every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop",
+    "UNATTENDED STOP: <PARENT-ID> · spec-tickets · <reason>",
+    # Regression for VHS-115: a run that files is unchanged.
+    "Invoking it is the authorization to file.",
+    "one blocked-by relation per edge",
+    "Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md",
 )
 
 ABSENT = (
@@ -64,8 +76,8 @@ def read(path):
 class TestSpecTicketsSkill(unittest.TestCase):
 
     def test_skill_word_budget(self):
-        # Regression for VHS-99: spec-tickets stays under the 1,900-word ceiling.
-        self.assertLessEqual(len(read(SKILL).split()), 1900)
+        # Regression for VHS-115: no growth past the 2026-11-22 count.
+        self.assertLessEqual(len(read(SKILL).split()), 1714)
 
     def test_contract_phrases_present(self):
         text = read(SKILL)
@@ -108,6 +120,37 @@ class TestNextAndReadme(unittest.TestCase):
 
     def test_readme_lists_spec_land(self):
         self.assertIn("`/spec-land", read(README))
+
+
+class TestUnattended(unittest.TestCase):
+
+    def test_stop_line_shape_shared(self):
+        # Regression for VHS-115: one stop line and one comment rule in all three skills.
+        for path, name in ((SPEC_CYCLE, "spec-cycle"), (SKILL, "spec-tickets"),
+                           (SHIP_SPEC, "ship-spec")):
+            text = read(path)
+            for phrase in ("UNATTENDED STOP: <",
+                           " · {} · <reason>".format(name),
+                           "when exactly one connected issue tracker resolves the id",
+                           "a failed comment prints `stop comment NOT posted: <error>`",
+                           "then print that line last"):
+                with self.subTest(skill=name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
+    def test_docs_carry_flag(self):
+        # Regression for VHS-115: every usage line names the flag.
+        usage = ('/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]',
+                 "/ship-spec <spec-path> [--build-only | --from-review <worktree-path>] [--unattended]")
+        for path in (AGENTS_MD, README):
+            text = read(path)
+            for phrase in usage + ("/spec-tickets <spec-path> [--unattended]",):
+                with self.subTest(doc=path.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+        text = read(REFERENCE)
+        for phrase in usage + ("/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]",
+                               "UNATTENDED STOP: <ticket> · <skill> · <reason>"):
+            with self.subTest(doc=REFERENCE.name, phrase=phrase):
+                self.assertIn(phrase, text)
 
 
 if __name__ == "__main__":

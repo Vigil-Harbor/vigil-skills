@@ -34,8 +34,8 @@ def block(text, start, end):
 class TestSkill(unittest.TestCase):
 
     def test_skill_word_budget(self):
-        # Anti-regrowth tripwire for epic VHS-90: the target is about 6,300.
-        self.assertLessEqual(len(read(SKILL).split()), 7500)
+        # Regression for VHS-115: no growth past the 2026-11-22 count. The VHS-90 target is about 6,300.
+        self.assertLessEqual(len(read(SKILL).split()), 7066)
 
     def test_contract_phrases_present(self):
         text = read(SKILL)
@@ -50,6 +50,47 @@ class TestSkill(unittest.TestCase):
         text = read(SKILL)
         for phrase in ("changed_regions", "baseline.commit", "brief.copy.md",
                        "re-anchored round", "(recount:", "merge --ff-only", "Agreement Map"):
+            with self.subTest(phrase=phrase):
+                self.assertNotIn(phrase, text)
+
+    def test_unattended_phrases(self):
+        # Regression for VHS-115: the flag, the recorded stop and the Splits line.
+        text = read(SKILL)
+        for phrase in ('[--attest "<reason>" | [--full] [--unattended]]',
+                       "`--unattended` means nobody will answer: the run is a host that cannot wait",
+                       "every prompt is a stop",
+                       "the 2f halt prints its block and takes no option",
+                       "except a usage halt and the unchanged-green stop",
+                       "UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>",
+                       "when exactly one connected issue tracker resolves the id",
+                       "stop comment NOT posted: <error>",
+                       "then print that line last",
+                       "each is exclusive with `--attest`",
+                       "a `red`, `pending` or `unreadable` state is a recorded stop here:",
+                       "an unattended run does not resume a halted or unfinished review",
+                       "Splits: <yes — <the pieces in a few words> | no>",
+                       "The `Splits:` line then names the pieces in a few words",
+                       "with `Splits: no`"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_unflagged_prompts_kept(self):
+        # Regression for VHS-115: without the flag every prompt reads as it did.
+        text = read(SKILL)
+        for phrase in ("with no match, ask for it",
+                       "A host that cannot wait keeps the prompt's own stop.",
+                       "marker left pending",
+                       "4. Grill the remaining findings.",
+                       "Wait for the operator.",
+                       "attestation requires an operator — nothing written",
+                       "`full` when `--full` is given; when the marker is missing, unreadable, `pending`"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_stale_marker_actions_absent(self):
+        # Regression for VHS-115: the marker list names states, not confirms.
+        text = read(SKILL)
+        for phrase in ("— Confirm", "Every confirm stops", "canonical copy", "`Why:` line"):
             with self.subTest(phrase=phrase):
                 self.assertNotIn(phrase, text)
 
