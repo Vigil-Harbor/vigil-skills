@@ -279,6 +279,21 @@ class TestSkillPins(unittest.TestCase):
     def test_merge_line_lookup_named(self):
         self.assertIn("merge | <PREFIX> — <TICKET-ID> PR #", self.text)
 
+    def test_prompts_that_stay(self):
+        self.assertIn("Continue anyway? [y/N]", self.text)
+        self.assertIn("1. Partial-close  2. Abort", self.text)
+        self.assertIn("Enter PR number or commit SHA:", self.text)
+        self.assertIn("Proceed? [y/N]", self.text)
+
+    def test_wiki_commit_is_the_scripts(self):
+        self.assertIn("commit_wiki.py", self.text)
+        self.assertIn("Handing over to /spec-close <TICKET-ID>.", self.text)
+        self.assertIn("Never commit in the target repo.", self.text)
+        self.assertNotIn("**Never commit.**", self.text)
+        self.assertNotIn("git add <each wiki file", self.text)
+        self.assertNotIn("Status: uncommitted.", self.text)
+        self.assertIn("Status: uncommitted — review with", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()

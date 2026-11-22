@@ -15,7 +15,7 @@ requires:
 
 `--report-only` and `--partial` together halt with `Usage: --report-only and --partial are mutually exclusive — pick one.`
 
-Nothing changes before the Phase 4 confirmation except the reconciliation report.
+Nothing changes before Phase 4 except the reconciliation report.
 
 ## Phase 0 — Preflight
 
@@ -39,7 +39,7 @@ Spec flow only. The archive-only close skips this phase whatever the ticket's st
 
 Read the ticket with the issue tracker's retrieve-by-identifier capability (e.g., `mcp__claude_ai_Plane__workitem` with `action: retrieve_by_identifier`, `workitem_identifier: "<TICKET-ID>"`, `fields: "name,state,completed_at"` and `expand: "state"` in Claude Code, or the equivalent in your host; load the tool first if your host defers tool schemas). `state.group` is the gate. A failed read prints `ticket: could not read <TICKET-ID> from the issue tracker (<error>). Usually a login problem: re-authenticate the tracker connection.` and takes rule 4.
 
-Never gate on `completed_at`: some states that are not done still set it. It is only a ship-date source.
+Never gate on `completed_at`: some states that are not done still set it.
 
 Partial-close skips Phases 2 and 3. With no wiki it archives only and prints `wiki not found — skipping log.md entry; archive only`.
 
@@ -118,7 +118,7 @@ A ticket already in `DONE/<ID>/`, with nothing left in `TODO/`, only gets the lo
 
 ## Phase 4 — Confirm
 
-One checkpoint covers every change after the report. Run the archive block (Phase 5) with `--dry-run` added after the ticket id, and paste its output, or its `archive NOT run` line, into the plan verbatim:
+Run the archive block (Phase 5) with `--dry-run` added after the ticket id, and paste its output, or its `archive NOT run` line, into the plan verbatim:
 
 ```text
 === CLOSE PLAN: <TICKET-ID> ===
@@ -144,11 +144,11 @@ Log.md entry (prepended):
 Proceed? [y/N]
 ```
 
-On `N`, stop: nothing changes after the report.
+When this run's `/spec-land` printed `Handing over to /spec-close <TICKET-ID>.`, omit the `Proceed?` line and continue. Otherwise, on `N`, stop: nothing changes after the report.
 
 ## Phase 5 — Execute
 
-1. **Wiki** (full-close only). Write the approved pages, then the state.md edit.
+1. **Wiki** (full-close only). Write the plan's pages, then the state.md edit.
 2. **Archive.** Run this block and show its output:
 
    ```bash
@@ -158,12 +158,12 @@ On `N`, stop: nothing changes after the report.
    if test -f "$ARCHIVE"; then "$PY" "$ARCHIVE" <TICKET-ID> < /dev/null; else echo "archive NOT run: archive_spec.py not found at $ARCHIVE — install with 'python sync.py install'"; fi
    ```
 
-   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It skips sources already gone and never moves onto an existing path. It stages tracked moves, and untracked ones only when git does not ignore the destination. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
+   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It stages tracked moves, and untracked ones only when git does not ignore the destination. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
 
    On exit 0, continue. On any other exit, or `archive NOT run`, the archive is incomplete: skip the log write, report `Archive: incomplete` with the script's problem lines, and ask the operator to clear each one and re-run `/spec-close <TICKET-ID>`. A `destination exists` line means two artifacts claim one path: show the operator both paths and let them resolve it by hand before the re-run. Never delete, overwrite or rename either one yourself. For a tracked file, the operator uses `git mv`, so the index follows. To clear `moved, NOT staged`, run `git add` on that path. The re-run archives what is left and writes the log line. If it rewrites a reconciliation report that was already staged, run `git add` on the report again; leave an ignored one alone.
-3. **Log** (skipped when there is no wiki). Prepend the entry with `prepend_log_entry.py`; it places the entry above the newest dated one, checks the guard, and writes atomically.
+3. **Log** (skipped when there is no wiki). Prepend the entry with `prepend_log_entry.py`.
    - Spec-flow heading: `## [<date>] close | <PREFIX> — <TICKET-ID>: <spec title> (archived from TODO/)`, with a 1–2 sentence body.
-   - Guard: `close | <PREFIX> — <TICKET-ID>:`. The `close |` keeps it apart from spec-land's merge lines. The colon keeps `VHS-1` from matching `VHS-11`.
+   - Guard: `close | <PREFIX> — <TICKET-ID>:`.
    - `<date>` is today in UTC, or the newest date already heading `log.md` when that is later; the script refuses an entry older than the newest one.
 
    ```bash
@@ -179,6 +179,7 @@ On `N`, stop: nothing changes after the report.
    then rc=0; else rc=$?; fi
    echo "prepend_log_entry_exit=$rc"
    else echo "log.md NOT written: prepend_log_entry.py not found at $SCRIPT — install with 'python sync.py install'"; fi
+   "$PY" "${SCRIPT%/*}/commit_wiki.py" "<wiki_root>" --ticket <TICKET-ID> --file "<path>" < /dev/null
    ```
 
    Single-quote the guard. Double-quote both paths. Keep the `PREPEND_LOG_ENTRY_EOF` delimiter. Branch on the echoed integer, not on the harness's pass or fail:
@@ -190,7 +191,7 @@ On `N`, stop: nothing changes after the report.
    | other | `log.md NOT written: <stderr>` |
 
    A failed log write never stops the close. To recover, re-run `/spec-close <TICKET-ID>`.
-4. **Never commit.**
+4. **Wiki commit.** The block's last line runs `commit_wiki.py`: one local commit of this ticket's `log.md` entries, chosen by ticket id, and each `--file`. Give `--file` once per wiki file this run wrote, if any, and, on a hand-over, per file on spec-land's `Suggested wiki commit:` line; never `log.md`. Show its `wiki commit:` line and any `To retry:` line, and finish the close whatever it says. Never commit in the target repo.
 
 ```text
 === CLOSE COMPLETE: <TICKET-ID> ===
@@ -205,14 +206,13 @@ Wiki (<wiki_root>):
   Created: decisions/YYYY-MM-DD-<slug>.md
   Updated: projects/<project>/state.md
   <the log.md report line>
-  Status: uncommitted.
+  <the wiki commit line>
 
-Suggested commits:
+Suggested commit:
   (in target repo)  git commit -m "close(<ticket-lower>): archive spec to DONE/"
-  (in wiki)         git add <each wiki file this run wrote> && git commit -m "close(<ticket-lower>): wiki harvest from <TICKET-ID>"
 ```
 
-The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Name in the wiki suggestion only the files this run wrote; `log.md` only when the script wrote it. Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
+The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
 
 ## Re-runs
 
@@ -223,7 +223,7 @@ The archive paths are already staged, so the target-repo suggestion is a plain `
 ## Tool-use notes
 
 - File read and write: the report, the wiki pages, and the state.md edit. `log.md` changes only through `prepend_log_entry.py`.
-- Shell with git; `archive_spec.py` and `prepend_log_entry.py` run through the resolved interpreter.
+- Shell with git; `archive_spec.py`, `prepend_log_entry.py` and `commit_wiki.py` run through the resolved interpreter.
 - `gh`, optional (`vcs-host?`): only for a PR-number-only diff.
 - The issue tracker's ticket read (`issue-tracker?`).
-- Never commit, push, or open a PR.
+- Never push or open a PR. The only commit is `commit_wiki.py`'s.
