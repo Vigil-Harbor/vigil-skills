@@ -186,7 +186,7 @@ Nothing is committed.
 
 If a fix landed and the command is not `N/A`, re-enter Phase 3 with a fresh count of 5. Do not review again. Do not undo a Blocks fix to reach green. A Fix-or-record fix may be reverted as `recorded: fix reverted, broke <test>`.
 
-When the review ran, write `docs/specs/TODO/<TICKET-ID>.review.md` from the template, then place it by the artifact rule. A skipped-form file, written in the skip, omits Mode, Compared against, Validation, the count lines, and Findings. No findings: zero counts, then `## Findings` and `None.`
+When the review ran, write `docs/specs/TODO/<TICKET-ID>.review.md` from the template, then place it by the artifact rule. Skipped files omit Mode, Compared against, Validation and counts. Keep Findings only for Blocks dispositions. No findings: zero counts, then `## Findings` and `None.`
 
 ```markdown
 # Review gate: <TICKET-ID>

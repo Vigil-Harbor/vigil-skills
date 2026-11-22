@@ -42,7 +42,7 @@ A section that is empty, or has more than one non-blank line, is ignored with a 
 The gate follows the spec's tier (`skills/ship-spec/SKILL.md` Phase 3b):
 
 - `small` skips the review, with an unchecked `Review gate: skipped — small tier` line in the PR body.
-- `big` (and a spec with no tier) records a skip and commits when no command is declared, the command is not available, or it errors or returns nothing readable as findings.
+- `big` (and a spec with no tier) records a skip when no command is declared, the command is not available, or it errors or returns nothing readable as findings, and commits only with no unresolved Blocks finding.
 - `irreversible` stops before the commit in those same three cases, and keeps the worktree.
 
 A non-zero exit that still returns readable findings counts as a run.
