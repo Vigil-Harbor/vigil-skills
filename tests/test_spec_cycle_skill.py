@@ -66,6 +66,7 @@ class TestSkill(unittest.TestCase):
                        "stop comment NOT posted: <error>",
                        "then print the `UNATTENDED STOP` line last",
                        "each is exclusive with `--attest`",
+                       "or output that is not one JSON object with a valid `state` is `unreadable`",
                        "a `red`, `pending` or `unreadable` state is a recorded stop here:",
                        "an unattended run does not resume a halted or unfinished review",
                        "Splits: <yes — <the pieces in a few words> | no>",

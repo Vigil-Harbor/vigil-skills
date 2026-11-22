@@ -186,7 +186,7 @@ Nothing is committed.
 
 If a fix landed and the command is not `N/A`, re-enter Phase 3 with a fresh count of 5. Do not review again. Do not undo a Blocks fix to reach green. A Fix-or-record fix may be reverted as `recorded: fix reverted, broke <test>`.
 
-When the review ran, write `docs/specs/TODO/<TICKET-ID>.review.md` from the template, then place it by the artifact rule. Skipped files omit Mode, Compared against, Validation and counts. Keep Findings only for Blocks dispositions. No findings: zero counts, then `## Findings` and `None.`
+When the review ran, write `docs/specs/TODO/<TICKET-ID>.review.md` from the template, then place it by the artifact rule. Skipped files omit Mode, Compared against, Validation and counts, and keep Findings only for Blocks dispositions. No findings: zero counts, then `## Findings` and `None.`
 
 ```markdown
 # Review gate: <TICKET-ID>
@@ -220,7 +220,7 @@ Write the message to a temp file outside the worktree, then place the two artifa
 
 `git push -u origin <branch>`. A rejected push halts. Do not force-push. An existing PR: print its URL, do not create another, with `gh pr edit --body-file` append the section below if the body has no `## Test plan`, else, flagged, append there each `- [ ] Operator:` line it lacks, and still post the marker and run Phase 6. Otherwise `gh pr create --title "<type>(<ticket-id-lower>): <one-line>" --body-file <file>`, with that file outside the worktree, same as the commit message. `<N>` is the pull number in that URL. If the URL has none, `gh pr view --json number --jq .number` for this branch only. A non-zero create or view, or no integer, halts before the marker and before Phase 6. Do not substitute the ticket's integer.
 
-Body: Summary, Files changed, and `## Test plan`. Test plan has `- [x] <test command> — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)`, with the suffix instead of that path when the log is ignored. For `N/A`: `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced`. Then the verdict line, the review line, each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`. No harness trailer unless the host's instructions name one.
+Body: Summary, Files changed, and `## Test plan`. Test plan has `- [x] <test command> — <N>/<N> pass (full output: docs/specs/TODO/<TICKET-ID>.test-output.txt)`, with the suffix instead of that path when the log is ignored. For `N/A`: `- [x] Tests: N/A — doc-only/ops-only change, no test artifacts produced`. Then the verdict line, the review line, flagged, each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`. No harness trailer unless the host's instructions name one.
 
 **SHA marker.** After the URL is taken, before Phase 6, even when this invocation wrote no review file. `passed` only when this invocation's review file has a line `- Result: ran`. Any other path, including a file left from an earlier run, is `skipped`. Do not pass `inconclusive` or `not-run`. `land_check.py` owns the format. Stdin from `/dev/null`:
 

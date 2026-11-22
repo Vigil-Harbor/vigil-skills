@@ -40,6 +40,7 @@ PRESENT = (
     "already has children",
     # Regression for VHS-115: the flag and the flagged outcome of the one prompt.
     "then an optional `--unattended`",
+    "The name minus `.spec.md` is `<PARENT-ID>`",
     "Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]",
     "`--unattended` means nobody will answer: the integration pick stops before filing",
     "every heading-check, red-verdict, `Storage: halt`, `NOT FILED` and `STOPPED` exit, is then a recorded stop",

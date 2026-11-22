@@ -58,7 +58,9 @@ class TestSkill(unittest.TestCase):
                        "A flagged `--build-only` also prints those lines, and its `--from-review` command with `--unattended`",
                        "never give the operator a step on your own judgment",
                        "each `- [ ] Operator: <step>` line, and always `- [ ] Post-merge verification`",
-                       "else, flagged, append there each `- [ ] Operator:` line it lacks"):
+                       "else, flagged, append there each `- [ ] Operator:` line it lacks",
+                       "warn, naming both, and continue; flagged, halt",
+                       "skips go to Phase 4 only with no unresolved Blocks finding"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
