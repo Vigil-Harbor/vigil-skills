@@ -606,13 +606,13 @@ def _verify(number: int, pr_head: str, landed: str, commits: int) -> dict:
     walked = _must(["git", "rev-list", "--reverse", "{}..{}".format(base, merge_base)],
                    "git rev-list").split()
     pr_paths = {p.replace("\\", "/") for p in _must(
-        ["git", "diff", "--name-only", "{}...{}".format(base, head)],
+        ["git", "diff", "--name-only", "--no-renames", "{}...{}".format(base, head)],
         "git diff --name-only").splitlines() if p}
     touching = []
     subjects = []
     for sha in walked:
         paths = {p.replace("\\", "/") for p in _must(
-            ["git", "diff-tree", "--first-parent", "-m", "--no-commit-id", "--name-only", "-r", sha],
+            ["git", "diff-tree", "--first-parent", "-m", "--no-commit-id", "--no-renames", "--name-only", "-r", sha],
             "git diff-tree {}".format(sha)).splitlines() if p}
         subject = _must(["git", "log", "-1", "--format=%s", sha], "git log").strip()
         subjects.append("{} {}".format(sha[:12], subject))
@@ -1092,7 +1092,7 @@ def _on_default_with_landed(main: str, default: str, landed: str) -> bool:
         records = _worktrees(main)
     except _Halt:
         return False
-    if not records or records[0].get("branch") != "refs/heads/" + default:
+    if records[0].get("branch") != "refs/heads/" + default:
         return False
     return _cmd(["git", "-C", main, "merge-base", "--is-ancestor", landed, "HEAD"])[0] == 0
 
@@ -1171,17 +1171,23 @@ def _cleanup(state_path: str) -> int:
                 failed = True
             elif int(count) > 0:
                 print("local branch: kept ({} commits not in the PR head)".format(count))
-            elif git("branch", "-d", branch)[0] == 0:
-                print("local branch: deleted")
-            elif matched and tip == head:
-                code, _, err = git("branch", "-D", branch)
-                if code == 0:
-                    print("local branch: deleted (-D; squash or rebase, tip matched the recorded head)")
-                else:
-                    print("local branch: NOT deleted ({})".format(_text(err).strip()))
-                    failed = True
             else:
-                print("local branch: kept (git branch -d refused; -D needs a SHA match)")
+                code, _, err = git("branch", "-d", branch)
+                refused = _text(err)
+                if code == 0:
+                    print("local branch: deleted")
+                elif "not fully merged" not in refused:
+                    print("local branch: NOT deleted ({})".format(" ".join(refused.split())))
+                    failed = True
+                elif matched and tip == head:
+                    code, _, err = git("branch", "-D", branch)
+                    if code == 0:
+                        print("local branch: deleted (-D; squash or rebase, tip matched the recorded head)")
+                    else:
+                        print("local branch: NOT deleted ({})".format(_text(err).strip()))
+                        failed = True
+                else:
+                    print("local branch: kept (git branch -d refused; -D needs a SHA match)")
 
     if deletable:
         code, out, err = git("ls-remote", "--heads", "origin", branch)
@@ -1217,7 +1223,8 @@ def _cleanup(state_path: str) -> int:
             print("fast-forward: skipped (main checkout is not on {})".format(default))
         else:
             code, _, err = git(
-                "merge", "--ff-only", "--no-autostash", "--no-overwrite-ignore", "origin/" + default)
+                "merge", "--ff-only", "--no-squash", "--no-autostash", "--no-overwrite-ignore",
+                "refs/remotes/origin/" + default)
             ff_ran = code == 0
             if code != 0:
                 print("fast-forward: failed ({})".format(" ".join(_text(err).split())))
@@ -1244,6 +1251,8 @@ def _cleanup(state_path: str) -> int:
         if status[0] != 0:
             failed = True
             note = ""
+            print("post-land command: status failed ({})".format(
+                " ".join(_text(status[2]).split())))
         else:
             note = (" (ran with uncommitted changes in the main checkout)"
                     if status[1].strip() else "")

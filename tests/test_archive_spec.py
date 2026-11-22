@@ -295,7 +295,6 @@ class TestSkillPins(unittest.TestCase):
         self.assertIn(
             "Suggest the commit only when this run accounts for every staged path.", self.text)
         self.assertNotIn("then commit", self.text)
-        self.assertNotIn("To retry:", self.text)
 
 
 if __name__ == "__main__":

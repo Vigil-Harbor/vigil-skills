@@ -1240,7 +1240,10 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
         self.assertEqual(code, 1)
         merge = router.ran("git", "merge", "--ff-only")
-        self.assertTrue(merge and "--no-autostash" in merge[0])
+        self.assertEqual(len(merge), 1)
+        self.assertIn("--no-squash", merge[0])
+        self.assertIn("--no-autostash", merge[0])
+        self.assertIn("refs/remotes/origin/main", merge[0])
         failed = [line for line in out.splitlines() if line.startswith("fast-forward: failed (")]
         self.assertEqual(len(failed), 1)
         self.assertTrue(failed[0].startswith("fast-forward: failed (error: Your local changes"))
@@ -1291,6 +1294,19 @@ class TestPreflightWikiCleanup(unittest.TestCase):
             ["cleanup", "--state", self.state_file(state)], router, shell)
         self.assertEqual(code, 1, out)
         self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_branch_delete_other_error_ends_hand_over_no(self):
+        # A refusal other than "not fully merged" is a failed action.
+        state = self._eligible_state()
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (
+                1, b"", b"fatal: cannot lock ref 'refs/heads/feat': File exists"),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("cannot lock ref", out)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
 
     def test_post_land_rechecks_the_checkout_before_and_after(self):
         state = self._eligible_state()
@@ -1669,6 +1685,39 @@ class TestCleanupRealGit(unittest.TestCase):
         self.assertTrue(
             any(line.startswith("fast-forward: failed") for line in out.splitlines()), detail)
         self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), detail)
+
+    def test_rename_overlap_is_not_a_match(self):
+        # Main edits old.txt. A branch renames it to new.txt with the same bytes.
+        # The landed rename must not be reported as a match.
+        repo = self.tmp / "rename"
+        repo.mkdir()
+        self._git(repo, "init", "-q")
+        self._git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(repo)
+        (repo / "old.txt").write_bytes(b"one\ntwo\nthree\nfour\nfive\n")
+        self._git(repo, "add", "--", "old.txt")
+        self._git(repo, "commit", "-q", "-m", "base")
+        base = self._rev(repo)
+        self._git(repo, "branch", "pr")
+        (repo / "old.txt").write_bytes(b"one\ntwo\nthree\nfour\nfive changed\n")
+        self._git(repo, "add", "--", "old.txt")
+        self._git(repo, "commit", "-q", "-m", "edit old")
+        self._git(repo, "checkout", "-q", "pr")
+        self._git(repo, "mv", "old.txt", "new.txt")
+        self._git(repo, "commit", "-q", "-m", "rename")
+        head = self._rev(repo)
+        self._git(repo, "checkout", "-q", "main")
+        self._git(repo, "merge", "--no-ff", "-m", "merge", "pr")
+        landed = self._rev(repo)
+        previous = os.getcwd()
+        self.addCleanup(os.chdir, previous)
+        os.chdir(str(repo))
+        with mock.patch.dict(os.environ, self.env, clear=True):
+            recorded = self.mod._diff_patch_id(base, head)
+            line = "head={} base={} patch-id={} review=passed".format(head, base, recorded)
+            with mock.patch.object(self.mod, "_read_latest", return_value=(1, "", line)):
+                result = self.mod._verify(7, head, landed, 1)
+        self.assertNotEqual(result["status"], "match", result)
 
 
 class TestSkillPins(unittest.TestCase):

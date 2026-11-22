@@ -104,7 +104,7 @@ Run it from the main checkout (the `main` path in the state), never from inside 
 - A dirty worktree is kept, and so are its local and remote branches.
 - `git branch -D` runs only after a SHA match with the local tip equal to the PR head.
 - The remote branch is deleted only with a lease on the PR head. Already gone is normal.
-- The main checkout fast-forwards only when it is on the default branch; git refuses when a local change overlaps the incoming commits.
+- The main checkout fast-forwards only when it is on the default branch. Git decides whether the checkout can fast-forward.
 - The post-land command runs once, in the main checkout, only when that fast-forward left it holding the landed commit.
 
 Exit 1 means an action failed. Report it. Earlier actions are not rolled back.
@@ -122,7 +122,7 @@ Next: /spec-close <spec-path>
 Suggested wiki commit: <files the wiki step wrote, or none>
 ```
 
-Omit the spec path on the Next line when the run had none. Never run the suggested commit here.
+When the run had no spec path, the Next line is `Next: /spec-close <TICKET-ID>`. Never run the suggested commit here.
 
 Cleanup ends with `hand-over: eligible` or `hand-over: no (<reason>)`. On `eligible`, if `wiki` exited 0 and Step 5 left the ticket in Done, print `Handing over to /spec-close <TICKET-ID>.` and start that skill in this run. Otherwise, or if the host cannot start another skill, stop at `Next:`.
 
