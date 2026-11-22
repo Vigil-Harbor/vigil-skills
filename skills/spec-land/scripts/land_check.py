@@ -204,10 +204,13 @@ def _cmd(argv: list[str], input: bytes | None = None) -> tuple[int, bytes, bytes
     # Bytes in and out: Windows' locale decoder is cp1252, and git diff output
     # must reach git patch-id unchanged (read_board.py:181-183 precedent).
     kwargs = {"input": input} if input is not None else {"stdin": subprocess.DEVNULL}
+    env = {**os.environ, **_CHILD_ENV}
+    if argv and argv[0] == "git":
+        env["LC_ALL"] = "C"  # git's messages are parsed below; keep them in one language
     try:
         proc = subprocess.run(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=_CMD_TIMEOUT, env={**os.environ, **_CHILD_ENV}, **kwargs)
+            timeout=_CMD_TIMEOUT, env=env, **kwargs)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, b"", str(exc).encode("utf-8", "replace")
     return proc.returncode, proc.stdout, proc.stderr
@@ -1176,7 +1179,7 @@ def _cleanup(state_path: str) -> int:
                 refused = _text(err)
                 if code == 0:
                     print("local branch: deleted")
-                elif "not fully merged" not in refused:
+                elif "the branch '{}' is not fully merged".format(branch) not in refused:
                     print("local branch: NOT deleted ({})".format(" ".join(refused.split())))
                     failed = True
                 elif matched and tip == head:

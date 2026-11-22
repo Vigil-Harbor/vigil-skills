@@ -1072,7 +1072,8 @@ class TestPreflightWikiCleanup(unittest.TestCase):
             ("git", "worktree", "remove"): ok(),
             ("git", "rev-parse", "--verify"): ok(HEAD + "\n"),
             ("git", "rev-list", "--count"): ok("0\n"),
-            ("git", "branch", "-d"): (1, b"", b"not fully merged"),
+            ("git", "branch", "-d"): (
+                1, b"", "error: the branch '{}' is not fully merged".format(BRANCH).encode()),
             ("git", "branch", "-D"): ok(),
             ("git", "ls-remote"): ok("{}\trefs/heads/{}\n".format(HEAD, BRANCH)),
             ("git", "push"): ok(),
