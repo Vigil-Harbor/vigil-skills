@@ -77,5 +77,35 @@ class TestSkill(unittest.TestCase):
                 self.assertIn(phrase, text)
 
 
+    def test_executor_phrases(self):
+        # Regression for VHS-54: the executors read, the hand-off, the gate and the always-review rule.
+        text = read(SKILL)
+        for phrase in ("Its `executors` name `build` and `gate`: for each, the prefix entry's value, else the top-level one",
+                       "Anything but a non-empty string, and a name for this session, is none",
+                       "can replace either for this run",
+                       "No builder is used. After Phase 3 is green",
+                       "with the host's delegation tool, or the executor's command-line tool when the host has none",
+                       "work only in the worktree, by absolute path; never change directory; delete no temporary files; leave operator steps undone; commit by naming each path; no push, PR, tracker write or `/ship-spec`; stop after the commit",
+                       "report what was built, what was not, and what the next step needs",
+                       "or reports spec work unbuilt, operator steps aside, halts the run, naming it",
+                       "A review finding of missing spec work stays unresolved.",
+                       "A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.",
+                       "Never build in the session or pick another executor.",
+                       "- `small`, unless builder-built: print",
+                       "A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor.",
+                       "With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off",
+                       "still runs once as above, without `Test command:`, as a bloat check",
+                       "its findings join the gate's but never count as the review running",
+                       "its absence or failure is neither a skip nor a stop",
+                       "Before any review starts and after the last returns, record outside both checkouts `git rev-parse HEAD`, `git status --porcelain=v1 -uall -z`",
+                       "Include `origin/<default-branch>...HEAD`, three dots.",
+                       "Executors: build <name | session> · gate <name | session>",
+                       "that `Executors:` line",
+                       "Next: /ship-spec <spec-path> --from-review <worktree-path>",
+                       "End on `Next: /review-pr`, in the worktree."):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+
 if __name__ == "__main__":
     unittest.main()

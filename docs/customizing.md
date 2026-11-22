@@ -123,6 +123,16 @@ spec-brief, spec-tickets, ship-spec, spec-land, and spec-close read the issue tr
 
 `/ship-spec` flips a ticket to a review-equivalent state after PR open. The skill reads the installed `states.json` and uses the `review_state_id` field for the project. If your project isn't in `states.json` or has no `review_state_id`, the skill skips the flip and reports the available state names so you can update manually. `/spec-land` moves the ticket to Done or Post-merge Checklists from the same file; `skills/spec-land/scripts/land_check.py` holds the routing rule. With no entry for the project, or no state id for the target, it moves nothing and prints the manual steps. To add a new project, call the tracker's state-list capability for the project and add an entry to `states.json`.
 
+## Executors
+
+`skills/ship-spec/states.json` may carry an `executors` object with two roles, `build` and `gate`. A top-level `executors` applies to every project. A project's entry may carry its own, and for each role the project's value wins. A value is a name you write, with a model after it when you want one (`"codex gpt-6.2-astra"`). It is passed on as written to your host's delegation tool, or to the executor's command-line tool when the host has none. The skills never write a model or effort setting anywhere.
+
+With a builder set, `/ship-spec` cuts the worktree, hands the implementation to the builder, then runs the tests, the review, the commit, the pull request and the tracker update itself. With a gate set, the gate's review of the diff against the spec is the review gate, and the project's review command, when the session can run it, also runs as a bloat check. A build that came from a builder is always reviewed: with no gate and no review command, the run stops before the commit. With a builder set, `/spec-cycle` and `/spec-tickets` also start the next stage with `--unattended` when they end clean, so a green spec reaches an open pull request with no reply from you.
+
+The file in this repository ships with one fleet's default: `grok` builds and `codex gpt-6.2-astra` gates. If you copy the file, change those two values to executors your host can reach, or remove the key. A configured executor the host cannot reach stops the run and names it; nothing falls back to the session or to another executor. Removing `executors`, or a missing or invalid file, restores the earlier behaviour: the session runs every stage and stops between them. In a project's entry, an empty string for a role turns that role off for that project.
+
+One line in your own words holds the chain or names a different executor for that run. It can follow the path in the invocation (`/spec-cycle docs/specs/TODO/PROJ-1.brief.md hold after the spec`) or arrive as a message while the run is going. Nothing is written to `states.json`.
+
 ## Default branch
 
 `/ship-spec` discovers your default branch via `git symbolic-ref refs/remotes/origin/HEAD` (with a `git remote show origin` fallback). Works for `main`, `master`, `trunk`, etc. — no hardcoding required.

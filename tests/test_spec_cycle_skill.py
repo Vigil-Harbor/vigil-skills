@@ -96,6 +96,24 @@ class TestSkill(unittest.TestCase):
                 self.assertNotIn(phrase, text)
 
 
+    def test_chain_phrases(self):
+        # Regression for VHS-54: the Next line, the chain start and its two stops.
+        text = read(SKILL)
+        for phrase in ("The run ends at the 2f halt or in Phase 3.",
+                       "Splits: <yes — <the pieces in a few words> | no>\nNext: <recommended command>",
+                       "**Chain.** When the green marker was written and `/ship-spec` Phase 0 step 7 resolves a builder",
+                       "start the `Next:` command with `--unattended`, then the operator's line, in this session",
+                       "Chain: started <command> — build <name>, gate <name | session>",
+                       "Start nothing when the operator's line",
+                       "says to hold or is unclear, or the host cannot start it"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        for phrase in ("neither command runs from here", "in a separate session",
+                       "When ready, run:", "## Failure modes"):
+            with self.subTest(absent=phrase):
+                self.assertNotIn(phrase, text)
+
+
 class TestAgents(unittest.TestCase):
 
     def test_agents_use_spec_diff(self):

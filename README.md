@@ -16,6 +16,8 @@ Cross-machine skills and subagents for Claude Code. A Plane.so-aware brief → s
 - **`/review-pr [<num>]`** — Process one round of CodeRabbit review findings on a GitHub PR. Triages by severity, fixes real issues, pushes, posts per-thread replies, and leaves threads for CodeRabbit to resolve.
 - **`/key-rotation`** — Guide a credential-exposure response. The operator performs every provider action. The skill keeps a gitignored record of names and dispositions and never prints or stores a secret value.
 
+**Executors.** `skills/ship-spec/states.json` can name a builder and a gate under `executors`. With a builder set, a green spec carries on through `/spec-tickets` and `/ship-spec` to an open PR without stopping between stages; remove the key to get the stage-by-stage stops back. See `docs/customizing.md`.
+
 `grilling` is the model-invocable interview primitive behind `/grill-me`, `/spec-brief`, and `/spec-cycle`'s red-halt option 4 — not a slash command.
 
 ### Subagents
