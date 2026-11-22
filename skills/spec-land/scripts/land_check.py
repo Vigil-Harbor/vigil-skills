@@ -1084,6 +1084,19 @@ def _wiki(state_path: str) -> int:
     return 0 if ok else 1
 
 
+def _on_default_with_landed(main: str, default: str, landed: str) -> bool:
+    """True when the main checkout is on the default branch and contains landed."""
+    if not default or _bad_id(landed):
+        return False
+    try:
+        records = _worktrees(main)
+    except _Halt:
+        return False
+    if not records or records[0].get("branch") != "refs/heads/" + default:
+        return False
+    return _cmd(["git", "-C", main, "merge-base", "--is-ancestor", landed, "HEAD"])[0] == 0
+
+
 def _shell(command: str, cwd: str) -> int:
     sys.stdout.flush()
     try:
@@ -1187,6 +1200,7 @@ def _cleanup(state_path: str) -> int:
                 print("remote branch: deleted")
             else:
                 print("remote branch: skipped (lease rejected or push failed: {})".format(_text(err).strip()))
+                failed = True
 
     contains = False
     ff_ran = False
@@ -1196,7 +1210,8 @@ def _cleanup(state_path: str) -> int:
     elif main_ref != "refs/heads/" + default:
         print("fast-forward: skipped (main checkout is not on {})".format(default))
     else:
-        code, _, err = git("merge", "--ff-only", "--no-autostash", "origin/" + default)
+        code, _, err = git(
+            "merge", "--ff-only", "--no-autostash", "--no-overwrite-ignore", "origin/" + default)
         ff_ran = code == 0
         if code != 0:
             print("fast-forward: failed ({})".format(" ".join(_text(err).split())))
@@ -1220,11 +1235,22 @@ def _cleanup(state_path: str) -> int:
         print("post-land command: skipped ({})".format(reason))
     else:
         status = git("status", "--porcelain")
-        note = (" (ran with uncommitted changes in the main checkout)"
-                if status[0] == 0 and status[1].strip() else "")
-        code = _shell(command, main)
-        print("post-land command: exit {}{}".format(code, note))
-        failed = failed or code != 0
+        if status[0] != 0:
+            failed = True
+            note = ""
+        else:
+            note = (" (ran with uncommitted changes in the main checkout)"
+                    if status[1].strip() else "")
+        if not _on_default_with_landed(main, default, pr["landed"]):
+            print("post-land command: skipped (main checkout is not on {} holding the landed commit)".format(
+                default))
+            contains = False
+        else:
+            code = _shell(command, main)
+            print("post-land command: exit {}{}".format(code, note))
+            failed = failed or code != 0
+            if not _on_default_with_landed(main, default, pr["landed"]):
+                contains = False
     plane = state["plane"]
     if not matched:
         reason = "the SHA line was not match"

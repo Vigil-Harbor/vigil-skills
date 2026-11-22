@@ -300,13 +300,13 @@ class TestTemplateRoundTrip(TempDirCase):
         code, out, _ = run_main(self.V, [str(path)])
         self.assertEqual(code, 1, out)
         self.assertIn("VERDICT: NEEDS WORK", out)
-        path.write_text(fill_markers(self.S, path.read_text(encoding="utf-8")),
-                        encoding="utf-8", newline="\n")
+        filled = fill_markers(self.S, path.read_text(encoding="utf-8"))
+        path.write_bytes(filled.encode("utf-8"))
         code, out, _ = run_main(self.V, [str(path)])
         self.assertEqual(code, 0, out)
         self.assertIn("VERDICT: READY", out)
         minimal = self.tmp / "minimal.md"
-        minimal.write_text(minimal_document(), encoding="utf-8", newline="\n")
+        minimal.write_bytes(minimal_document().encode("utf-8"))
         code, out, _ = run_main(self.V, [str(minimal)])
         self.assertEqual(code, 0, out)
         self.assertIn("VERDICT: READY", out)

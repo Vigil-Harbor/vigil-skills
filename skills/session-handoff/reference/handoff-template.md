@@ -29,7 +29,7 @@ line when another document chains to this one.
 The question you put to the operator that had no answer when the handoff was
 written, in full, so the next session can ask it without this session's
 context. Write `None` when nothing is open. Then one line naming the next
-command. RESUME asks this question before it does anything else.
+command. RESUME asks this question before starting the next command.
 
 ## `##` Session Metadata *(container, no marker)*
 

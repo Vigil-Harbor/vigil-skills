@@ -158,7 +158,7 @@ When this run's `/spec-land` printed `Handing over to /spec-close <TICKET-ID>.`,
    if test -f "$ARCHIVE"; then "$PY" "$ARCHIVE" <TICKET-ID> < /dev/null; else echo "archive NOT run: archive_spec.py not found at $ARCHIVE — install with 'python sync.py install'"; fi
    ```
 
-   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It stages tracked moves, and untracked ones only when git does not ignore the destination. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
+   The script moves `TODO/<ID>.*` to `DONE/<ID>/` with the prefix stripped, then the children of a `TODO/<ID>/` folder. It prints one `staged:` line per staged path, `staged: none`, or `nothing to archive` (nothing new staged). Exit 0 is all done, and 1 is some item skipped or failed. Exit 2 is a usage error.
 
    On exit 0, continue. On any other exit, or `archive NOT run`, the archive is incomplete: skip the log write, report `Archive: incomplete` with the script's problem lines, and ask the operator to clear each one and re-run `/spec-close <TICKET-ID>`. A `destination exists` line means two artifacts claim one path: show the operator both paths and let them resolve it by hand before the re-run. Never delete, overwrite or rename either one yourself. For a tracked file, the operator uses `git mv`, so the index follows. To clear `moved, NOT staged`, run `git add` on that path. The re-run archives what is left and writes the log line. If it rewrites a reconciliation report that was already staged, run `git add` on the report again; leave an ignored one alone.
 3. **Log** (skipped when there is no wiki). Prepend the entry with `prepend_log_entry.py`.
@@ -200,7 +200,7 @@ Target repo (<project_root>):
   Reconciliation: docs/specs/DONE/<TICKET-ID>/reconciliation.md
   Archived: TODO/<TICKET-ID>.* → DONE/<TICKET-ID>/
   Staged: <each path from the script's staged: lines>
-  Status: uncommitted — review with `git diff --stat` then commit.
+  Status: uncommitted — review with `git diff --cached --stat` then commit.
 
 Wiki (<wiki_root>):
   Created: decisions/YYYY-MM-DD-<slug>.md
@@ -212,7 +212,7 @@ Suggested commit:
   (in target repo)  git commit -m "close(<ticket-lower>): archive spec to DONE/"
 ```
 
-The archive paths are already staged, so the target-repo suggestion is a plain `git commit` with no `git add` and no pathspec. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
+Suggest the commit only when this run accounts for every staged path. Print it only when the script printed at least one `staged: <path>` line. On `staged: none` or `nothing to archive`, drop that line and print `Nothing was staged in the target repo by this run.` Never `git add docs/specs/` or `git add -A`. Omit the reconciliation line when no report exists.
 
 ## Re-runs
 

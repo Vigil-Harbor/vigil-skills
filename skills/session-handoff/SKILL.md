@@ -18,8 +18,6 @@ This skill writes the bridge between sessions: a handoff
 document that states where the work stands, what was decided, and what the next
 session should do first — then validates it before you rely on it.
 
-Two scripts do the mechanical parts.
-
 - `scripts/create_handoff.py` — scaffold a document, pre-filled with git metadata.
 - `scripts/validate_handoff.py` — presence, placeholder and secret gate.
 
@@ -100,13 +98,11 @@ section that is genuinely absent is only informational.
      context.
    - If neither yields an existing file, note it and stop the chain. Do not guess.
 4. Verify the recorded branch, blockers and assumptions against the current tree.
-   When **Open Question** holds a question (its first non-blank line does not
-   start with `None`), put it to the operator first. Otherwise begin at
+   When **Open Question** holds a question (its first non-blank line lacks a
+   case-insensitive `None` prefix), put it to the operator first. Otherwise begin at
    **Immediate Next Steps #1**.
 
 ## SESSION TRANSFER
-
-Given a session id, pick up where that session stopped.
 
 1. **Validate the id first.** It must match the canonical UUID shape —
    `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
@@ -174,6 +170,8 @@ python -m unittest discover -s tests -p 'test_session_handoff.py' -v
 python lint.py --strict skills/session-handoff/SKILL.md
 python -m unittest discover -s tests -p 'test_*.py' -v
 ```
+
+Pin `python` by full path if more than one interpreter is on `PATH`.
 
 ## Done-when
 

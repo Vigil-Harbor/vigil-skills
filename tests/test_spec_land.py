@@ -1278,6 +1278,64 @@ class TestPreflightWikiCleanup(unittest.TestCase):
             ["cleanup", "--state", self.state_file(eligible)], self.cleanup_routes(), shell)
         self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
 
+    def test_failed_push_or_status_is_not_eligible(self):
+        state = self._eligible_state()
+        router = self.cleanup_routes({("git", "push"): (128, b"", b"push failed")})
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+        status = lambda argv, _: (128, b"", b"status failed") if argv[2] == self.main else ok()
+        router = self.cleanup_routes({("git", "status"): status})
+        shell = mock.Mock(return_value=0)
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_post_land_rechecks_the_checkout_before_and_after(self):
+        state = self._eligible_state()
+        armed = {"status_seen": False}
+
+        def ancestor(argv, _):
+            if armed["status_seen"]:
+                return (1, b"", b"")
+            return ok()
+
+        def status(argv, _):
+            if argv[2] == self.main:
+                armed["status_seen"] = True
+            return ok()
+
+        shell = mock.Mock(return_value=0)
+        router = self.cleanup_routes({
+            ("git", "merge-base", "--is-ancestor"): ancestor,
+            ("git", "status"): status,
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        shell.assert_not_called()
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+        self.assertIn("post-land command: skipped", out)
+
+        armed = {"ran": False}
+
+        def ancestor_after(argv, _):
+            if armed["ran"]:
+                return (1, b"", b"")
+            return ok()
+
+        def run_shell(command, cwd):
+            armed["ran"] = True
+            return 0
+
+        shell = mock.Mock(side_effect=run_shell)
+        router = self.cleanup_routes({("git", "merge-base", "--is-ancestor"): ancestor_after})
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        shell.assert_called_once()
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+        self.assertIn("post-land command: exit 0", out)
+
 
 def _probe_git_env():
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -1544,6 +1602,20 @@ class TestCleanupRealGit(unittest.TestCase):
         self.assertTrue(
             any(line.startswith("fast-forward: failed (") for line in out.splitlines()), detail)
         self.assertEqual(self._rev(clone), before, detail)
+
+    def test_ignored_incoming_file_is_not_overwritten(self):
+        clone = self._clone("ignored")
+        exclude = clone / ".git" / "info" / "exclude"
+        exclude.write_bytes(exclude.read_bytes() + b"\nnew.txt\n")
+        (clone / "new.txt").write_bytes(b"local-ignored\n")
+        before = self._rev(clone)
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual((clone / "new.txt").read_bytes(), b"local-ignored\n", detail)
+        self.assertEqual(self._rev(clone), before, detail)
+        self.assertTrue(
+            any(line.startswith("fast-forward: failed") for line in out.splitlines()), detail)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), detail)
 
 
 class TestSkillPins(unittest.TestCase):
