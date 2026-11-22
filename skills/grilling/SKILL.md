@@ -21,6 +21,7 @@ The caller supplies these, in prose or as a labelled list:
 - **`altitude`** — the fence, stated as *which artifact lines a decision must change to be askable*. The default (brief altitude) is: "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope." 2f-i supplies: "a decision that dispositions one of the listed findings."
 - **`round_cap`** (default 3) and **`question_cap`** (default 7).
 - **`prior_summary`** *(optional)* — a Grill summary this skill returned earlier in the same session, plus the Q number to revise. This is the only resume path, and it exists for the revise case alone. The caller decides whether to offer a resume at all.
+- **`ask_only`** *(optional)* — § Settled by default; `/spec-brief` only.
 
 **Resume contract.** Rebuild the tree from the summary. Settled items stay settled except the named one and everything downstream of it, which re-enter the frontier. Prior Open items stay Open and are not re-asked unless they are downstream of the revised decision. Facts established carry over and are not re-dispatched. Q and F numbering continues the prior series. `rounds_used` carries over from the summary's `rounds:` field. **If `rounds_used ≥ round_cap`, this invocation runs exactly one additional round and exits `revised-after-cap (+1 round)`; a further `prior_summary` arriving with `rounds_used > round_cap` exits `round-cap` at once.**
 
@@ -73,6 +74,16 @@ Read each reply for intent. Before acting on it, print one line: `Reading: <what
 - **Omitted** (no answer given): re-ask at the top of the next round with its original number and a `(re-asked)` tag, counting against that round's cap; omitted again → treat as `defer`.
 - **Network approval:** only a clear approval of that item runs it. Anything else leaves it Open `fact not established`; a reply that asserts a result is kept as an unverified `claim:` and is not run.
 - **Revise** arrives as a `prior_summary` plus a Q number: apply the resume contract above, including the single post-cap round.
+
+## Settled by default (opt-in)
+
+Applies only when the caller passes `ask_only`, a test for which questions must be asked. Where it conflicts with another rule here, this section wins.
+
+- A frontier question with a clear recommendation that does not meet `ask_only` is not asked: settle it with the recommendation, number it, and recompute the frontier. Its Settled line reads `chose <answer> (settled by default)`.
+- A rendered round lists the defaults made since the last one under `Settled by default`. One the operator names is asked.
+- A round with nothing to ask is not rendered and uses no round; with none rendered, exit `empty-frontier`, `rounds: 0/<round_cap>`.
+- `go`, or any clear yes, answers each asked question the reply does not name with its recommendation, never a network approval.
+- Round 1's reply may also answer a prompt the caller printed above it; leave those parts to the caller, and stop if the caller ends the run.
 
 ## Fact-finding
 

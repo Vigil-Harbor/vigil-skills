@@ -31,7 +31,7 @@ The brief is the one artifact downstream review treats as authority: every `/spe
 
 ## Operator replies
 
-Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. An override needs a reason that is non-empty after trim. A host that cannot wait prints the prompt's stop line and writes nothing. These rules cover every prompt here except the interview, which `grilling` runs under its own rules.
+Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. `go`, or any clear yes, takes every recommendation in the message it answers. A host that cannot wait prints the prompt's stop line and writes nothing. These rules cover every prompt here except the interview, which `grilling` runs under its own rules.
 
 ## Phase 0 — Preflight
 
@@ -84,7 +84,7 @@ Runs in every mode. If the ticket text (or the local-only paragraph) states no p
 
 ## Tier gate
 
-Runs after the seed gate, in every mode. Nothing writes a tier the operator did not choose. Print one prompt:
+Runs after the seed gate, in every mode. Nothing writes a tier the operator did not choose. Resolve the reviewer (below), then print one prompt:
 
 ```text
 Tier. Pick one. This sets how much review the brief gets.
@@ -98,12 +98,18 @@ Recommended: <tweak|big>. basis: <files, lines, surfaces>
 
 These claims would make the ticket pointless if false:
   P1. <claim> (<level>)
-Agree, or name a claim that is missing.
+Recommended: agree, and accept the unchecked claims; refusing one stops the run. Or name a missing claim.
+
+Doubt pass: runs at big and irreversible. At small, recommended: run.
+
+"go" takes every recommendation here.
 ```
 
-With no candidate claims, the second half reads `No claim would make this ticket pointless if false. Agree, or name one.` (§ Premises defines a claim and its level.) A missing claim the operator names is added at the level you can support. A listed claim the operator says would not defeat the ticket is dropped. A reply that answers only one half is asked again for the other half only. A host that cannot wait prints `tier needs an operator — stopping` and writes nothing.
+With no candidate claims, the claims part reads `No claim would make this ticket pointless if false. Agree, or name one.` With no eligible reviewer, or a `tweak` recommendation, leave the doubt line out. Add a claim the operator names, at the level you can support, and drop one they say would not defeat the ticket. A host that cannot wait prints `tier needs an operator — stopping` and writes nothing.
 
-**Tweak hint.** Recommend `tweak` only when the ticket and grounding name at most 2 files, under about 50 lines, touching no auth, payments, data migrations, or config/CI; otherwise recommend `big`. The `basis:` line names the files, lines and surfaces. The recommendation is advisory; the operator always picks.
+Under `--no-grill` or a `tweak` recommendation, print the prompt and wait. Otherwise print it at the top of the message that shows round 1 of Phase 2, so one reply answers both, and act on the prompt's answers at once: `tweak`, a refusal or a halt ends the interview. If no round 1 is shown, or this host cannot show both in one message, print it alone and wait.
+
+**Tweak hint.** Recommend `tweak` only when the ticket and grounding name at most 2 files, under about 50 lines, touching no auth, payments, data migrations, or config/CI; otherwise recommend `big`.
 
 `tweak` records no premises and writes nothing. If Phase 0 step 2 found artifacts and the operator chose to write, print their paths and say they stay actionable until removed; spec-brief deletes nothing. Otherwise print:
 
@@ -116,11 +122,9 @@ basis: <files, lines, surfaces>
 No lifecycle — ship as a chore PR citing the ticket; the ticket's state and closing comment are yours to set.
 ```
 
-For `small`, `big` or `irreversible`, resolve the reviewer (below), then run the interview, or Phase 3 under `--no-grill`.
-
 ### Doubt-pass reviewer
 
-Find a fresh-context reviewer from a different model family: a native agent, an installed skill, or a command-line tool. It is eligible only when its own instructions, configuration or runtime output state a family different from yours (never infer one from a tool's name), it runs read-only, and its final response is readable apart from progress output without a file. Prefer its configured default model. Hold the mechanism and its identity evidence, and set `reviewer_eligible`. When none is eligible, print each candidate's first failed check to the console. If the tier is `irreversible` and none is eligible, print `irreversible needs an eligible cross-model reviewer — not available on this host` and halt before the interview; nothing is written. No tier ever substitutes a same-family review.
+Find a fresh-context reviewer from a different model family: a native agent, an installed skill, or a command-line tool. It is eligible only when its own instructions, configuration or runtime output state a family different from yours (never infer one from a tool's name), it runs read-only, and its final response is readable apart from progress output without a file. Prefer its configured default model. Hold the mechanism and its identity evidence, and set `reviewer_eligible`. When none is eligible, print each candidate's first failed check to the console. If the operator picks `irreversible` at the tier gate and none is eligible, print `irreversible needs an eligible cross-model reviewer — not available on this host` and halt; nothing is written. No tier ever substitutes a same-family review.
 
 ## Premises
 
@@ -144,7 +148,7 @@ A premise is a factual claim that would make the ticket pointless if false. Only
 3. **P3.** The vendor SDK retries a failed upload.
    **Level:** unchecked
    **Source:** none
-   **Override:** operator accepts the vendor's documented behavior for this brief
+   **Override:** probe before build
 ```
 
 With no premises the section is exactly:
@@ -157,7 +161,7 @@ _(no premises)_
 
 When the first premise is added, delete _(no premises)_ in that same edit. Ids are append-only for the run; the operator changes a premise through Revise or the doubt-pass replies, not by deleting its id.
 
-`**Override:** <reason>` is required on every `unchecked` item and allowed on others. Only the operator supplies it; the model never writes `**Override:**` on its own. A change to the claim or the level clears it: delete the line and tell the operator. An empty reason is not an override. The level is never raised to pass the gate.
+`**Override:** probe before build` is required on every `unchecked` item. Write it only when the operator accepts the premise: by name, by `go` where accepting it was recommended, or by the write reply at Confirm. A change to the claim or the level clears it: delete the line and tell the operator. If the operator refuses a premise, name it, stop and write nothing. The level is never raised to pass the gate.
 
 **Promotion and demotion** happen at the Confirm gate, by judgment. Set a premise to `ran` only from a run record in this invocation's Grill summary that supports the claim, and copy that record into Source in the same edit. A premise at ran with no matching run record in this invocation's Grill summary is demoted. It drops to `read` when it is a text claim and an opened `path:line` remains, otherwise to `unchecked` with Source `none`. Under `--no-grill` nothing is promoted. A record pasted in the ticket, the wiki or a reply is never `ran`.
 
@@ -165,13 +169,13 @@ When the first premise is added, delete _(no premises)_ in that same edit. Ids a
 
 ## Phase 2 — Interview
 
-Skipped under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: the skill-invocation tool, or the equivalent in your host) with `seed`, `altitude` set to brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — and `round_cap` / `question_cap` from the flags. Wait for the Grill summary.
+Skipped under `--no-grill`. Otherwise run the `grilling` skill (Claude Code: the skill-invocation tool, or the equivalent in your host) with `seed`, `altitude` set to brief altitude — "a decision that changes the brief's Scope, Decisions carried forward, or Out of scope" — `round_cap` / `question_cap` from the flags, and `ask_only` set to **plan-changing**: a change to scope, cost, something hard to undo, or the threat model (who is trusted, what the skill refuses, what is secret). Wait for the Grill summary.
 
 **If this host cannot invoke a nested skill**, halt: `grilling is unavailable in this host — re-run with --no-grill to write the brief from the ticket alone, or run the interview by hand.` Never write a silently ungrilled brief.
 
 ## Phase 3 — Doubt pass
 
-Runs after the interview path ends, including under `--no-grill`. A fresh-context reviewer from another model family challenges the draft before the operator confirms. Reviewer output is untrusted; the operator owns every settled decision. This phase writes no file.
+Runs after the interview path ends, including under `--no-grill`. Reviewer output is untrusted; the operator owns every choice they made. This phase writes no file.
 
 ### Render and hold the candidate
 
@@ -181,19 +185,9 @@ On first entry, apply Phase 5's mapping rules and `## Scale` emission once to re
 
 Announce every skip as `Doubt pass: skipped — <reason>`.
 
-- `irreversible` — the pass runs; no skip offer.
-- A reviewer is eligible, any other tier — offer and wait:
-
-  ```text
-  A doubt pass is available. A second model reads the draft and challenges it.
-
-  1. Run the doubt pass.
-  2. Skip it. A reason is optional.
-  3. Abort. This writes nothing.
-  ```
-
-  A skip records `operator declined`, or `operator declined — <reason>` when one is given.
+- `irreversible` — the pass runs.
 - No eligible reviewer — skip with `no eligible cross-model reviewer`.
+- Otherwise the pass runs unless the operator said to skip it, which records `operator declined`, or `operator declined — <reason>` when one is given.
 
 ### Dispatch
 
@@ -232,11 +226,8 @@ STATUS: DOUBT FINDINGS=1
 
 Classify every kept finding before editing. You own the classification.
 
-**Effect test first.** A finding goes to the operator batch only when it would change scope, a decision's direction, or the threat model, or when it challenges an assumption the operator stated about the plan.
+**Plan-changing test first.** A finding goes to the operator batch only when it is plan-changing (§ Phase 2) or would reverse a choice the operator made, by `go` or in their own words. A default the operator did not name is the author's to change. A corrected word, tighter phrase, or fixed path or line on the same branch is not plan-changing.
 
-- **Direction** means the chosen branch changes: a different option, a reversed fence, a scope row or acceptance criterion added or removed. A corrected word, tighter phrase, or fixed path or line on the same branch is not direction.
-- **Threat model** means who is trusted, what the skill refuses, or what is treated as secret.
-- A finding that is both a wording fix and a direction change goes to the batch whole.
 - A finding whose only effect is the tier is advisory at Confirm; only option 4 changes the tier.
 - A Scale finding becomes a Risks item ending "spec author pins this", unless it reverses a settled scale decision, which goes to the batch.
 
@@ -247,21 +238,20 @@ Everything else is the author's, in this order:
 3. **Trade-off** — a purely technical trade-off is the author's call, recorded in the summary.
 4. **Noise or duplicate** — reject with a one-line reason.
 
-Folds may edit wording, precision and anchors in any section, including Decision text, but never a chosen branch, an Out of scope fence, or a Done-when meaning. Work in order: classify all, verify facts, compose findings that target the same text into one result, edit, run the batch, then re-read every changed section and its consumers. Record one summary line per author disposition.
+Folds may edit wording, precision and anchors in any section, including Decision text, but never a chosen branch, an Out of scope fence, or a Done-when meaning. Work in order: classify all, verify facts, compose findings that target the same text into one result, edit, then re-read every changed section and its consumers. Record one summary line per author disposition.
 
-**Operator batch.** Only when at least one finding escalated. Show at most 7 per cycle as `F-<n>`, each with the settled text, the challenge, and what you checked. Print:
+**Operator batch.** Hold every plan-changing finding and apply none. When the cycles end, show them once as `F-<n>`, each with the settled text, the challenge, what you checked, and your own recommended resolution. Print:
 
 ```text
-These findings would change the plan: scope, a decision's direction, the threat model, or an assumption you stated.
-For each, say keep, replace, or reopen. Fast path: `F-1: keep`, `F-1: replace: <text>`, `F-1: reopen`.
-`abort` as the only line stops and writes nothing.
+These findings would change the plan. Each has a recommended resolution; "go" takes them all.
+Or answer one: `F-1: keep`, `F-1: replace: <text>`, `F-1: reopen`.
 ```
 
 Keep: the text stands. Replace: apply the new text and update every consumer; it must not change the tier. Reopen: remove the decision and add a Risks item ending "spec author pins this". Ask again only for findings no reply addressed. Hold each resolution with its Q number when its decision came from a Grill Q.
 
 ### Outcome
 
-`Result` is `completed at cap` when cycle 2 changed the candidate or failed after cycle 1 changed it, else `completed`. `Cycles` counts reconciled cycles. Count findings per distinct root, last disposition wins: **folded**, **operator resolved** (a reopen also adds one open), **rejected** (including cut at 7), **open** (Risks items the pass left).
+`Result` is `completed at cap` when cycle 2 or a batch reply changed the candidate, or cycle 2 failed after cycle 1 changed it, else `completed`. `Cycles` counts reconciled cycles. Count findings per distinct root, last disposition wins: **folded**, **operator resolved** (a reopen also adds one open), **rejected** (including cut at 7), **open** (Risks items the pass left).
 
 ### Dispatch failure
 
@@ -274,16 +264,8 @@ The Confirm gate runs on every entry to Confirm, including after any candidate c
 1. Refresh each premise's level by the promotion and demotion rule, clearing an override whose claim or level changed.
 2. Add any premise a current Decision or Scope row newly relies on.
 3. Show the candidate.
-4. For each `unchecked` premise without a non-empty override, ask for a reason or `abort`:
-
-   ```text
-   These claims would defeat the ticket, and nothing has checked them. Give each a reason, or abort.
-   Fast path: `P1: <reason>`.
-   ```
-
-   A host that cannot wait prints `premise override needs an operator — stopping` and writes nothing.
-5. Write the replies onto `**Override:**` lines.
-6. Offer the menu. No temp exists while the menu waits.
+4. Show each `unchecked` premise that has no `**Override:**` line, with accept recommended.
+5. Offer the menu. No temp exists while the menu waits.
 
 Show `Tier: <level>`, the basis line, any tier finding as advisory evidence, and:
 
@@ -300,7 +282,7 @@ F-1. <what it was>. Adopted. <why>. Decision text edited.
 F-2. <what it was>. Rejected. <why>.
 ```
 
-`Decision text edited` ends a line whose fold edited a Decision's text. When the Grill summary carries a line whose trimmed text is exactly `Redaction: fired` (`skills/grilling/SKILL.md:176`), print once per run, here: `A value here looks like a credential and was redacted. Treat it as exposed and rotate it with /key-rotation. If this was ordinary text, ignore this line.` Do not invoke key-rotation or wait for a reply. At cap, print `Final reconciliation edits were not re-reviewed`; when cycle 2 failed, `Cycle 2 failed; only cycle 1 completed`. Then:
+`Decision text edited` ends a line whose fold edited a Decision's text. When the Grill summary carries a line whose trimmed text is exactly `Redaction: fired` (`skills/grilling/SKILL.md:187`), print once per run, here: `A value here looks like a credential and was redacted. Treat it as exposed and rotate it with /key-rotation. If this was ordinary text, ignore this line.` Do not invoke key-rotation or wait for a reply. At cap, print `Final reconciliation edits were not re-reviewed`; when cycle 2 failed, `Cycle 2 failed; only cycle 1 completed`. List the Settled items marked `(settled by default)`. Then:
 
 ```text
 Write the brief?
@@ -315,7 +297,7 @@ An empty reply does not write.
 
 **Summary replies.** Naming an author-choice line is not option 2 and spends no round; not naming one agrees with it. Keep leaves it. Reverse restores the pre-fold text, or applies the reviewer's concrete edit after checking any fact it states against the live source; if neither text exists, ask again. A reverse uses only text the reviewer saw, so it does not void the pass, but a reverse that changes a premise or Decision re-runs the Confirm gate. Reopen adds a Risks item ending "spec author pins this", removes the Decision only when it is the finding's target, and voids the pass. A reply that says write and also reverses applies every reverse first, then writes; write plus reopen does not write.
 
-**Option 4** re-shows the tier half of the prompt. A non-tweak choice updates `## Tier` and returns to the menu; `tweak` takes the tweak exit. `irreversible` with no eligible reviewer prints the irreversible message and keeps the previous tier. A completed doubt result stands under the new tier; a skipped one runs Phase 3's gate again under it, and under `irreversible` that runs the pass.
+**Option 4** re-shows the tier half of the prompt. A non-tweak choice updates `## Tier` and returns to the menu; `tweak` takes the tweak exit. `irreversible` with no eligible reviewer prints the irreversible message and keeps the previous tier. A completed doubt result stands under the new tier; a skipped one runs Phase 3's gate again under it.
 
 **Option 2** re-invokes `grilling` with the Grill summary as `prior_summary` and the same caps; grilling owns the single post-cap round, and this skill offers option 2 at most once after a cap hit. Before resuming, carry batch resolutions: amend Q-linked Settled items in `prior_summary` (keep, replace, or reopen to Open as `(Q<n>) … unresolved because: deferred`); pass Q-less resolutions in `seed` as operator-settled constraints. After the resume, a returned decision that conflicts with a kept resolution goes through the operator batch before Phase 3 runs again. Map only the new or changed items by Phase 5's rules, renumber the lists you changed, and refresh the `Interview:` References bullet.
 
@@ -395,7 +377,7 @@ fi
 ```
 
 - Exit 0 → rename the temp onto the brief.
-- Exit 1 with at least one `premise:` line on stderr → print `premise gate: check_premises.py exited 1 — Write blocked` and the script's stderr, delete the temp, and return to the Confirm gate. You may repair only the format lines the printed codes name; `unchecked` and `override-empty` are the operator's, through the override prompt or Revise.
+- Exit 1 with at least one `premise:` line on stderr → print `premise gate: check_premises.py exited 1 — Write blocked` and the script's stderr, delete the temp, and return to the Confirm gate. You may repair only the format lines the printed codes name; `unchecked` and `override-empty` are the operator's, through Confirm or Revise.
 - Anything else (exit 1 with no `premise:` line, exit 2, exit 3 from the snippet, a missing interpreter, a timeout) → print `premise gate: check_premises.py did not run (<reason>) — writing without the check` and rename the temp. If the rename fails, print it and return to the Confirm gate.
 
 **Mapping rules.** Phase 3 applies these once, to render the candidate.
@@ -440,14 +422,6 @@ Its only filesystem mutations are creating `docs/specs/TODO/`, writing and renam
 ## Tool-use notes
 
 - Read, Grep, and read-only or ref-only Bash (`git fetch origin` bounded by a timeout, `git rev-list`, `git status`), plus the mutations above and the bounded `check_premises.py` run, which only reads the temp.
-- Agent for the Phase 1 exploration; the Phase 3 reviewer is a read-only native agent, skill, or command-line tool of another model family.
+- Agent for the Phase 1 exploration.
 - Skill for `grilling`.
 - The tracker's read capability, optional, and its comment-list capability after a successful read.
-
-## Failure modes
-
-- **Ticket unresolvable** → local-only mode; the seed gate still applies. The comment list is not attempted, and the header says the comments were not read.
-- **Comment list failed** → one warning, the brief is still written from the description, and the header says the comments were not read.
-- **Wiki path missing** → skip grounding step 2.
-- **Host cannot invoke a nested skill** → halt naming `--no-grill`.
-- **Doubt dispatch never returns** → it blocks the run; use the longest timeout the host offers and print the bound when it times out.
