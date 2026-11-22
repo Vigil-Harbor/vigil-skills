@@ -1309,6 +1309,19 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
 
+    def test_branch_delete_error_quoting_the_refusal_is_still_an_error(self):
+        # The refusal sentence inside another error's path is not the refusal.
+        state = self._eligible_state()
+        sentence = "the branch '{}' is not fully merged".format(BRANCH)
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (
+                1, b"", "fatal: cannot lock ref in '/tmp/{}/.git'".format(sentence).encode()),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
     def test_post_land_rechecks_the_checkout_before_and_after(self):
         state = self._eligible_state()
         armed = {"status_seen": False}

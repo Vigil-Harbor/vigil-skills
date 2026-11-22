@@ -205,8 +205,8 @@ def _cmd(argv: list[str], input: bytes | None = None) -> tuple[int, bytes, bytes
     # must reach git patch-id unchanged (read_board.py:181-183 precedent).
     kwargs = {"input": input} if input is not None else {"stdin": subprocess.DEVNULL}
     env = {**os.environ, **_CHILD_ENV}
-    if argv and argv[0] == "git":
-        env["LC_ALL"] = "C"  # git's messages are parsed below; keep them in one language
+    if argv[:1] == ["git"] and argv[3:5] in (["branch", "-d"], ["remote", "show"]):
+        env["LC_ALL"] = "C"  # the only two git calls whose wording is parsed
     try:
         proc = subprocess.run(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1179,7 +1179,8 @@ def _cleanup(state_path: str) -> int:
                 refused = _text(err)
                 if code == 0:
                     print("local branch: deleted")
-                elif "the branch '{}' is not fully merged".format(branch) not in refused:
+                elif "error: the branch '{}' is not fully merged".format(branch) not in [
+                        line.strip().rstrip(".") for line in refused.splitlines()]:
                     print("local branch: NOT deleted ({})".format(" ".join(refused.split())))
                     failed = True
                 elif matched and tip == head:
