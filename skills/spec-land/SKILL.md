@@ -11,7 +11,7 @@ requires:
 
 # /spec-land
 
-Run after a pull request is merged and before `/spec-close`. One script call reads everything and prints a confirmation block. After one operator agreement, the script writes the wiki, you move the issue-tracker ticket, and the script cleans up and runs the project's post-land command.
+Run when a pull request is merged, on the operator's word or this command, and before `/spec-close`. One script call reads everything and prints a confirmation block. After it, and after one operator agreement unless the SHA line is `match`, the script writes the wiki, you move the issue-tracker ticket, and the script cleans up and runs the project's post-land command.
 
 `land_check.py` owns every check and every write except the tracker. Do not re-derive its mechanics by hand.
 
@@ -19,7 +19,7 @@ Run after a pull request is merged and before `/spec-close`. One script call rea
 
 - Run `gh pr merge`. The operator merges.
 - Run `git commit` or `git add`, push content, stash, or force anything. The only remote change is the script's leased branch delete.
-- Write anything before the operator agrees to the confirmation block.
+- Write anything before the block shows `match` or the operator agrees to it.
 - Hand-edit `log.md`. The script calls the installed `prepend_log_entry.py`.
 - Write `state.md`, comprehension pages, or sibling tickets. `/spec-close` does the rest of the wiki.
 - Invent a state UUID. Use the one the script prints from the installed `states.json`.
@@ -45,7 +45,7 @@ A missing script stops the run. Every subcommand reads no stdin; give it `< /dev
 No argument uses the current branch's PR, so it works only from the PR branch's checkout. From the main checkout, pass the PR number, URL or spec path. Apart from `git fetch` updating remote refs, it writes nothing.
 
 - **Exit 0.** Stdout is the confirmation block, then one line that starts with `spec_land_state=`. Hold that line exactly as printed. Do not edit it.
-- **Exit 1.** The first line is `HALT: <reason>`. Show it and stop. Nothing was written. The script halts only when the PR is not merged, a PR or comment read fails, the fetch fails, a PR URL names another repository, no single PR matches, or a git command fails.
+- **Exit 1.** The first line is `HALT: <reason>`. Show it and stop. Nothing was written.
 - **Exit 4.** `NEEDS TICKET`: the branch and title disagree on the ticket id, or name none. Ask the operator for the id, then rerun with `--ticket <ID>` on the same PR number.
 - **Any other exit.** Show stderr and stop.
 
@@ -53,19 +53,19 @@ A failed comment read is never "no marker". A marker that is absent after a full
 
 ## Step 2 — Confirm once
 
-Show the confirmation block verbatim, except the `spec_land_state=` line. Then wait. The SHA line is one of:
+Show the confirmation block verbatim, except the `spec_land_state=` line. The SHA line is one of:
 
-- `match`: the landed code is the recorded code. It is not a statement that the code was reviewed. The review token is shown, never a gate.
+- `match`: the landed code is the recorded code. The verified merge is the yes: go to Step 3 with no reply. The review token is shown, never a gate.
 - `no marker`: verification skipped.
 - `WARNING`: a head mismatch, a patch-id mismatch, a malformed marker, or base drift onto PR files. The operator may still land. Say what the warning means in plain words.
 
-Read the reply for intent. A clear yes for this ticket lands. On a `WARNING`, the reply must say to land despite the warning; a plain yes gets one question back naming the warning. Silence, an empty reply, or anything unclear is not yes; ask once, naming what is unclear. A reply that declines stops with nothing written. A host that cannot wait prints the block and stops.
+On `no marker` or `WARNING`, wait, and read the reply for intent. A clear yes for this ticket lands. On a `WARNING`, the reply must say to land despite the warning; a plain yes gets one question back naming the warning. Silence, an empty reply, or anything unclear is not yes; ask once, naming what is unclear. A reply that declines stops with nothing written. A host that cannot wait prints the block and stops.
 
 Before you act, print `Reading: <what you will do>.`
 
 ## Step 3 — Save the state
 
-After the operator agrees, write the held `spec_land_state=` line to a new temporary file outside the repository, with your file-write tool. Pass that path to the next two commands. Delete the file at the end of the run.
+Write the held `spec_land_state=` line to a new temporary file outside the repository, with your file-write tool. Pass that path to the next two commands. Delete the file at the end of the run.
 
 ## Step 4 — Wiki
 
@@ -73,7 +73,7 @@ After the operator agrees, write the held `spec_land_state=` line to a new tempo
 "$PY" "$SCRIPT" wiki --state <state-file> < /dev/null
 ```
 
-It prepends the merge line to the wiki `log.md` with a guard, so a rerun does not duplicate it. Then it applies the filemap delta for added, deleted and renamed files. No wiki configured, no slug, or a missing filemap file is reported and skipped. Exit 1 means a write failed; report it and continue. Never hand-edit `log.md` to recover; rerun `/spec-land`.
+It prepends the merge line to the wiki `log.md` with a guard, so a rerun does not duplicate it. Then it applies the filemap delta for added, deleted and renamed files. No wiki configured, no slug, or a missing filemap file is reported and skipped. Exit 1 means a write failed; report it and continue. To recover, rerun `/spec-land`.
 
 ## Step 5 — Issue tracker
 
@@ -102,11 +102,9 @@ To complete manually:
 Run it from the main checkout (the `main` path in the state), never from inside the worktree it removes. It rechecks the checkouts before it acts, then prints one line per action. The safety rules it holds:
 
 - A dirty worktree is kept, and so are its local and remote branches.
-- Several checkouts of the branch are kept with their branches. The run continues.
-- `git branch -D` runs only after a SHA match with the local tip equal to the PR head. Never on the no-marker or warning path.
-- The remote branch is deleted only with a lease on the PR head. Already gone is normal, because GitHub often deletes it.
-- The default branch is never deleted.
-- The main checkout fast-forwards only when it is on the default branch and clean.
+- `git branch -D` runs only after a SHA match with the local tip equal to the PR head.
+- The remote branch is deleted only with a lease on the PR head. Already gone is normal.
+- The main checkout fast-forwards only when it is on the default branch; git refuses when a local change overlaps the incoming commits.
 - The post-land command runs once, in the main checkout, only when that fast-forward left it holding the landed commit.
 
 Exit 1 means an action failed. Report it. Earlier actions are not rolled back.
@@ -124,11 +122,13 @@ Next: /spec-close <spec-path>
 Suggested wiki commit: <files the wiki step wrote, or none>
 ```
 
-Omit the spec path on the Next line when the run had none. The suggested commit is text for the operator. Do not run it.
+Omit the spec path on the Next line when the run had none. Never run the suggested commit here.
+
+Cleanup ends with `hand-over: eligible` or `hand-over: no (<reason>)`. On `eligible`, if `wiki` exited 0 and Step 5 left the ticket in Done, print `Handing over to /spec-close <TICKET-ID>.` and start that skill in this run. Otherwise, or if the host cannot start another skill, stop at `Next:`.
 
 ## Rerun
 
-Rerunning on the same PR is safe. Start again at Step 1 with a fresh confirmation; do not reuse an old state file or an old agreement. Guards skip what is done: the log guard, existing filemap headings, the checklist marker, a ticket already in its target state, and branches already gone.
+Rerunning on the same PR is safe. Start again at Step 1 with a fresh preflight; do not reuse an old state file or an old agreement. Guards skip what is already done.
 
 ## Tool-use notes
 

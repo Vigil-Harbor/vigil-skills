@@ -19,6 +19,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -850,7 +851,9 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         code, out, err, state = self.preflight(router, "7")
         self.assertEqual(code, 0, out + err)
         self.assertIn("SHA: match (match single) review=passed", out)
-        self.assertIn("Reply yes to land VHS-97.", out)
+        self.assertIn("Verified match: landing VHS-97 with no reply.", out)
+        self.assertIn("Fast-forward: will be tried", out)
+        self.assertNotIn("Reply yes", out)
         self.assertEqual(len(router.ran("git", "fetch")), 2)
         self.assertEqual(state["version"], 1)
         self.assertEqual(state["verification"]["status"], "match")
@@ -858,13 +861,15 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(state["plane"]["target"], "Post-merge Checklists")
         self.assertEqual(state["checklist"], ["- [ ] Post-merge verification"])
         self.assertEqual(state["worktrees"], [self.linked])
-        self.assertEqual(state["fast_forward"], "will run")
+        self.assertEqual(state["fast_forward"], "will be tried")
 
     def test_preflight_no_marker_skips_verification(self):
         router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b"")})
         code, out, _, state = self.preflight(router, "7")
         self.assertEqual(code, 0)
         self.assertIn("no marker - verification skipped", out)
+        self.assertIn("Reply yes to land VHS-97.", out)
+        self.assertNotIn("Verified match", out)
         self.assertEqual(state["verification"]["status"], "skipped")
         self.assertEqual(router.ran("git", "patch-id"), [])
         self.assertNotIn("may omit earlier rebased commits", out)
@@ -906,6 +911,7 @@ class TestPreflightWikiCleanup(unittest.TestCase):
                 self.assertEqual(code, 0, out)
                 self.assertIn("SHA: WARNING", out)
                 self.assertIn("Reply land anyway to land VHS-97", out)
+                self.assertNotIn("Verified match", out)
                 self.assertEqual(state["verification"]["status"], "warning")
                 self.assertEqual(state["verification"]["diff_base"], LANDED + "^1")
                 if name in ("malformed", "head"):
@@ -1169,7 +1175,6 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         state = self.preflight_state()
         cases = {
             "wrong branch": {("git", "worktree", "list"): ok(self.porcelain(main_branch="other"))},
-            "dirty main": {("git", "status"): lambda argv, _: ok(" M k\n") if argv[2] == self.main else ok()},
             "ff failed": {("git", "merge", "--ff-only"): (128, b"", b"diverged")},
             "not contained": {("git", "merge-base", "--is-ancestor"): (1, b"", b"")},
         }
@@ -1196,6 +1201,349 @@ class TestPreflightWikiCleanup(unittest.TestCase):
                     ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over))
                 self.assertIn(expected, out)
                 self.assertNotIn("does not hold the landed commit", out)
+
+    def test_preflight_never_reads_status(self):
+        router = self.routes({("git", "status"): ok(" M k\n")})
+        code, _, _, state = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertEqual(router.ran("git", "status"), [])
+        self.assertEqual(state["fast_forward"], "will be tried")
+
+    def test_cleanup_dirty_main_fast_forwards(self):
+        state = self.preflight_state()
+        dirty = lambda argv, _: ok(" M k\n") if argv[2] == self.main else ok()
+        shell = mock.Mock(return_value=0)
+        router = self.cleanup_routes({("git", "status"): dirty})
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertIn("fast-forward: done", out)
+        shell.assert_called_once()
+        self.assertIn(
+            "post-land command: exit 0 (ran with uncommitted changes in the main checkout)", out)
+        shell = mock.Mock(return_value=0)
+        _, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(), shell)
+        self.assertIn("post-land command: exit 0", out.splitlines())
+
+    def _eligible_state(self):
+        body = "## Test plan\n- [x] tests\n"
+        return self.preflight_state({("gh", "pr", "view", "7"): ok(self.pr_json(body=body))})
+
+    def test_cleanup_refused_fast_forward_is_one_line(self):
+        state = self._eligible_state()
+        stderr = (
+            "error: Your local changes to the following files would be overwritten by merge:\n"
+            "\tk\n"
+            "Please commit your changes or stash them before you merge.\n"
+            "Aborting\n")
+        router = self.cleanup_routes({("git", "merge", "--ff-only"): (1, b"", stderr.encode("utf-8"))})
+        shell = mock.Mock(return_value=0)
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertEqual(code, 1)
+        merge = router.ran("git", "merge", "--ff-only")
+        self.assertTrue(merge and "--no-autostash" in merge[0])
+        failed = [line for line in out.splitlines() if line.startswith("fast-forward: failed (")]
+        self.assertEqual(len(failed), 1)
+        self.assertTrue(failed[0].startswith("fast-forward: failed (error: Your local changes"))
+        self.assertTrue(failed[0].endswith("Aborting)"))
+        shell.assert_not_called()
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_cleanup_hand_over_line(self):
+        eligible = self._eligible_state()
+        warned = self.preflight_state({("git", "patch-id"): ok(OTHER + "\n")})
+        no_marker = self.preflight_state({("gh", "api"): (0, pages(comment(1, "LGTM")), b"")})
+        default = self.preflight_state()
+        cases = {
+            "eligible": (eligible, {}, 0, "hand-over: eligible"),
+            "post-merge checklists": (default, {}, 0, "hand-over: no (the ticket target is not Done)"),
+            "warning": (warned, {}, 0, "hand-over: no (the SHA line was not match)"),
+            "no marker": (no_marker, {}, 0, "hand-over: no (the SHA line was not match)"),
+            "not contained": (
+                eligible, {("git", "merge-base", "--is-ancestor"): (1, b"", b"")}, 0,
+                "hand-over: no (the fast-forward did not leave the main checkout holding the landed commit)"),
+            "other branch": (
+                eligible, {("git", "worktree", "list"): ok(self.porcelain(main_branch="other"))}, 0,
+                "hand-over: no (the fast-forward did not leave the main checkout holding the landed commit)"),
+        }
+        for name, (state, over, shell_code, last) in cases.items():
+            with self.subTest(case=name):
+                shell = mock.Mock(return_value=shell_code)
+                code, out, _ = self.run_main(
+                    ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over), shell)
+                self.assertEqual(out.splitlines()[-1], last)
+                if name == "eligible":
+                    self.assertEqual(code, 0, out)
+        shell = mock.Mock(return_value=3)
+        _, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(eligible)], self.cleanup_routes(), shell)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+
+def _probe_git_env():
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+@unittest.skipUnless(shutil.which("git"), "git not on PATH")
+class TestGitPremiseP4(unittest.TestCase):
+    """P4: git merge --ff-only --no-autostash with dirty files (VHS-122)."""
+
+    def setUp(self):
+        self.env = _probe_git_env()
+        self.tmp = Path(tempfile.mkdtemp(prefix="vhs122-p4-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.origin = self.tmp / "origin"
+        self.origin.mkdir()
+        self._git(self.origin, "init", "-q")
+        self._git(self.origin, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v1\n")
+        (self.origin / "b.txt").write_bytes(b"b-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "b.txt")
+        self._git(self.origin, "commit", "-q", "-m", "init")
+        self.first = self._rev(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v2\n")
+        (self.origin / "new.txt").write_bytes(b"new-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "new.txt")
+        self._git(self.origin, "commit", "-q", "-m", "land")
+        self.tip = self._rev(self.origin)
+
+    def _git(self, root, *args, check=True):
+        proc = subprocess.run(
+            ["git", *args], cwd=str(root), env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if check and proc.returncode != 0:
+            raise AssertionError("{} in {} failed: exit {} stdout={} stderr={}".format(
+                args, root, proc.returncode, proc.stdout, proc.stderr))
+        return proc
+
+    def _identity(self, root):
+        self._git(root, "config", "user.email", "vhs122-p4@example.invalid")
+        self._git(root, "config", "user.name", "VHS-122 Probe")
+        self._git(root, "config", "commit.gpgsign", "false")
+
+    def _rev(self, root):
+        return self._git(root, "rev-parse", "HEAD").stdout.decode().strip()
+
+    def _clone_at_first(self, name):
+        dest = self.tmp / name
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(dest))
+        self._git(dest, "reset", "--hard", self.first)
+        self._identity(dest)
+        return dest
+
+    def _prepare(self, clone, case):
+        if case == "clean":
+            return
+        if case == "b.txt modified":
+            (clone / "b.txt").write_bytes(b"b-local\n")
+        elif case == "b.txt modified and staged":
+            (clone / "b.txt").write_bytes(b"b-local\n")
+            self._git(clone, "add", "--", "b.txt")
+        elif case == "untracked u.txt":
+            (clone / "u.txt").write_bytes(b"u-local\n")
+        elif case == "a.txt modified":
+            (clone / "a.txt").write_bytes(b"a-local\n")
+        elif case == "a.txt modified and staged":
+            (clone / "a.txt").write_bytes(b"a-local\n")
+            self._git(clone, "add", "--", "a.txt")
+        elif case == "untracked new.txt":
+            (clone / "new.txt").write_bytes(b"new-local\n")
+        elif case == "one local commit":
+            (clone / "b.txt").write_bytes(b"b-diverge\n")
+            self._git(clone, "add", "--", "b.txt")
+            self._git(clone, "commit", "-q", "-m", "local")
+        elif case == "a.txt modified, autostash":
+            self._git(clone, "config", "merge.autoStash", "true")
+            (clone / "a.txt").write_bytes(b"a-local\n")
+        else:
+            raise AssertionError("unknown case {}".format(case))
+
+    def _merge(self, clone):
+        fetch = self._git(clone, "fetch", "origin", check=False)
+        self.assertEqual(
+            fetch.returncode, 0,
+            "fetch stdout={} stderr={}".format(fetch.stdout, fetch.stderr))
+        return self._git(clone, "merge", "--ff-only", "--no-autostash", "origin/main", check=False)
+
+    def test_ff_only_with_dirty_files(self):
+        moves = {
+            "clean",
+            "b.txt modified",
+            "b.txt modified and staged",
+            "untracked u.txt",
+        }
+        cases = [
+            "clean",
+            "b.txt modified",
+            "b.txt modified and staged",
+            "untracked u.txt",
+            "a.txt modified",
+            "a.txt modified and staged",
+            "untracked new.txt",
+            "one local commit",
+            "a.txt modified, autostash",
+        ]
+        for index, case in enumerate(cases):
+            with self.subTest(case=case):
+                clone = self._clone_at_first("c{}".format(index))
+                self._prepare(clone, case)
+                before = self._rev(clone)
+                proc = self._merge(clone)
+                after = self._rev(clone)
+                detail = "exit {} stdout={} stderr={}".format(
+                    proc.returncode, proc.stdout, proc.stderr)
+                if case in moves:
+                    self.assertEqual(proc.returncode, 0, detail)
+                    self.assertNotEqual(after, before, detail)
+                    self.assertEqual(after, self.tip, detail)
+                else:
+                    self.assertNotEqual(proc.returncode, 0, detail)
+                    self.assertEqual(after, before, detail)
+                if case in ("b.txt modified", "b.txt modified and staged"):
+                    self.assertEqual((clone / "b.txt").read_bytes(), b"b-local\n", detail)
+                if case == "b.txt modified and staged":
+                    cached = self._git(clone, "diff", "--cached", "--name-only")
+                    self.assertIn("b.txt", cached.stdout.decode().splitlines(), detail)
+                if case == "untracked u.txt":
+                    self.assertEqual((clone / "u.txt").read_bytes(), b"u-local\n", detail)
+                if case in ("a.txt modified", "a.txt modified, autostash"):
+                    self.assertEqual((clone / "a.txt").read_bytes(), b"a-local\n", detail)
+                if case == "untracked new.txt":
+                    self.assertEqual((clone / "new.txt").read_bytes(), b"new-local\n", detail)
+                if case == "a.txt modified, autostash":
+                    stash = self._git(clone, "stash", "list")
+                    self.assertEqual(stash.stdout.decode().strip(), "", detail)
+
+
+@unittest.skipUnless(shutil.which("git"), "git not on PATH")
+class TestCleanupRealGit(unittest.TestCase):
+    """Cleanup fast-forward against real git (VHS-122 T-L10)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_script(SCRIPT, "spec_land_check_cleanup_real_git")
+
+    def setUp(self):
+        self.env = _probe_git_env()
+        self.tmp = Path(tempfile.mkdtemp(prefix="vhs122-cleanup-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.origin = self.tmp / "origin"
+        self.origin.mkdir()
+        self._git(self.origin, "init", "-q")
+        self._git(self.origin, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v1\n")
+        (self.origin / "b.txt").write_bytes(b"b-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "b.txt")
+        self._git(self.origin, "commit", "-q", "-m", "init")
+        self.first = self._rev(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v2\n")
+        (self.origin / "new.txt").write_bytes(b"new-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "new.txt")
+        self._git(self.origin, "commit", "-q", "-m", "land")
+        self.tip = self._rev(self.origin)
+
+    def _git(self, root, *args, check=True):
+        proc = subprocess.run(
+            ["git", *args], cwd=str(root), env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if check and proc.returncode != 0:
+            raise AssertionError("{} in {} failed: exit {} stdout={} stderr={}".format(
+                args, root, proc.returncode, proc.stdout, proc.stderr))
+        return proc
+
+    def _identity(self, root):
+        self._git(root, "config", "user.email", "vhs122-cleanup@example.invalid")
+        self._git(root, "config", "user.name", "VHS-122 Cleanup")
+        self._git(root, "config", "commit.gpgsign", "false")
+
+    def _rev(self, root):
+        return self._git(root, "rev-parse", "HEAD").stdout.decode().strip()
+
+    def _clone(self, name):
+        dest = self.tmp / name
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(dest))
+        self._git(dest, "reset", "--hard", self.first)
+        self._identity(dest)
+        return dest
+
+    def _cleanup(self, clone):
+        self._git(clone, "fetch", "origin")
+        state = {
+            "version": 1,
+            "main": clone.as_posix(),
+            "pr": {"number": 7, "branch": "feat/vhs-122-missing",
+                   "head": self.first, "landed": self.tip},
+            "ticket": "VHS-122",
+            "verification": {"status": "match"},
+            "wiki": {"path": None},
+            "post_land": {"command": "git --version"},
+            "default_branch": "main",
+            "plane": {"target": "Done"},
+            "checklist": [],
+        }
+        path = self.tmp / ("state-" + clone.name + ".json")
+        path.write_text(json.dumps(state), encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                mock.patch.dict(os.environ, self.env, clear=True):
+            code = self.mod.main(["cleanup", "--state", str(path)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_unrelated_dirty_files_fast_forward(self):
+        clone = self._clone("a")
+        (clone / "b.txt").write_bytes(b"b-local\n")
+        (clone / "staged.txt").write_bytes(b"staged-local\n")
+        self._git(clone, "add", "--", "staged.txt")
+        (clone / "u.txt").write_bytes(b"u-local\n")
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 0, detail)
+        self.assertIn("fast-forward: done", out)
+        self.assertIn("hand-over: eligible", out)
+        self.assertEqual(self._rev(clone), self.tip, detail)
+        self.assertEqual((clone / "b.txt").read_bytes(), b"b-local\n")
+        self.assertEqual((clone / "staged.txt").read_bytes(), b"staged-local\n")
+        self.assertEqual((clone / "u.txt").read_bytes(), b"u-local\n")
+        cached = self._git(clone, "diff", "--cached", "--name-only").stdout.decode().splitlines()
+        self.assertIn("staged.txt", cached, detail)
+        self.assertIn("ran with uncommitted changes in the main checkout", out)
+
+    def test_overlapping_change_is_refused(self):
+        for name, autostash in (("plain", False), ("autostash", True)):
+            with self.subTest(case=name):
+                clone = self._clone("b-" + name)
+                if autostash:
+                    self._git(clone, "config", "merge.autoStash", "true")
+                (clone / "a.txt").write_bytes(b"a-local\n")
+                before = self._rev(clone)
+                code, out, err = self._cleanup(clone)
+                detail = "exit {} stdout={} stderr={}".format(code, out, err)
+                self.assertEqual(code, 1, detail)
+                self.assertTrue(
+                    any(line.startswith("fast-forward: failed (") for line in out.splitlines()),
+                    detail)
+                self.assertEqual(self._rev(clone), before, detail)
+                self.assertEqual((clone / "a.txt").read_bytes(), b"a-local\n")
+                stash = self._git(clone, "stash", "list").stdout.decode().strip()
+                self.assertEqual(stash, "", detail)
+                self.assertIn("hand-over: no (a cleanup action failed)", out)
+
+    def test_diverged_local_commit_is_refused(self):
+        clone = self._clone("c")
+        (clone / "b.txt").write_bytes(b"b-diverge\n")
+        self._git(clone, "add", "--", "b.txt")
+        self._git(clone, "commit", "-q", "-m", "local")
+        before = self._rev(clone)
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 1, detail)
+        self.assertTrue(
+            any(line.startswith("fast-forward: failed (") for line in out.splitlines()), detail)
+        self.assertEqual(self._rev(clone), before, detail)
 
 
 if __name__ == "__main__":
