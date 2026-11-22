@@ -40,7 +40,9 @@ class TestSkill(unittest.TestCase):
         for phrase in ("## Failure modes",
                        "Co-Authored-By: Claude <noreply@anthropic.com>",
                        "plane-proxy", "Halted passes",
-                       "Generated with [Claude Code]", "place_artifact"):
+                       "Generated with [Claude Code]", "place_artifact",
+                       # Regression for VHS-54: the HEAD check is not a gate-only, clean-only rule.
+                       "Its clean result means it did run only when"):
             with self.subTest(phrase=phrase):
                 self.assertNotIn(phrase, text)
 
@@ -89,20 +91,21 @@ class TestSkill(unittest.TestCase):
                        "the first two sentences above, the guardrails step 3 read, this chain's `FILED` report when `/spec-tickets` filed",
                        "report what was built, what was not, and what the next step needs",
                        "or reports spec work unbuilt, operator steps aside, halts the run, naming it",
-                       # Regression for VHS-54: missing builder work is never a test fix or a publishable finding.
-                       "Missing builder work found by tests or review is unresolved Blocks.",
-                       "is red: unless builder work is missing, make one smallest fix and run again",
+                       # Regression for VHS-54: missing builder work is never a test fix; the red gate halts on it.
+                       "is red: halt on missing builder work; otherwise make one smallest fix and retry",
                        "A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.",
                        "Never build in the session or pick another executor.",
                        "- `small`, unless builder-built: print",
-                       "A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor.",
+                       "A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor. Missing builder work found by tests or review is unresolved Blocks.",
                        "With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off",
                        "still runs once as above, without `Test command:`, as a bloat check",
                        "its findings join the gate's but never count as the review running",
                        "its absence or failure is neither a skip nor a stop",
-                       # Regression for VHS-54: a clean gate result counts only for the HEAD under review.
-                       "asking for a review of the diff against the spec and the worktree `HEAD` it reviewed",
-                       "Its clean result means it did run only when it names that `HEAD` and that is the one under review.",
+                       # Regression for VHS-54: a review of a builder's commit, or by a gate, counts only for the HEAD under review.
+                       "For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the expected `HEAD`; otherwise the review did not run.",
+                       # Regression for VHS-54: with no executors the two diagnostics read as they did.
+                       "Review follows the spec tier. On tier mismatch, print both tiers and that rule, explaining implicit `big` when applicable. Preserve the marker.",
+                       "Keep the worktree. Print the case and any configured gate.",
                        "Before any review starts and after the last returns, record outside both checkouts `git rev-parse HEAD`, `git status --porcelain=v1 -uall -z`",
                        "Include `origin/<default-branch>...HEAD`.",
                        "Executors: build <name | session | prebuilt> · gate <name | session | skipped>",

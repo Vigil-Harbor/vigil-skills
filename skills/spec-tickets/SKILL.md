@@ -16,7 +16,7 @@ Invoking it is the authorization to file.
 
 ## Invocation
 
-One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`; later non-flag words that are not a path are the operator's line. The name minus `.spec.md` is `<PARENT-ID>`. Anything else, a second path included, prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written. So does an unclear operator's line, naming what is unclear.
+One argument: `docs/specs/TODO/<TICKET-ID>.spec.md`, then an optional `--unattended`; later non-flag words expressing operator intent are the operator's line. The name minus `.spec.md` is `<PARENT-ID>`. Anything else, including another positional path, prints `Usage: /spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]` and stops with nothing written. So does an unclear operator's line, naming what is unclear.
 
 ## Operator replies
 
@@ -30,7 +30,7 @@ Read the spec.
 
 **Heading check.** Halt, naming the heading, when the spec lacks `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Done when` or `## Out of scope`.
 
-**Verdict read.** `verdict_marker.py` owns the marker. Run this block as one shell call; a run that `/spec-cycle`'s **Chain** started passes `--spec <spec-path>` in place of `--no-fingerprint`:
+**Verdict read.** `verdict_marker.py` owns the marker. Run this block as one shell call; chain-started runs replace `--no-fingerprint` with `--spec <spec-path> --spec-tier <tier from ship-spec Phase 0>`:
 
 ```bash
 VERDICT="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/spec-cycle/scripts/verdict_marker.py"
@@ -82,7 +82,7 @@ Draft from the spec's Design and Scope only.
 
 **Edges.** For each piece, list the pieces that must be complete before it can start. An edge exists only when the blocker genuinely gates the piece. A piece with no blockers can start at once.
 
-**Acceptance criteria.** Each piece has at least one line citing the Done-when or Test-plan item it comes from. Every Done-when and Test-plan item goes to exactly one piece or is marked assembled-only. A Test plan row follows the piece whose criterion cites it. A row that only the assembled PR can satisfy is assembled-only. The spec's full Done when taken as a whole, and the pre-merge review of the assembled PR, are assembled-only.
+**Acceptance criteria.** Each piece has at least one line citing the Done-when or Test-plan item it comes from. Every Done-when and Test-plan item goes to exactly one piece or is marked assembled-only. A Test plan row follows the piece whose criterion cites it. A row that only the assembled PR can satisfy is assembled-only. The full Done when and the pre-merge review run once on the assembled PR (assembled-only).
 
 **One-piece exit.** When the draft has fewer than two pieces, print `one piece — nothing filed` and the Report's `Next:` line, file nothing, and end as its **Chain** says.
 

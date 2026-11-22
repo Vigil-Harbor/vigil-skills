@@ -27,7 +27,7 @@ A project whose interpreter is not on the worktree PATH puts that interpreter's 
 
 Read from `CLAUDE.md` first, then `AGENTS.md`. `/ship-spec` has a review gate between its test gate and the commit: it runs one review of the change, fixes what blocks, and fixes or records the rest. The skill ships no reviewer of its own — you declare the command.
 
-Add a `## Review command` heading whose content is one line: how to run a review of uncommitted changes on your host. It is either a skill invocation (a line beginning `/`) or a shell command:
+Add a `## Review command` heading whose content is one line: how to run a review of uncommitted changes on your host, and of a builder's commits when `executors` names one. It is either a skill invocation (a line beginning `/`) or a shell command:
 
 ```markdown
 ## Review command

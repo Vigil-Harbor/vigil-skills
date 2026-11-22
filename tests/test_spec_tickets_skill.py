@@ -51,14 +51,16 @@ PRESENT = (
     "one blocked-by relation per edge",
     "Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md",
     # Regression for VHS-54: free words, the one-piece Next line and the chain.
-    "later non-flag words that are not a path are the operator's line",
-    "Anything else, a second path included, prints `Usage:",
+    "later non-flag words expressing operator intent are the operator's line",
+    "Anything else, including another positional path, prints `Usage:",
     "So does an unclear operator's line, naming what is unclear.",
     "and the Report's `Next:` line, file nothing, and end as its **Chain** says",
     "when the verdict read `green` and `/ship-spec` Phase 0 step 7 resolves a builder, start the `Next:` command by `/spec-cycle`'s **Chain** rule",
-    # Regression for VHS-54: a chain-started run files only for the spec that went green.
-    "a run that `/spec-cycle`'s **Chain** started passes `--spec <spec-path>` in place of `--no-fingerprint`",
+    # Regression for VHS-54: a chain-started run files only for the spec, and the tier, that went green.
+    "chain-started runs replace `--no-fingerprint` with `--spec <spec-path> --spec-tier <tier from ship-spec Phase 0>`",
     "a chain-started run needs `green`: otherwise print `NOT FILED: verdict <state>` and stop",
+    # Regression for VHS-54: the assembled PR carries the parent's acceptance and review once.
+    "The full Done when and the pre-merge review run once on the assembled PR (assembled-only).",
 )
 
 ABSENT = (

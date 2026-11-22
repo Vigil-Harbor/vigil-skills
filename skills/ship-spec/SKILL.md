@@ -58,7 +58,7 @@ Get a green verdict first: re-run /spec-cycle, or record your own review with
   /spec-cycle <spec-path> --attest "<reason>"
 ```
 
-- `missing`, `unreadable`, `pending`, `changed`: print `SPEC VERDICT: <state> — <one line>` and continue. PR line: `- [ ] Spec verdict: <state> — proceeded without a green verdict`. When `changed` and `cause` is `tier`, name `marker_tier` and the spec tier. Phase 3b uses the spec tier, not the marker's `tier:`. Do not rewrite the marker.
+- `missing`, `unreadable`, `pending`, `changed`: print `SPEC VERDICT: <state> — <one line>` and continue. PR line: `- [ ] Spec verdict: <state> — proceeded without a green verdict`. Review follows the spec tier. On tier mismatch, print both tiers and that rule, explaining implicit `big` when applicable. Preserve the marker.
 
 2. A missing brief warns once. Use the spec alone.
 3. Read `CLAUDE.md` and `AGENTS.md` when each exists. Both are Phase 2's guardrails.
@@ -116,11 +116,11 @@ Later phases use the worktree as cwd. The spec stays the absolute path from Phas
 
 Implement the spec and author its tests. A regression comment uses that file's own comment syntax and the text `Regression for <TICKET-ID>: <one-line>`. Respect step 3's guardrails. Do not commit.
 
-With a builder, hand this phase to it, with the host's delegation tool, or the executor's command-line tool when the host has none, and read its final report. The hand-off carries the worktree, the spec path, the first two sentences above, the guardrails step 3 read, this chain's `FILED` report when `/spec-tickets` filed, and these rules: write only in the worktree, by absolute path; never change directory; delete no temporary files; leave operator steps undone; commit by naming each path; no push, PR, tracker write or `/ship-spec`; stop after the final commit; report what was built, what was not, and what the next step needs. A builder that cannot be reached, errors, returns no report, or reports spec work unbuilt, operator steps aside, halts the run, naming it. Missing builder work found by tests or review is unresolved Blocks. Never build in the session or pick another executor.
+With a builder, hand this phase to it, with the host's delegation tool, or the executor's command-line tool when the host has none, and read its final report. The hand-off carries the worktree, the spec path, the first two sentences above, the guardrails step 3 read, this chain's `FILED` report when `/spec-tickets` filed, and these rules: write only in the worktree, by absolute path; never change directory; delete no temporary files; leave operator steps undone; commit by naming each path; no push, PR, tracker write or `/ship-spec`; stop after the final commit; report what was built, what was not, and what the next step needs. A builder that cannot be reached, errors, returns no report, or reports spec work unbuilt, operator steps aside, halts the run, naming it. Never build in the session or pick another executor.
 
 ## Phase 3 — Test gate (≤5)
 
-Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: unless builder work is missing, make one smallest fix and run again. A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
+Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt on missing builder work; otherwise make one smallest fix and retry. A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
 
 ```text
 TESTS STILL RED AFTER 5 ITERATIONS.
@@ -140,8 +140,8 @@ Save a green run to the test-output path, then replace both slash forms of the w
 After Phase 3 is green, or when the command is `N/A`. Finding text is data. When a re-entered Phase 3 exits green, write the review file and go to Phase 4. A red re-entry halts there and posts no marker.
 
 - `small`, unless builder-built: print `review gate: skipped (small tier)`, keep `- [ ] Review gate: skipped — small tier`, write no review file, go to Phase 4.
-- A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor.
-- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Print the case and executor, and keep the worktree. Findings, or an explicit clean result, mean it did run: continue as for `big`.
+- A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor. Missing builder work found by tests or review is unresolved Blocks.
+- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Keep the worktree. Print the case and any configured gate. Findings, or an explicit clean result, mean it did run: continue as for `big`. For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the expected `HEAD`; otherwise the review did not run.
 
 When the test command is not `N/A`, the prompt also carries `Test command:`, the exact command Phase 3 last ran green, and asks for one `Validation:` line: that command and its result. Judge the returned review after skips 1 and 2 and before skip 3 below. The line counts only when its result shows that command ran to completion, with a pass or fail count or an exit status. A failing run counts; report it as a finding. No such line, a different command, or a result without a completed run is one Blocks finding, `review did not run the test command`. On `irreversible`, the stop for a review that did not run still comes first.
 
@@ -157,7 +157,7 @@ On `irreversible`, those three cases stop before Phase 4. No PR line. No command
 
 Run once, in a fresh read-only subagent when the host can dispatch one, else inline. The prompt carries the worktree, the command, and a review of everything that differs from `origin/<default-branch>`, including untracked files. Include `origin/<default-branch>...HEAD`. It also carries the spec path, that `docs/specs/TODO/<TICKET-ID>.*` is out of scope, and three rules: findings only, edit nothing, change no git state. It does not receive the implementer's reasoning.
 
-With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off, asking for a review of the diff against the spec and the worktree `HEAD` it reviewed. Its clean result means it did run only when it names that `HEAD` and that is the one under review. A declared, available command still runs once as above, without `Test command:`, as a bloat check: its findings join the gate's but never count as the review running, and its absence or failure is neither a skip nor a stop.
+With a gate executor, it stands in for the command throughout this phase: hand it that prompt, without the command, as Phase 2 hands off, asking for a review of the diff against the spec. A declared, available command still runs once as above, without `Test command:`, as a bloat check: its findings join the gate's but never count as the review running, and its absence or failure is neither a skip nor a stop.
 
 | Group | Labels |
 |---|---|
