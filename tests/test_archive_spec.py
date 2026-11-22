@@ -285,14 +285,17 @@ class TestSkillPins(unittest.TestCase):
         self.assertIn("Enter PR number or commit SHA:", self.text)
         self.assertIn("Proceed? [y/N]", self.text)
 
-    def test_wiki_commit_is_the_scripts(self):
-        self.assertIn("commit_wiki.py", self.text)
+    def test_handover_pin_and_uncommitted_wiki(self):
         self.assertIn("Handing over to /spec-close <TICKET-ID>.", self.text)
-        self.assertIn("Never commit in the target repo.", self.text)
-        self.assertNotIn("**Never commit.**", self.text)
-        self.assertNotIn("git add <each wiki file", self.text)
-        self.assertNotIn("Status: uncommitted.", self.text)
-        self.assertIn("Status: uncommitted — review with", self.text)
+        self.assertIn("Proceed? [y/N]", self.text)
+        self.assertIn("4. **Never commit.**", self.text)
+        self.assertIn("Status: uncommitted.", self.text)
+        self.assertIn("git add <each wiki file this run wrote>", self.text)
+        self.assertIn("git diff --cached --stat", self.text)
+        self.assertIn(
+            "Suggest the commit only when this run accounts for every staged path.", self.text)
+        self.assertNotIn("then commit", self.text)
+        self.assertNotIn("To retry:", self.text)
 
 
 if __name__ == "__main__":

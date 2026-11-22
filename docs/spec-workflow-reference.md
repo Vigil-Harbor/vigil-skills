@@ -52,7 +52,7 @@ The rules are in skills/spec-land/SKILL.md.
 
 ## spec-close
 
-Close a shipped spec: reconcile it against the code that shipped, propose wiki entries sized to the brief, archive the artifacts, prepend the wiki log entry, and make one local wiki commit of this ticket's log entries and the files it wrote. Run it after `/spec-land`; when `/spec-land` started it, the close plan is printed without the Proceed prompt. The invocation forms are `<spec-path | TICKET-ID | docs/specs/TODO/<TICKET-ID>/>`. A ticket that has artifacts but no spec gets an archive-only close: the archive plus the log entry, with no reconciliation.
+Close a shipped spec: reconcile it against the code that shipped, propose wiki entries sized to the brief, archive the artifacts, and prepend the wiki log entry. Run it after `/spec-land`; when `/spec-land` started it, the close plan is printed without the Proceed prompt. The invocation forms are `<spec-path | TICKET-ID | docs/specs/TODO/<TICKET-ID>/>`. A ticket that has artifacts but no spec gets an archive-only close: the archive plus the log entry, with no reconciliation.
 
 Invocation: `/spec-close <spec-path> [--report-only | --partial]`. The argument may also be a ticket id or a `docs/specs/TODO/<TICKET-ID>/` folder.
 

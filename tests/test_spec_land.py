@@ -1336,6 +1336,59 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
         self.assertIn("post-land command: exit 0", out)
 
+    def test_cleanup_switched_branch_without_post_land_withholds_handover(self):
+        # No post-land command. A branch switch during cleanup must not
+        # finish on hand-over: eligible.
+        state = self._eligible_state()
+        state["post_land"]["command"] = None
+
+        def during_lookup():
+            switched = {"on": False}
+
+            def ls_remote(argv, _):
+                switched["on"] = True
+                return ok("{}\trefs/heads/{}\n".format(HEAD, BRANCH))
+
+            def worktree_list(argv, _):
+                branch = "other" if switched["on"] else "main"
+                return ok(self.porcelain(main_branch=branch))
+
+            router = self.cleanup_routes({
+                ("git", "ls-remote"): ls_remote,
+                ("git", "worktree", "list"): worktree_list,
+            })
+            _, out, _ = self.run_main(
+                ["cleanup", "--state", self.state_file(state)], router)
+            self.assertIn("post-land command: none declared", out)
+            self.assertEqual(router.ran("git", "merge", "--ff-only"), [])
+            self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+        def after_fast_forward():
+            merged = {"on": False}
+
+            def merge(argv, _):
+                merged["on"] = True
+                return ok()
+
+            def worktree_list(argv, _):
+                branch = "other" if merged["on"] else "main"
+                return ok(self.porcelain(main_branch=branch))
+
+            router = self.cleanup_routes({
+                ("git", "merge", "--ff-only"): merge,
+                ("git", "worktree", "list"): worktree_list,
+            })
+            _, out, _ = self.run_main(
+                ["cleanup", "--state", self.state_file(state)], router)
+            self.assertIn("post-land command: none declared", out)
+            self.assertTrue(router.ran("git", "merge", "--ff-only"))
+            self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+        for name, case in (("during remote lookup", during_lookup),
+                           ("after the fast-forward", after_fast_forward)):
+            with self.subTest(case=name):
+                case()
+
 
 def _probe_git_env():
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}

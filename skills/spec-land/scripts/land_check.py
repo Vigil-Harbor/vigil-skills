@@ -1204,23 +1204,29 @@ def _cleanup(state_path: str) -> int:
 
     contains = False
     ff_ran = False
-    main_ref = records[0]["branch"] if records else None
-    if not default:
-        print("fast-forward: skipped (default branch unknown)")
-    elif main_ref != "refs/heads/" + default:
-        print("fast-forward: skipped (main checkout is not on {})".format(default))
+    # The branch can change during the remote lookup above. Read it now.
+    try:
+        main_ref = _worktrees(main)[0].get("branch")
+    except _Halt as exc:
+        print("fast-forward: skipped ({})".format(exc))
+        failed = True
     else:
-        code, _, err = git(
-            "merge", "--ff-only", "--no-autostash", "--no-overwrite-ignore", "origin/" + default)
-        ff_ran = code == 0
-        if code != 0:
-            print("fast-forward: failed ({})".format(" ".join(_text(err).split())))
-            failed = True
-        elif git("merge-base", "--is-ancestor", pr["landed"], "HEAD")[0] == 0:
-            print("fast-forward: done")
-            contains = True
+        if not default:
+            print("fast-forward: skipped (default branch unknown)")
+        elif main_ref != "refs/heads/" + default:
+            print("fast-forward: skipped (main checkout is not on {})".format(default))
         else:
-            print("fast-forward: done, but the main checkout does not contain the landed commit")
+            code, _, err = git(
+                "merge", "--ff-only", "--no-autostash", "--no-overwrite-ignore", "origin/" + default)
+            ff_ran = code == 0
+            if code != 0:
+                print("fast-forward: failed ({})".format(" ".join(_text(err).split())))
+                failed = True
+            elif git("merge-base", "--is-ancestor", pr["landed"], "HEAD")[0] == 0:
+                print("fast-forward: done")
+                contains = True
+            else:
+                print("fast-forward: done, but the main checkout does not contain the landed commit")
     command = state["post_land"].get("command")
     if not command:
         print("post-land command: none declared")
@@ -1259,6 +1265,9 @@ def _cleanup(state_path: str) -> int:
     elif failed:
         reason = "a cleanup action failed"
     elif not contains:
+        reason = "the fast-forward did not leave the main checkout holding the landed commit"
+    elif not _on_default_with_landed(main, default, pr["landed"]):
+        # Re-check on every eligible path, including when no post-land command ran.
         reason = "the fast-forward did not leave the main checkout holding the landed commit"
     else:
         reason = None
