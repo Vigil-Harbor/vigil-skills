@@ -120,7 +120,7 @@ With a builder, hand this phase to it, with the host's delegation tool, or the e
 
 ## Phase 3 — Test gate (≤5)
 
-Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry. At the cap, a host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
+Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry. At the cap: A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
 
 ```text
 TESTS STILL RED AFTER 5 ITERATIONS.
