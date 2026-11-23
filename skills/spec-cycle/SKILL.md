@@ -12,7 +12,7 @@ requires:
 
 # /spec-cycle — author and converge a spec
 
-Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | --full]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
+Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
 Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything. Stop at the Phase 3 HARD STOP or the 2f halt; the operator runs the NEXT command in a separate session.
 
@@ -29,28 +29,30 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 **Write points.** The marker is written at three points, each described where it happens: pending once per invocation immediately before the first dispatch (Phase 2), red at the halting pass's round (2f), and green after post-green polish at the top of Phase 3. Attest mode is the one other writer. Each write is one `"$PY" "$VERDICT" write` call; the script writes a temp file in the reviews directory, creating the directory if absent, and renames it over `verdict.md`. An interrupted run writes nothing more, so a pending marker stays.
 
-**A failed write does not change the run's outcome.** A write fails when `$VERDICT` does not exist, when `write` exits non-zero, or when the interpreter does not start. The failed-write line is `verdict marker NOT written: <error> — the marker on disk says <v>`. On exit 1 the script prints it itself; otherwise print it yourself, where the write was attempted. `<error>` is `script missing — run python sync.py install` when `$VERDICT` does not exist, and `verdict_marker.py exit <n>` otherwise. `<v>` is the first `verdict:` value in the file when it is `green`, `red` or `pending`, `unreadable` when it is anything else or absent, and `none` when the file is missing. A failed pending write over an unchanged green spec leaves that green readable until this run's own red or green write replaces it; that is accepted.
+**A failed write does not change the run's outcome.** A write fails when `$VERDICT` does not exist, when `write` exits non-zero, or when the interpreter does not start. The failed-write line is `verdict marker NOT written: <error> — the marker on disk says <v>`. On exit 1 the script prints it itself; otherwise print it yourself, where the write was attempted. `<error>` is `script missing — run python sync.py install` when `$VERDICT` does not exist, and `verdict_marker.py exit <n>` otherwise. `<v>` is the first `verdict:` value in the file when it is `green`, `red` or `pending`, `unreadable` when it is anything else or absent, and `none` when the file is missing.
 
 ### Reading the marker
 
-`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. This list is the canonical copy; `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
+`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
 
-- `missing` — Confirm.
-- `unreadable` — Confirm, naming the reason.
-- `pending` — Confirm: a review started and did not finish.
-- `red` — Halt, whether or not the spec has changed.
-- `green` — Pass.
-- `changed` — Confirm: the spec is not the text that was judged.
+- `missing` — no marker file.
+- `unreadable` — the marker cannot be classified; the reason is named.
+- `pending` — a review started and did not finish.
+- `red` — the review ended red, whether or not the spec has changed.
+- `green` — the spec is the text that was judged.
+- `changed` — the fingerprint or tier check failed.
 
-`green` carries its kind: `review, round <n>` or `operator-attested`. Both pass the same way. Every confirm stops on a host that cannot wait.
+`green` carries its kind: `review, round <n>` or `operator-attested`.
 
 ## Operator replies
 
-Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. An override needs a reason that is non-empty after trim. A host that cannot wait keeps the prompt's own stop.
+Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. A host that cannot wait keeps the prompt's own stop.
+
+**Unattended.** `--unattended` means nobody will answer: the run is a host that cannot wait, every prompt is a stop, and the 2f halt prints its block and takes no option. Any halt or stop short of the Phase 3 block, except a usage halt and the unchanged-green stop, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>` on the ticket when exactly one connected issue tracker resolves the id (for that write only; a failed comment prints `stop comment NOT posted: <error>`), then print the `UNATTENDED STOP` line last. `<reason>` is the halt's own line; a missing id reads `no ticket`.
 
 ## Phase 0 — Preflight
 
-Validate the invocation first. `--full` takes no value and is exclusive with `--attest`. Both flags together, `--attest` with no reason or an empty one, `--full` with a value, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | --full]` and writes nothing. With `--attest`, take the ticket id as step 1 does, then go to `## Attest mode`; nothing else here runs.
+Validate the invocation first. `--full` and `--unattended` take no value, and each is exclusive with `--attest`. `--attest` with either, `--attest` with no reason or an empty one, a value on `--full` or `--unattended`, or any other flag halts with `Usage: /spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]` and writes nothing. With `--attest`, take the ticket id as step 1 does, then go to `## Attest mode`; nothing else here runs.
 
 1. **Brief and ticket.** `project_root` is the cwd. Normalize `<brief-path>` to a project-root-relative path with forward slashes; that form is what reviewers receive. The canonical brief is `docs/specs/TODO/<TICKET-ID>.brief.md`, but another directory or a `<TICKET-ID>-slug.md` name is accepted. A brief outside `project_root` warns `brief outside project root — reviewer access is host-dependent` and carries its absolute path. Take `ticket_id` by the anchored match `^[A-Z][A-Z0-9]*-[0-9]+` on the filename (`PROJ-86-fix-API-33-regression.md` → `PROJ-86`); with no match, ask for it. Every artifact — the spec, the `<TICKET-ID>.reviews/` tree, ship-spec's outputs — lands in `docs/specs/TODO/` wherever the brief lives.
 2. **Brief exists.** If not, halt: `Brief not found at <path>. Provide a path relative to <project_root>.` A ticket the tracker does not know is local-only; proceed from the brief.
@@ -58,10 +60,10 @@ Validate the invocation first. `--full` takes no value and is exclusive with `--
 4. **Environment (warn only).** Fetch with `GIT_TERMINAL_PROMPT=0 timeout 30 git fetch <remote>`. If an `upstream` remote exists and the current branch is behind `upstream/<default branch>`, print `UPSTREAM: local <branch> is <N> commits behind upstream/<default> — reviewers read the local tree.` If the branch is behind `origin/<cmp>` (its origin counterpart, else origin's default branch), print `ORIGIN SYNC: local <branch> is <N> commits behind origin/<cmp> — reviewers read the local tree.` A missing `upstream` remote skips only the upstream check. A missing `origin`, detached HEAD, timeout or other git error prints `upstream/origin check: skipped (<reason>)` and continues. Never update the tree.
 5. **Scale.** Find the brief's first `## Scale` or `## Scaling` heading (any depth, whole heading, case-insensitive; `## Scale-out plan` does not count). `**Factor:**` `yes`, `on` or `true` with a non-empty `**Target:**` turns the lens on: `scale_lens = on`, `scale_target` is the Target text and `scale_dimensions` an optional `**Dimensions:**` line. `**Factor:**` `no`, `off`, `none`, `non-factor` or `n/a` records `non-factor`; the lens does not run. An absent section is `off` with no warning. Any other declaration, including Factor on with no Target, is `off` with one warning, `scale-lens: off (<reason>)`. On a re-run the spec's recorded scale Decision wins over the brief; warn when they disagree. Hold the result for the invocation.
 6. **Tier.** `small` sets `round_cap = 2`; `big` and `irreversible` set 4. The tier never sets the scale lens.
-   - **Spec line first.** When the spec exists, read its recorded tier with the same fence and first-line reader as `/ship-spec`. Ignore lines inside a fenced code block: a fence opens on a line that starts (after at most three spaces, and not prefixed `> `) with three or more backticks or tildes, and closes on a marker of the same character at least as long. The first remaining line that, after leading indentation, starts with `**Tier:**` (case-insensitive) is the declaration; a second warns `tier: multiple Tier lines in the spec — using first`. Its value, trimmed and lowercased, must be exactly `small`, `big` or `irreversible`. Anything else halts `tier: malformed (<value>) — halting`, writes nothing, and leaves the marker as it is; ship-spec warns on that value and uses big, and this skill still halts. A valid line wins over the brief; warn `tier: brief disagrees — using recorded` when they differ.
-   - **Brief otherwise.** Read the brief's `## Tier` section; its first unfenced line that starts with `**Level:**` names the level. A malformed value, a missing Level line, or a near-miss heading such as `## Tiering` that carries a Level line warns `tier: <reason> — using big` and continues. An absent section is `big` with no warning. A mistyped `irreversible` therefore reads as `big`, and the warning is the only guard.
+   - **Spec line first.** When the spec exists, read its recorded tier with the same fence and first-line reader as `/ship-spec`. Ignore lines inside a fenced code block: a fence opens on a line that starts (after at most three spaces, and not prefixed `> `) with three or more backticks or tildes, and closes on a marker of the same character at least as long. The first remaining line that, after leading indentation, starts with `**Tier:**` (case-insensitive) is the declaration; a second warns `tier: multiple Tier lines in the spec — using first`. Its value, trimmed and lowercased, must be exactly `small`, `big` or `irreversible`. Anything else halts `tier: malformed (<value>) — halting`, writes nothing, and leaves the marker as it is. A valid line wins over the brief; warn `tier: brief disagrees — using recorded` when they differ.
+   - **Brief otherwise.** Read the brief's `## Tier` section; its first unfenced line that starts with `**Level:**` names the level. A malformed value, a missing Level line, or a near-miss heading such as `## Tiering` that carries a Level line warns `tier: <reason> — using big` and continues. An absent section is `big` with no warning.
    - A spec with no label line uses the brief. ship-spec reads that spec as `big`, so a non-`big` brief tier shows there as `changed`; add the line by hand.
-7. **Review mode.** Classify the marker with `read --spec docs/specs/TODO/<TICKET-ID>.spec.md --spec-tier <tier>`, in the same shell call as the resolution block.
+7. **Review mode.** Classify the marker with `read --spec docs/specs/TODO/<TICKET-ID>.spec.md --spec-tier <tier>`, in the same shell call as the resolution block. With `--unattended`, a `red`, `pending` or `unreadable` state is a recorded stop here: `verdict marker is <state> — an unattended run does not resume a halted or unfinished review; run /spec-cycle without --unattended`.
    - `full` when `--full` is given; when the marker is missing, unreadable, `pending` or operator-attested; when no spec exists; or when the marker's `round:` has no `round-<C>/spec.copy.md`.
    - `full` when the marker's `round-<C+1>/` already exists.
    - Otherwise `delta`, continuing round `C` from the marker's `round:`. Compute `spec_diff` and `open_findings` now (`### Counters and round artifacts`); an unavailable `spec_diff`, a `<lens>/STATUS` open finding, or a missing `round-<C>/ledger.md` makes the invocation `full`.
@@ -76,7 +78,7 @@ Output path: `docs/specs/TODO/<TICKET-ID>.spec.md`.
 
 **A re-run does not re-author.** An existing spec is v1, and its `## Deferred — follow-up required` rows and `Follow-up:` values survive verbatim. If it lacks any of `## Goal`, `## Scope`, `## Design`, `## Test plan`, `## Test command`, `## Done when`, `## Out of scope`, halt: `existing spec is incomplete; delete docs/specs/TODO/<TICKET-ID>.spec.md to force a clean re-author, or patch it`. Deleting the spec is also how to re-author from a changed brief; copy its deferred rows first.
 
-Read the brief and the files it points at. Do not read the ticket. The brief is the only statement of the ticket's text, including any comment it carried. A ticket edited after the brief was written is unseen until `/spec-brief` is re-run.
+Read the brief and the files it points at. Do not read the ticket. The brief is the only statement of the ticket's text, including any comment it carried.
 
 **Ground truth.** Every sentence that states how existing code or a system behaves when run — a job fires, a path resolves, a guard blocks — carries a `file:line` anchor you opened and read while preparing this dispatch. A reviewer report, prior spec, wiki page or brief is only a pointer until you read the live line, and a mechanism inherited from a prior spec is verified against live code before it is cited. Outside the project root, anchor any path that identifies the file and still read it. When the source cannot be read, say the behavior is observed or assumed and hold `Anchor: none` with the evidence or the words `assumed, not verified`; never use it for behavior in a readable file. A Runbook step that invokes code is traced through its live call chain to the code that admits or rejects the operation, and anchored there. A requirement on the implementation is not a claim; its factual justification is. Hold each claim, its innermost heading, its anchor and the round for the ground-truth ledger.
 
@@ -297,7 +299,7 @@ Wait for the operator. A reply selects an option only when that option was print
 4. **Apply.** Edit the spec in place for each Settled item under 2e's rules, without FROZEN/REWRITE. Find the findings it dispositions by its `ref:` ids, never by title; `ref: none`, or no `ref:` field, applies the edit and dispositions nothing. A decision to make a finding a follow-up appends a row with `Deferred in: round <C> (grill)`, the sites the finding names (one is allowed; `§ (operator decision — routing tests not run)` when it names none), and `Scope: operator — round-<C> grill`; the next review run classifies it under the ceiling. A Settled decision a spec edit cannot carry, such as narrowing the brief, is reported as `deferred to option 3: <id>`. Open items stay P0/P1.
 5. **Re-render.** Print `grill applied (exit: <token>): dispositioned <ids>; left open <ids>; not grillable <ids>; deferred to option 3 <ids>; unreferenced decisions applied: <n> — docs/specs/TODO/<TICKET-ID>.reviews/round-<C>/grill.md`, then the halt block with options 1–3, each dispositioned title suffixed ` — grilled (spec edited; not re-reviewed)`. An id on both a Settled and an Open item counts as left open.
 
-2f-i never re-dispatches reviewers, changes `C` or the gate, edits the brief, or rewrites the marker. The run stays red; option 1 is the path to green.
+2f-i never re-dispatches reviewers, changes `C` or the gate, edits the brief, or rewrites the marker.
 
 ### 2g. Post-green polish (bounded)
 
@@ -343,12 +345,12 @@ DRIFT: a merge into a file this spec cites, while this review is open, restarts 
 === NEXT ===
 When ready, run:
   <recommended command>
-<only for /spec-tickets: Why: <one line naming the pieces>>
+Splits: <yes — <the pieces in a few words> | no>
 ```
 
 The `Verdict:` line gains ` (fingerprint not computed)` when the marker has `fingerprint: none`, and reads `Verdict: green — marker NOT written` when the write failed. The FOLLOW-UPS block uses 2f's render. Scale lines use the Phase 0 values; do not re-parse the brief.
 
-**NEXT.** Recommend `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` when the spec's Done-when items fall into two or more pieces that each deliver one end-to-end outcome and can each be verified alone: each piece's items can be checked, and its Test plan rows run, with only that piece's changes made. The `Why:` line names the pieces in a few words. Otherwise recommend `/ship-spec docs/specs/TODO/<TICKET-ID>.spec.md` with no `Why:` line. This is advice; neither command runs from here.
+**NEXT.** Recommend `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` when the spec's Done-when items fall into two or more pieces that each deliver one end-to-end outcome and can each be verified alone: each piece's items can be checked, and its Test plan rows run, with only that piece's changes made. The `Splits:` line then names the pieces in a few words. Otherwise recommend `/ship-spec docs/specs/TODO/<TICKET-ID>.spec.md` with `Splits: no`. This is advice; neither command runs from here.
 
 **Brief-section parsing.** Find these headers case-insensitively, allowing trailing punctuation: `Decisions carried forward` / `Decisions` / `Decisions made`; `Done when` / `Acceptance criteria`; `Out of scope`. Enumerate the numbered list under each, using the first bolded clause or first sentence of each item as its label. A missing header renders one bullet: `[ ] Did the spec address everything in the brief? Anything in the brief absent from the spec?`
 
@@ -360,7 +362,7 @@ Do not auto-proceed. The operator runs the NEXT command when ready.
 
 1. The spec at `docs/specs/TODO/<TICKET-ID>.spec.md` must exist, or halt. If it lacks any of the seven Phase 1 sections, halt: `cannot attest: <heading> is missing`.
 2. Read its tier by Phase 0 step 6's spec-line rule and no other: no line is `big`; a malformed line halts `tier: malformed (<value>) — halting` and writes nothing.
-3. Classify the marker with `"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec docs/specs/TODO/<TICKET-ID>.spec.md`, with no `--spec-tier`. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. On `green`, print `already green and unchanged — nothing to attest` and stop.
+3. Classify the marker with `"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec docs/specs/TODO/<TICKET-ID>.spec.md`, with no `--spec-tier`. On `green`, print `already green and unchanged — nothing to attest` and stop.
 4. Print:
 
    ```text
@@ -382,13 +384,10 @@ Attestation is allowed over no marker, a pending or red marker, a changed green,
 
 ## Tool-use notes
 
-- Read, Edit, Write for authoring and revising the spec.
-- Bash for `verdict_marker.py`, read-only git (`git fetch` bounded by `timeout 30`, `git rev-list`, `git diff --no-index`), and `mkdir` for round directories.
-- Parallel Agent calls for the reviewers; do not read the ticket; the `grilling` skill only from 2f-i.
+- Parallel Agent calls for the reviewers; the `grilling` skill only from 2f-i.
 - Do not commit, push, or open PRs. That is `/ship-spec`'s job.
 
 ## Failure modes to watch for
 
-- **Stale spec read.** Re-read the spec from disk at the start of every pass; never trust your own prior write.
 - **Severity inflation.** A lens that keeps filing more than five P1s may be ignoring the severity definitions. Check its findings before trusting the loop.
 - **Out-of-date agents.** If reviewers ignore `spec_diff` or re-file well-formed deferred rows, the installed agents are stale: run `python sync.py install`.
