@@ -19,6 +19,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "skills" / "spec-brief" / "scripts" / "check_premises.py"
 SKILL = REPO_ROOT / "skills" / "spec-brief" / "SKILL.md"
+GRILLING = REPO_ROOT / "skills" / "grilling" / "SKILL.md"
+GRILL_ME = REPO_ROOT / "skills" / "grill-me" / "SKILL.md"
+SPEC_CYCLE = REPO_ROOT / "skills" / "spec-cycle" / "SKILL.md"
 
 CODE_RE = re.compile(r"^premise: (\S+)", re.M)
 
@@ -572,7 +575,43 @@ class CheckPremisesTests(unittest.TestCase):
     # Regression for VHS-93: anti-regrowth tripwire for the VHS-90 simplification epic.
     def test_skill_word_budget(self):
         words = len(SKILL.read_text(encoding="utf-8").split())
-        self.assertLessEqual(words, 5800)
+        self.assertLessEqual(words, 5681)
+
+    # Regression for VHS-121: spec-brief and grilling together stay within today's total.
+    def test_spec_brief_and_grilling_word_budget(self):
+        words = len(SKILL.read_text(encoding="utf-8").split())
+        words += len(GRILLING.read_text(encoding="utf-8").split())
+        self.assertLessEqual(words, 8833)
+
+    # Regression for VHS-121: the removed prompts and sections must not drift back in.
+    def test_skill_drops_the_removed_prompts(self):
+        text = SKILL.read_text(encoding="utf-8")
+        for needle in (
+            "A doubt pass is available.",
+            "1. Run the doubt pass.",
+            "Give each a reason, or abort.",
+            "premise override needs an operator",
+            "An override needs a reason",
+            "## Failure modes",
+        ):
+            with self.subTest(needle=needle):
+                self.assertNotIn(needle, text)
+
+    # Regression for VHS-121: settled-by-default is opt-in, and only spec-brief opts in.
+    def test_settled_by_default_is_opt_in(self):
+        self.assertIn("`ask_only`", SKILL.read_text(encoding="utf-8"))
+        grilling = GRILLING.read_text(encoding="utf-8")
+        for needle in (
+            "## Settled by default (opt-in)",
+            "Applies only when the caller passes `ask_only`",
+            "this skill never adopts its own recommendation for an unanswered question",
+            "answers a decision on the operator's behalf",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, grilling)
+        for path in (GRILL_ME, SPEC_CYCLE):
+            with self.subTest(skill=path.parent.name):
+                self.assertNotIn("ask_only", path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

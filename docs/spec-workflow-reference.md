@@ -10,6 +10,8 @@ The split between authoring and implementation is load-bearing. Spec context gro
 
 Parentheses mark the optional stage. Skipping it changes nothing about how `/ship-spec` runs. `/grill-me` is the ad-hoc interview, and it writes no lifecycle artifact. `/review-pr` triages CodeRabbit findings on an open pull request. Neither is a step in the chain above.
 
+`--unattended` on `/spec-cycle`, `/spec-tickets` or `/ship-spec` means nobody will answer: a prompt takes its fixed answer or becomes a recorded stop, a last line `UNATTENDED STOP: <ticket> · <skill> · <reason>` that is also posted as one comment on the ticket.
+
 ## spec-brief
 
 Produce the brief that `/spec-cycle` consumes. It resolves the ticket when a tracker is connected and degrades to the conversation when it is not, grounds against the repo and the wiki, runs a bounded interview, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. The brief is the artifact every later reviewer treats as authority, so a fork left open in it shows up later as a finding against the spec. Confirming the text is part of writing it.
@@ -22,7 +24,7 @@ The rules are in skills/spec-brief/SKILL.md.
 
 Author a spec from a brief, then run a parallel review until the spec is green or `round_cap` passes complete. It records a verdict marker and stops before any implementation. You leave this skill holding a spec and a verdict, and you start the next skill by hand. Its green NEXT recommends `/spec-tickets` when the spec splits into two or more pieces that can each be verified alone, and `/ship-spec` otherwise. That line is advice. Neither command runs from spec-cycle.
 
-Invocation: `/spec-cycle <brief-path> [--attest "<reason>" | --full]`.
+Invocation: `/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]`.
 
 The rules are in skills/spec-cycle/SKILL.md.
 
@@ -30,7 +32,7 @@ The rules are in skills/spec-cycle/SKILL.md.
 
 Optional. Invoking it files verifiable pieces, with blocking edges, as children of the spec's ticket. Where the tracker can relate work items, the edges are blocked-by relations. Where it cannot, each child carries a Blocked by section. With no tracker connected, each piece is one local file beside the spec. A spec that does not split files nothing and points at `/ship-spec`. Any existing child of the parent stops the run: delete the pieces of an earlier run, or split the spec by hand when the children are unrelated. `/ship-spec` still ships the whole spec either way.
 
-Invocation: `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md`.
+Invocation: `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md [--unattended]`.
 
 The rules are in skills/spec-tickets/SKILL.md.
 
@@ -38,7 +40,7 @@ The rules are in skills/spec-tickets/SKILL.md.
 
 Implement a green-lit spec in an isolated git worktree, through a test gate and a review gate, then open a pull request and update the issue tracker. The primary checkout stays as it was, apart from a local copy of an ignored test or review record. A build-only run stops once the tests are green and prints the command that continues at review.
 
-Invocation: `/ship-spec <spec-path> [--build-only | --from-review <worktree-path>]`.
+Invocation: `/ship-spec <spec-path> [--build-only | --from-review <worktree-path>] [--unattended]`.
 
 The rules are in skills/ship-spec/SKILL.md.
 
