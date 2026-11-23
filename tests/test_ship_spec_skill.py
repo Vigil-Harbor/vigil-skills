@@ -82,7 +82,7 @@ class TestSkill(unittest.TestCase):
     def test_executor_phrases(self):
         # Regression for VHS-54: the executors read, the hand-off, the gate and the always-review rule.
         text = read(SKILL)
-        for phrase in ("Its `executors` name `build` and `gate`: for each, the prefix entry's value, else the top-level one",
+        for phrase in ("Its `executors` name `build` and `gate`: for each, the prefix entry's value if present, else the top-level one",
                        "Anything but a non-empty string, and a name for this session, is none",
                        "can replace either for this run",
                        "No builder is used. After Phase 3 is green",
@@ -92,7 +92,7 @@ class TestSkill(unittest.TestCase):
                        "report what was built, what was not, and what the next step needs",
                        "or reports spec work unbuilt, operator steps aside, halts the run, naming it",
                        # Regression for VHS-54: missing builder work is never a test fix; the red gate halts on it.
-                       "is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry",
+                       "is red: missing builder work halts with `Missing builder work: <omission>`; otherwise make one smallest fix and retry",
                        "A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.",
                        "Never build in the session or pick another executor.",
                        "- `small`, unless builder-built: print",
@@ -102,7 +102,7 @@ class TestSkill(unittest.TestCase):
                        "its findings join the gate's but never count as the review running",
                        "its absence or failure is neither a skip nor a stop",
                        # Regression for VHS-54: a review of a builder's commit, or by a gate, counts only for the HEAD under review.
-                       "For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the expected `HEAD`; otherwise the review did not run.",
+                       "For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the snapshot's `HEAD`; otherwise the review did not run.",
                        # Regression for VHS-54: with no executors the two diagnostics read as they did.
                        "Review follows the spec tier. On tier mismatch, print both tiers and that rule, explaining implicit `big` when applicable. Preserve the marker.",
                        "Keep the worktree. Print the case and any configured gate.",

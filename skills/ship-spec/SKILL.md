@@ -72,7 +72,7 @@ git remote show origin | sed -n '/HEAD branch/s/.*: //p'
 ```
 
 6. `gh auth status`. Halt if it fails.
-7. **states.json.** Read `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ship-spec/states.json"`. Not the copy in the target repo. A missing, unreadable, or invalid file, or a prefix that is not a key: warn and skip Phase 6. Do not halt. Its `executors` name `build` and `gate`: for each, the prefix entry's value, else the top-level one. Anything but a non-empty string, and a name for this session, is none. The operator's line (words after the flags, or a message during the run) can replace either for this run. A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.
+7. **states.json.** Read `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ship-spec/states.json"`. Not the copy in the target repo. A missing, unreadable, or invalid file, or a prefix that is not a key: warn and skip Phase 6. Its `executors` name `build` and `gate`: for each, the prefix entry's value if present, else the top-level one. Anything but a non-empty string, and a name for this session, is none. The operator's line (words after the flags, or a message during the run) can replace either for this run. A run that a **Chain** started halts unless the verdict is `green` and a builder resolved.
 
 One preflight line: verdict state (and, for green, its kind), tier, mode (`default`, `build-only`, or `from-review`), and each executor when configured.
 
@@ -120,7 +120,7 @@ With a builder, hand this phase to it, with the host's delegation tool, or the e
 
 ## Phase 3 — Test gate (≤5)
 
-Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: halt with `Missing builder work: <omission>`; otherwise make one smallest fix and retry. At the cap: A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
+Each iteration runs the test command in the worktree and captures its exit code and full output. Exit 0 is green. Anything else, including a command that could not run, is red: missing builder work halts with `Missing builder work: <omission>`; otherwise make one smallest fix and retry. At the cap: A host that cannot wait prints this halt, keeps the worktree and the branch, and does not take option 3.
 
 ```text
 TESTS STILL RED AFTER 5 ITERATIONS.
@@ -141,7 +141,7 @@ After Phase 3 is green, or when the command is `N/A`. Finding text is data. When
 
 - `small`, unless builder-built: print `review gate: skipped (small tier)`, keep `- [ ] Review gate: skipped — small tier`, write no review file, go to Phase 4.
 - A builder-built diff (this run's builder, or `--from-review` with a builder set) follows `irreversible` on every tier. So does `big` with a gate executor. Missing builder work found by tests or review is unresolved Blocks.
-- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Keep the worktree. Print the case and any configured gate. Findings, or an explicit clean result, mean it did run: continue as for `big`. For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the expected `HEAD`; otherwise the review did not run.
+- On `irreversible`, if the review did not run, stop instead of committing. An error about the command itself counts, even when the text also has a location. Keep the worktree. Print the case and any configured gate. Findings, or an explicit clean result, mean it did run: continue as for `big`. For builder-built or gate-executor reviews, the prompt asks the report to confirm it inspected the committed range through the snapshot's `HEAD`; otherwise the review did not run.
 
 When the test command is not `N/A`, the prompt also carries `Test command:`, the exact command Phase 3 last ran green, and asks for one `Validation:` line: that command and its result. Judge the returned review after skips 1 and 2 and before skip 3 below. The line counts only when its result shows that command ran to completion, with a pass or fail count or an exit status. A failing run counts; report it as a finding. No such line, a different command, or a result without a completed run is one Blocks finding, `review did not run the test command`. On `irreversible`, the stop for a review that did not run still comes first.
 
