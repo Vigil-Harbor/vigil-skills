@@ -299,6 +299,30 @@ class TestCltPostMergeChecklists(unittest.TestCase):
             self.assertIn(key, clt["state_groups"])
 
 
+class TestExecutorsShape(unittest.TestCase):
+    """Repo states.json: `executors` names a builder and a gate (VHS-54). No Plane call."""
+
+    ROLES = {"build", "gate"}
+
+    def check(self, value, where, allow_empty):
+        self.assertIsInstance(value, dict, where)
+        self.assertLessEqual(set(value), self.ROLES, where)
+        for role, name in value.items():
+            self.assertIsInstance(name, str, "{}.{}".format(where, role))
+            if not allow_empty:
+                self.assertTrue(name.strip(), "{}.{}".format(where, role))
+
+    def test_executors_shape(self):
+        path = REPO_ROOT / "skills" / "ship-spec" / "states.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertIn("executors", data)
+        self.check(data["executors"], "executors", allow_empty=False)
+        self.assertEqual(set(data["executors"]), self.ROLES)
+        for prefix, entry in data.items():
+            if prefix != "executors" and isinstance(entry, dict) and "executors" in entry:
+                self.check(entry["executors"], prefix + ".executors", allow_empty=True)
+
+
 class TestMarkerReadCommand(unittest.TestCase):
     """gh rejects --slurp combined with --jq (VHS-84). No skill may print that command."""
 

@@ -96,6 +96,26 @@ class TestSkill(unittest.TestCase):
                 self.assertNotIn(phrase, text)
 
 
+    def test_chain_phrases(self):
+        # Regression for VHS-54: the Next line, the chain start and its stops. The chain starts
+        # only on the spec ship-spec will read, and never forwards the operator's line.
+        text = read(SKILL)
+        for phrase in ("Splits: <yes — <the pieces in a few words> | no>\nNext: <recommended command>",
+                       "**Chain.** When the green marker was written, `/ship-spec` Phase 0 step 7 resolves a builder, and this spec is the file `/ship-spec` will read (the same absolute path under its primary checkout)",
+                       "start the `Next:` command with `--unattended` alone, in this session",
+                       "Never forward the operator's line",
+                       "this session acts on it and carries any executor it names, which replaces that role for this run",
+                       "Chain: started <command> — build <name>, gate <name | session>",
+                       "Start nothing when it says to hold or is unclear, or the host cannot start it",
+                       "With no builder, the operator starts `Next:` in a fresh session."):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        for phrase in ("neither command runs from here", "then the operator's line",
+                       "When ready, run:", "## Failure modes"):
+            with self.subTest(absent=phrase):
+                self.assertNotIn(phrase, text)
+
+
 class TestAgents(unittest.TestCase):
 
     def test_agents_use_spec_diff(self):

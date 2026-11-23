@@ -14,7 +14,7 @@ requires:
 
 Invoked as: `/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]` (e.g., `/spec-cycle docs/specs/TODO/PROJ-123.brief.md`). With `--attest` the path may be the spec path; see `## Attest mode`.
 
-Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything. Stop at the Phase 3 HARD STOP or the 2f halt; the operator runs the NEXT command in a separate session.
+Author a v1 spec from the brief, then review, route and revise until the spec is green or the pass cap is reached. Never implement anything.
 
 ## The verdict marker
 
@@ -33,7 +33,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 ### Reading the marker
 
-`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`. `/ship-spec` and `/spec-tickets` call `read` themselves and carry their own actions.
+`"$PY" "$VERDICT" read --ticket <TICKET-ID> --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --spec <spec-path>` prints one JSON object. Its `state` is exactly one of six. A missing `$VERDICT`, a non-zero exit, or output that is not one JSON object with a valid `state` is `unreadable`.
 
 - `missing` — no marker file.
 - `unreadable` — the marker cannot be classified; the reason is named.
@@ -46,7 +46,7 @@ command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1 && PY=python
 
 ## Operator replies
 
-Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. A host that cannot wait keeps the prompt's own stop.
+Read each reply for intent. Numbered lines are the fast path; a person may answer in their own words. Before acting, print `Reading: <what you will do>.` Ask again only on real ambiguity, and name it; keep every clear part of the reply. Silence or an empty reply is never yes. `abort` as the only non-blank line stops and writes nothing. A host that cannot wait keeps the prompt's own stop. Every stop ends on one `Next:` line, a command or a question, printed before a recorded stop's line.
 
 **Unattended.** `--unattended` means nobody will answer: the run is a host that cannot wait, every prompt is a stop, and the 2f halt prints its block and takes no option. Any halt or stop short of the Phase 3 block, except a usage halt and the unchanged-green stop, is then a recorded stop: comment `UNATTENDED STOP: <TICKET-ID> · spec-cycle · <reason>` on the ticket when exactly one connected issue tracker resolves the id (for that write only; a failed comment prints `stop comment NOT posted: <error>`), then print the `UNATTENDED STOP` line last. `<reason>` is the halt's own line; a missing id reads `no ticket`.
 
@@ -95,8 +95,6 @@ The spec covers, at minimum:
 Each decision the brief carries forward gets a **Decision** subsection that names it and says how the design honors it. Make explicit the decisions the brief left to you, each with a one-line rationale, without prescribing what the brief deliberately left open.
 
 **Scale and Tier Decisions.** When `scale_lens` is `on` or `non-factor`, record it as a Decision (the target N, or the non-factor note) so Phase 3 has an anchor to check. Record the tier as one Decision whose line is exactly `**Tier:** small` (or `big`, or `irreversible`); write only one such line.
-
-Save and continue.
 
 ## Counters and round artifacts
 
@@ -311,7 +309,7 @@ Runs once, after the gate breaks green and before Phase 3. It is not a review ro
 
 ## Phase 3 — Drift-check checklist (HARD STOP)
 
-A review-produced green is never written while an in-scope P0/P1 row sits undischarged. First write the green marker with `"$PY" "$VERDICT" write --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --ticket <TICKET-ID> --spec docs/specs/TODO/<TICKET-ID>.spec.md --tier <tier> --verdict green --source review --round <C> --gate 0 --fingerprint-of docs/specs/TODO/<TICKET-ID>.spec.md`, fingerprinting the spec as 2g left it. If the write fails, print the failed-write line under the SPEC READY header. Then render:
+First write the green marker with `"$PY" "$VERDICT" write --marker docs/specs/TODO/<TICKET-ID>.reviews/verdict.md --ticket <TICKET-ID> --spec docs/specs/TODO/<TICKET-ID>.spec.md --tier <tier> --verdict green --source review --round <C> --gate 0 --fingerprint-of docs/specs/TODO/<TICKET-ID>.spec.md`, fingerprinting the spec as 2g left it. If the write fails, print the failed-write line under the SPEC READY header. Then render:
 
 ```
 === SPEC READY: <TICKET-ID> ===
@@ -343,18 +341,17 @@ Deferred rows: <u> undischarged (<out> out-of-scope, <op> operator), <d> dischar
 DRIFT: a merge into a file this spec cites, while this review is open, restarts the churn a delta pass exists to stop. If those files change, re-run /spec-cycle --full before the next pass.
 
 === NEXT ===
-When ready, run:
-  <recommended command>
 Splits: <yes — <the pieces in a few words> | no>
+Next: <recommended command>
 ```
 
 The `Verdict:` line gains ` (fingerprint not computed)` when the marker has `fingerprint: none`, and reads `Verdict: green — marker NOT written` when the write failed. The FOLLOW-UPS block uses 2f's render. Scale lines use the Phase 0 values; do not re-parse the brief.
 
-**NEXT.** Recommend `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` when the spec's Done-when items fall into two or more pieces that each deliver one end-to-end outcome and can each be verified alone: each piece's items can be checked, and its Test plan rows run, with only that piece's changes made. The `Splits:` line then names the pieces in a few words. Otherwise recommend `/ship-spec docs/specs/TODO/<TICKET-ID>.spec.md` with `Splits: no`. This is advice; neither command runs from here.
+**NEXT.** Recommend `/spec-tickets docs/specs/TODO/<TICKET-ID>.spec.md` when the spec's Done-when items fall into two or more pieces that each deliver one end-to-end outcome and can each be verified alone: each piece's items can be checked, and its Test plan rows run, with only that piece's changes made. The `Splits:` line then names the pieces in a few words. Otherwise recommend `/ship-spec docs/specs/TODO/<TICKET-ID>.spec.md` with `Splits: no`.
 
 **Brief-section parsing.** Find these headers case-insensitively, allowing trailing punctuation: `Decisions carried forward` / `Decisions` / `Decisions made`; `Done when` / `Acceptance criteria`; `Out of scope`. Enumerate the numbered list under each, using the first bolded clause or first sentence of each item as its label. A missing header renders one bullet: `[ ] Did the spec address everything in the brief? Anything in the brief absent from the spec?`
 
-Do not auto-proceed. The operator runs the NEXT command when ready.
+**Chain.** When the green marker was written, `/ship-spec` Phase 0 step 7 resolves a builder, and this spec is the file `/ship-spec` will read (the same absolute path under its primary checkout), start the `Next:` command with `--unattended` alone, in this session, and print `Chain: started <command> — build <name>, gate <name | session>`. Never forward the operator's line (words after the path, before any flag, or a message during the run): this session acts on it and carries any executor it names, which replaces that role for this run. Start nothing when it says to hold or is unclear, or the host cannot start it: the operator runs the `Next:` command. With no builder, the operator starts `Next:` in a fresh session.
 
 ## Attest mode
 
@@ -384,10 +381,4 @@ Attestation is allowed over no marker, a pending or red marker, a changed green,
 
 ## Tool-use notes
 
-- Parallel Agent calls for the reviewers; the `grilling` skill only from 2f-i.
 - Do not commit, push, or open PRs. That is `/ship-spec`'s job.
-
-## Failure modes to watch for
-
-- **Severity inflation.** A lens that keeps filing more than five P1s may be ignoring the severity definitions. Check its findings before trusting the loop.
-- **Out-of-date agents.** If reviewers ignore `spec_diff` or re-file well-formed deferred rows, the installed agents are stale: run `python sync.py install`.

@@ -36,6 +36,8 @@ Six skills form the spec lifecycle; the third is optional. The interview stage i
 
 **Stakes tier.** The operator sets a tier in `/spec-brief`, and ceremony follows it. `tweak` stops in spec-brief with nothing written. `small` is the three standing lenses, `round_cap` 2, and `/ship-spec` skips the review gate while keeping the test gate. `big` is today's behaviour and is what an absent tier means. When a reviewer is eligible, spec-brief runs the doubt pass at `big` without an offer, recommends it at `small` in its questionnaire, where the operator may say skip, and requires it only for `irreversible`. `irreversible` is `big` plus the tier on every reviewer prompt plus a review gate that stops instead of committing when the review did not run; spec-brief requires a doubt pass, halts when `irreversible` is picked and no reviewer is eligible, and never skips a failed dispatch. Scale stays its own `## Scale` declaration and never follows from the tier.
 
+**Executors.** `executors` in `skills/ship-spec/states.json` names a builder and a gate (`docs/customizing.md`). With a builder set, a stage that ends clean starts the next one with `--unattended`, `/ship-spec` hands the implementation to the builder and the review to the gate, and the session that reviewed the spec never implements it. Removing the key restores the stage-by-stage stops. Every stop ends on one `Next:` line.
+
 ### Parallel review agents
 
 `spec-cycle` dispatches read-only reviewer subagents **in parallel** (single message — three by default, plus an optional fourth when the brief declares scale):

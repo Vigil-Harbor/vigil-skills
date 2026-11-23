@@ -17,6 +17,7 @@ SPEC_CYCLE = REPO_ROOT / "skills" / "spec-cycle" / "SKILL.md"
 README = REPO_ROOT / "README.md"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 SHIP_SPEC = REPO_ROOT / "skills" / "ship-spec" / "SKILL.md"
+CUSTOMIZING = REPO_ROOT / "docs" / "customizing.md"
 
 REQUIRES = (
     "requires:\n"
@@ -29,7 +30,7 @@ PRESENT = (
     "verdict_marker.py",
     "--no-fingerprint",
     "SPEC VERDICT: red",
-    "one piece — run /ship-spec",
+    "one piece — nothing filed",
     "NOT FILED:",
     "FILED: <PARENT-ID>",
     "STOPPED: <PARENT-ID>",
@@ -49,6 +50,17 @@ PRESENT = (
     "Invoking it is the authorization to file.",
     "one blocked-by relation per edge",
     "Next: /ship-spec docs/specs/TODO/<PARENT-ID>.spec.md",
+    # Regression for VHS-54: free words, the one-piece Next line and the chain.
+    "later non-flag words expressing operator intent are the operator's line",
+    "Anything else, including another positional path, prints `Usage:",
+    "So does an unclear operator's line, naming what is unclear.",
+    "and the Report's `Next:` line, file nothing, and end as its **Chain** says",
+    "when the verdict read `green` and `/ship-spec` Phase 0 step 7 resolves a builder, start the `Next:` command by `/spec-cycle`'s **Chain** rule",
+    # Regression for VHS-54: a chain-started run files only for the spec, and the tier, that went green.
+    "chain-started runs replace `--no-fingerprint` with `--spec <spec-path> --spec-tier <tier from ship-spec Phase 0>`",
+    "a chain-started run needs `green`: otherwise print `NOT FILED: verdict <state>` and stop",
+    # Regression for VHS-54: the assembled PR carries the parent's acceptance and review once.
+    "The full Done when and the pre-merge review run once on the assembled PR (assembled-only).",
 )
 
 ABSENT = (
@@ -152,6 +164,51 @@ class TestUnattended(unittest.TestCase):
                                "UNATTENDED STOP: <ticket> · <skill> · <reason>"):
             with self.subTest(doc=REFERENCE.name, phrase=phrase):
                 self.assertIn(phrase, text)
+
+
+class TestChain(unittest.TestCase):
+
+    def test_next_line_rule_shared(self):
+        # Regression for VHS-54: every stop in all three skills ends on a Next line,
+        # and the stop line VHS-115 pins stays last.
+        for path in (SPEC_CYCLE, SKILL, SHIP_SPEC):
+            text = read(path)
+            for phrase in ("Every stop ends on one `Next:` line, a command or a question, "
+                           "printed before a recorded stop's line.",
+                           "then print the `UNATTENDED STOP` line last"):
+                with self.subTest(skill=path.parent.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
+    def test_docs_carry_executors(self):
+        # Regression for VHS-54: the setting, its removal and the boundary are documented.
+        for path, phrases in (
+                (CUSTOMIZING, ("## Executors", "two roles, `build` and `gate`",
+                               "or remove the key", "restores the earlier behaviour",
+                               "nothing falls back to the session")),
+                (AGENTS_MD, ("**Executors.**",
+                             "Removing the key restores the stage-by-stage stops")),
+                (README, ("**Executors.**",
+                          "remove the key to get the stage-by-stage stops back")),
+                (REFERENCE, ("`executors` in `states.json` names a builder and a gate",
+                             "Context boundary between review and implementation",
+                             "never implements it",
+                             "Every stop ends on one `Next:` line"))):
+            text = read(path)
+            for phrase in phrases:
+                with self.subTest(doc=path.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+        text = read(REFERENCE)
+        for phrase in ("Neither command runs from spec-cycle", "Session boundary between"):
+            with self.subTest(doc=REFERENCE.name, absent=phrase):
+                self.assertNotIn(phrase, text)
+
+    def test_skills_name_no_executor(self):
+        # Regression for VHS-54: executor names live in states.json, never in a skill.
+        for path in (SPEC_CYCLE, SKILL, SHIP_SPEC):
+            text = read(path).lower()
+            for name in ("grok", "codex", "gpt-"):
+                with self.subTest(skill=path.parent.name, name=name):
+                    self.assertNotIn(name, text)
 
 
 if __name__ == "__main__":

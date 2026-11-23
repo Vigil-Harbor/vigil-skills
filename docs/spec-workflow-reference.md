@@ -12,6 +12,8 @@ Parentheses mark the optional stage. Skipping it changes nothing about how `/shi
 
 `--unattended` on `/spec-cycle`, `/spec-tickets` or `/ship-spec` means nobody will answer: a prompt takes its fixed answer or becomes a recorded stop, a last line `UNATTENDED STOP: <ticket> · <skill> · <reason>` that is also posted as one comment on the ticket.
 
+`executors` in `states.json` names a builder and a gate (`docs/customizing.md`). With a builder set, a stage that ends clean starts the next one with `--unattended`: a green spec starts `/spec-tickets` when it splits and `/ship-spec` otherwise, and `/ship-spec` ends the chain at the open pull request. The session cuts the worktree, runs the tests and opens the pull request; the builder implements and the gate reviews. One line from the operator holds the chain or names another executor for that run. With no `executors`, each stage stops and you start the next by hand. Every stop ends on one `Next:` line.
+
 ## spec-brief
 
 Produce the brief that `/spec-cycle` consumes. It resolves the ticket when a tracker is connected and degrades to the conversation when it is not, grounds against the repo and the wiki, runs a bounded interview, and writes `docs/specs/TODO/<TICKET-ID>.brief.md`. The brief is the artifact every later reviewer treats as authority, so a fork left open in it shows up later as a finding against the spec. Confirming the text is part of writing it.
@@ -22,7 +24,7 @@ The rules are in skills/spec-brief/SKILL.md.
 
 ## spec-cycle
 
-Author a spec from a brief, then run a parallel review until the spec is green or `round_cap` passes complete. It records a verdict marker and stops before any implementation. You leave this skill holding a spec and a verdict, and you start the next skill by hand. Its green NEXT recommends `/spec-tickets` when the spec splits into two or more pieces that can each be verified alone, and `/ship-spec` otherwise. That line is advice. Neither command runs from spec-cycle.
+Author a spec from a brief, then run a parallel review until the spec is green or `round_cap` passes complete. It records a verdict marker and stops before any implementation. You leave this skill holding a spec and a verdict. Its green NEXT recommends `/spec-tickets` when the spec splits into two or more pieces that can each be verified alone, and `/ship-spec` otherwise. With no builder set, that line is advice and you start the next skill by hand. With a builder set, spec-cycle starts that command itself.
 
 Invocation: `/spec-cycle <brief-path> [--attest "<reason>" | [--full] [--unattended]]`.
 
@@ -72,7 +74,7 @@ The skills are designed to be tool-agnostic. The integration points to swap:
 |---|---|
 | Plane (issue tracker) | Jira, Linear, Asana, GitHub Issues, etc. |
 | Plane connector tools | Your tracker's API/MCP/CLI |
-| `states.json` (maps ticket prefixes to project IDs and state UUIDs) | Your tracker's project/workflow config |
+| `states.json` (maps ticket prefixes to project IDs and state UUIDs, and names the builder and gate) | Your tracker's project/workflow config |
 | `gh` CLI (PRs) | Your git host's CLI (`gh`, `glab`, Bitbucket API, etc.) |
 | Wiki (conventions reviewer reads `decisions/`, `architecture.md`, etc.) | Your team's docs, ADRs, Confluence, Notion — or omit `wiki_root` |
 | `docs/specs/TODO/<TICKET-ID>.*` file layout | Whatever path convention you prefer |
@@ -81,7 +83,7 @@ The skills are designed to be tool-agnostic. The integration points to swap:
 
 These are load-bearing. Leave them as the skills state them.
 
-- **Session boundary between spec-cycle and ship-spec.** Combining them is the main failure mode: context exhaustion mid-implementation, with no recovery point. A green spec on disk is what you re-run from.
+- **Context boundary between review and implementation.** Implementing in the context that ran the review is the main failure mode: context exhaustion mid-implementation, with no recovery point. With no builder set, a new session implements. With one, the session that reviewed hands the build to the builder and never implements it. A green spec on disk is what you re-run from.
 - **Parallel multi-lens review.** Sequential reviews let later reviewers anchor on earlier findings. Parallel dispatch forces independent reads.
 - **Reviewers are read-only.** They never edit files. spec-cycle owns the edits, so a reviewer cannot change the spec and introduce a new issue while reviewing it.
 - **STATUS line protocol.** A machine-parseable last line, `STATUS: GREEN` or `STATUS: RED P0=<n> P1=<n> ...`, gates the loop. The orchestrator sums P0+P1 across the reviewers it dispatched.
