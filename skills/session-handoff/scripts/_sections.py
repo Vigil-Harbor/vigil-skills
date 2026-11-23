@@ -21,6 +21,7 @@ import re
 # renderer free to title it (D1).
 TEMPLATE_SECTIONS = (
     (1, None, "title"),
+    (2, "Open Question", "recommended"),
     (2, "Session Metadata", "container"),
     (3, "Recent Commits", "generated"),
     (2, "Current State Summary", "required"),
@@ -49,6 +50,8 @@ RECOMMENDED_SECTIONS = tuple(n for _, n, c in TEMPLATE_SECTIONS if c == "recomme
 TODO_MARKER_RE = re.compile(r"\[TODO\b[^\]]*\]", re.IGNORECASE)
 
 _GUIDANCE = {
+    "Open Question": "what did you ask the operator that has no answer yet? "
+                     "Write the question in full, or None, then the next command to run",
     "Current State Summary": "what is the state of this work right now?",
     "Architecture Overview": "how do the moving parts fit together?",
     "Critical Files": "which files must the next session read first?",

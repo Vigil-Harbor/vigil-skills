@@ -22,6 +22,15 @@ Three rules govern the whole document:
 `# Handoff: <slug with hyphens replaced by spaces>`. The validator reads this
 line when another document chains to this one.
 
+## `##` Open Question *(recommended)*
+
+`[TODO: Open Question — what did you ask the operator that has no answer yet? Write the question in full, or None, then the next command to run]`
+
+The question you put to the operator that had no answer when the handoff was
+written, in full, so the next session can ask it without this session's
+context. Write `None` when nothing is open. Then one line naming the next
+command. RESUME asks this question before starting the next command.
+
 ## `##` Session Metadata *(container, no marker)*
 
 Created timestamp, project path, current branch. Generated.
@@ -77,7 +86,7 @@ relitigated.
 
 `[TODO: Immediate Next Steps — what is the very next action, in order?]`
 
-An ordered list. RESUME starts at #1, so #1 must be executable without further
+An ordered list. RESUME starts at #1 unless Open Question holds a question, so #1 must be executable without further
 inference.
 
 ## `##` Context and Risks *(container, no marker)*

@@ -19,6 +19,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -850,7 +851,9 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         code, out, err, state = self.preflight(router, "7")
         self.assertEqual(code, 0, out + err)
         self.assertIn("SHA: match (match single) review=passed", out)
-        self.assertIn("Reply yes to land VHS-97.", out)
+        self.assertIn("Verified match: landing VHS-97 with no reply.", out)
+        self.assertIn("Fast-forward: will be tried", out)
+        self.assertNotIn("Reply yes", out)
         self.assertEqual(len(router.ran("git", "fetch")), 2)
         self.assertEqual(state["version"], 1)
         self.assertEqual(state["verification"]["status"], "match")
@@ -858,13 +861,15 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(state["plane"]["target"], "Post-merge Checklists")
         self.assertEqual(state["checklist"], ["- [ ] Post-merge verification"])
         self.assertEqual(state["worktrees"], [self.linked])
-        self.assertEqual(state["fast_forward"], "will run")
+        self.assertEqual(state["fast_forward"], "will be tried")
 
     def test_preflight_no_marker_skips_verification(self):
         router = self.routes({("gh", "api"): (0, pages(comment(1, "LGTM")), b"")})
         code, out, _, state = self.preflight(router, "7")
         self.assertEqual(code, 0)
         self.assertIn("no marker - verification skipped", out)
+        self.assertIn("Reply yes to land VHS-97.", out)
+        self.assertNotIn("Verified match", out)
         self.assertEqual(state["verification"]["status"], "skipped")
         self.assertEqual(router.ran("git", "patch-id"), [])
         self.assertNotIn("may omit earlier rebased commits", out)
@@ -906,6 +911,7 @@ class TestPreflightWikiCleanup(unittest.TestCase):
                 self.assertEqual(code, 0, out)
                 self.assertIn("SHA: WARNING", out)
                 self.assertIn("Reply land anyway to land VHS-97", out)
+                self.assertNotIn("Verified match", out)
                 self.assertEqual(state["verification"]["status"], "warning")
                 self.assertEqual(state["verification"]["diff_base"], LANDED + "^1")
                 if name in ("malformed", "head"):
@@ -1066,7 +1072,8 @@ class TestPreflightWikiCleanup(unittest.TestCase):
             ("git", "worktree", "remove"): ok(),
             ("git", "rev-parse", "--verify"): ok(HEAD + "\n"),
             ("git", "rev-list", "--count"): ok("0\n"),
-            ("git", "branch", "-d"): (1, b"", b"not fully merged"),
+            ("git", "branch", "-d"): (
+                1, b"", "error: the branch '{}' is not fully merged".format(BRANCH).encode()),
             ("git", "branch", "-D"): ok(),
             ("git", "ls-remote"): ok("{}\trefs/heads/{}\n".format(HEAD, BRANCH)),
             ("git", "push"): ok(),
@@ -1169,7 +1176,6 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         state = self.preflight_state()
         cases = {
             "wrong branch": {("git", "worktree", "list"): ok(self.porcelain(main_branch="other"))},
-            "dirty main": {("git", "status"): lambda argv, _: ok(" M k\n") if argv[2] == self.main else ok()},
             "ff failed": {("git", "merge", "--ff-only"): (128, b"", b"diverged")},
             "not contained": {("git", "merge-base", "--is-ancestor"): (1, b"", b"")},
         }
@@ -1196,6 +1202,585 @@ class TestPreflightWikiCleanup(unittest.TestCase):
                     ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over))
                 self.assertIn(expected, out)
                 self.assertNotIn("does not hold the landed commit", out)
+
+    def test_preflight_never_reads_status(self):
+        router = self.routes({("git", "status"): ok(" M k\n")})
+        code, _, _, state = self.preflight(router, "7")
+        self.assertEqual(code, 0)
+        self.assertEqual(router.ran("git", "status"), [])
+        self.assertEqual(state["fast_forward"], "will be tried")
+
+    def test_cleanup_dirty_main_fast_forwards(self):
+        state = self.preflight_state()
+        dirty = lambda argv, _: ok(" M k\n") if argv[2] == self.main else ok()
+        shell = mock.Mock(return_value=0)
+        router = self.cleanup_routes({("git", "status"): dirty})
+        _, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertIn("fast-forward: done", out)
+        shell.assert_called_once()
+        self.assertIn(
+            "post-land command: exit 0 (ran with uncommitted changes in the main checkout)", out)
+        shell = mock.Mock(return_value=0)
+        _, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(), shell)
+        self.assertIn("post-land command: exit 0", out.splitlines())
+
+    def _eligible_state(self):
+        body = "## Test plan\n- [x] tests\n"
+        return self.preflight_state({("gh", "pr", "view", "7"): ok(self.pr_json(body=body))})
+
+    def test_cleanup_refused_fast_forward_is_one_line(self):
+        state = self._eligible_state()
+        stderr = (
+            "error: Your local changes to the following files would be overwritten by merge:\n"
+            "\tk\n"
+            "Please commit your changes or stash them before you merge.\n"
+            "Aborting\n")
+        router = self.cleanup_routes({("git", "merge", "--ff-only"): (1, b"", stderr.encode("utf-8"))})
+        shell = mock.Mock(return_value=0)
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertEqual(code, 1)
+        merge = router.ran("git", "merge", "--ff-only")
+        self.assertEqual(len(merge), 1)
+        self.assertIn("--no-squash", merge[0])
+        self.assertIn("--no-autostash", merge[0])
+        self.assertIn("refs/remotes/origin/main", merge[0])
+        failed = [line for line in out.splitlines() if line.startswith("fast-forward: failed (")]
+        self.assertEqual(len(failed), 1)
+        self.assertTrue(failed[0].startswith("fast-forward: failed (error: Your local changes"))
+        self.assertTrue(failed[0].endswith("Aborting)"))
+        shell.assert_not_called()
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_cleanup_hand_over_line(self):
+        eligible = self._eligible_state()
+        warned = self.preflight_state({("git", "patch-id"): ok(OTHER + "\n")})
+        no_marker = self.preflight_state({("gh", "api"): (0, pages(comment(1, "LGTM")), b"")})
+        default = self.preflight_state()
+        cases = {
+            "eligible": (eligible, {}, 0, "hand-over: eligible"),
+            "post-merge checklists": (default, {}, 0, "hand-over: no (the ticket target is not Done)"),
+            "warning": (warned, {}, 0, "hand-over: no (the SHA line was not match)"),
+            "no marker": (no_marker, {}, 0, "hand-over: no (the SHA line was not match)"),
+            "not contained": (
+                eligible, {("git", "merge-base", "--is-ancestor"): (1, b"", b"")}, 0,
+                "hand-over: no (the fast-forward did not leave the main checkout holding the landed commit)"),
+            "other branch": (
+                eligible, {("git", "worktree", "list"): ok(self.porcelain(main_branch="other"))}, 0,
+                "hand-over: no (the fast-forward did not leave the main checkout holding the landed commit)"),
+        }
+        for name, (state, over, shell_code, last) in cases.items():
+            with self.subTest(case=name):
+                shell = mock.Mock(return_value=shell_code)
+                code, out, _ = self.run_main(
+                    ["cleanup", "--state", self.state_file(state)], self.cleanup_routes(over), shell)
+                self.assertEqual(out.splitlines()[-1], last)
+                if name == "eligible":
+                    self.assertEqual(code, 0, out)
+        shell = mock.Mock(return_value=3)
+        _, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(eligible)], self.cleanup_routes(), shell)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_failed_push_or_status_is_not_eligible(self):
+        state = self._eligible_state()
+        router = self.cleanup_routes({("git", "push"): (128, b"", b"push failed")})
+        code, out, _ = self.run_main(["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+        status = lambda argv, _: (128, b"", b"status failed") if argv[2] == self.main else ok()
+        router = self.cleanup_routes({("git", "status"): status})
+        shell = mock.Mock(return_value=0)
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[-1], "hand-over: no (a cleanup action failed)")
+
+    def test_branch_delete_other_error_ends_hand_over_no(self):
+        # A refusal other than "not fully merged" is a failed action.
+        state = self._eligible_state()
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (
+                1, b"", b"fatal: cannot lock ref 'refs/heads/feat': File exists"),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertIn("cannot lock ref", out)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+    def test_branch_delete_error_quoting_the_refusal_is_still_an_error(self):
+        # The refusal sentence inside another error's path is not the refusal.
+        state = self._eligible_state()
+        sentence = "the branch '{}' is not fully merged".format(BRANCH)
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (
+                1, b"", "fatal: cannot lock ref in '/tmp/{}/.git'".format(sentence).encode()),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 1, out)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+    def test_branch_delete_reads_the_older_git_wording(self):
+        # Regression for VHS-122: git 2.39 and older capitalise the refusal and end it with a period.
+        state = self._eligible_state()
+        router = self.cleanup_routes({
+            ("git", "branch", "-d"): (1, b"", (
+                "error: The branch '{0}' is not fully merged.\n"
+                "If you are sure you want to delete it, run 'git branch -D {0}'.\n"
+            ).format(BRANCH).encode()),
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router)
+        self.assertEqual(code, 0, out)
+        self.assertIn("local branch: deleted (-D", out)
+
+    def test_post_land_rechecks_the_checkout_before_and_after(self):
+        state = self._eligible_state()
+        armed = {"status_seen": False}
+
+        def ancestor(argv, _):
+            if armed["status_seen"]:
+                return (1, b"", b"")
+            return ok()
+
+        def status(argv, _):
+            if argv[2] == self.main:
+                armed["status_seen"] = True
+            return ok()
+
+        shell = mock.Mock(return_value=0)
+        router = self.cleanup_routes({
+            ("git", "merge-base", "--is-ancestor"): ancestor,
+            ("git", "status"): status,
+        })
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        shell.assert_not_called()
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+        self.assertIn("post-land command: skipped", out)
+
+        armed = {"ran": False}
+
+        def ancestor_after(argv, _):
+            if armed["ran"]:
+                return (1, b"", b"")
+            return ok()
+
+        def run_shell(command, cwd):
+            armed["ran"] = True
+            return 0
+
+        shell = mock.Mock(side_effect=run_shell)
+        router = self.cleanup_routes({("git", "merge-base", "--is-ancestor"): ancestor_after})
+        code, out, _ = self.run_main(
+            ["cleanup", "--state", self.state_file(state)], router, shell)
+        shell.assert_called_once()
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+        self.assertIn("post-land command: exit 0", out)
+
+    def test_cleanup_switched_branch_without_post_land_withholds_handover(self):
+        # No post-land command. A branch switch during cleanup must not
+        # finish on hand-over: eligible.
+        state = self._eligible_state()
+        state["post_land"]["command"] = None
+
+        def during_lookup():
+            switched = {"on": False}
+
+            def ls_remote(argv, _):
+                switched["on"] = True
+                return ok("{}\trefs/heads/{}\n".format(HEAD, BRANCH))
+
+            def worktree_list(argv, _):
+                branch = "other" if switched["on"] else "main"
+                return ok(self.porcelain(main_branch=branch))
+
+            router = self.cleanup_routes({
+                ("git", "ls-remote"): ls_remote,
+                ("git", "worktree", "list"): worktree_list,
+            })
+            _, out, _ = self.run_main(
+                ["cleanup", "--state", self.state_file(state)], router)
+            self.assertIn("post-land command: none declared", out)
+            self.assertEqual(router.ran("git", "merge", "--ff-only"), [])
+            self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+        def after_fast_forward():
+            merged = {"on": False}
+
+            def merge(argv, _):
+                merged["on"] = True
+                return ok()
+
+            def worktree_list(argv, _):
+                branch = "other" if merged["on"] else "main"
+                return ok(self.porcelain(main_branch=branch))
+
+            router = self.cleanup_routes({
+                ("git", "merge", "--ff-only"): merge,
+                ("git", "worktree", "list"): worktree_list,
+            })
+            _, out, _ = self.run_main(
+                ["cleanup", "--state", self.state_file(state)], router)
+            self.assertIn("post-land command: none declared", out)
+            self.assertTrue(router.ran("git", "merge", "--ff-only"))
+            self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), out)
+
+        for name, case in (("during remote lookup", during_lookup),
+                           ("after the fast-forward", after_fast_forward)):
+            with self.subTest(case=name):
+                case()
+
+
+def _probe_git_env():
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
+@unittest.skipUnless(shutil.which("git"), "git not on PATH")
+class TestGitPremiseP4(unittest.TestCase):
+    """P4: git merge --ff-only --no-autostash with dirty files (VHS-122)."""
+
+    def setUp(self):
+        self.env = _probe_git_env()
+        self.tmp = Path(tempfile.mkdtemp(prefix="vhs122-p4-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.origin = self.tmp / "origin"
+        self.origin.mkdir()
+        self._git(self.origin, "init", "-q")
+        self._git(self.origin, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v1\n")
+        (self.origin / "b.txt").write_bytes(b"b-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "b.txt")
+        self._git(self.origin, "commit", "-q", "-m", "init")
+        self.first = self._rev(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v2\n")
+        (self.origin / "new.txt").write_bytes(b"new-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "new.txt")
+        self._git(self.origin, "commit", "-q", "-m", "land")
+        self.tip = self._rev(self.origin)
+
+    def _git(self, root, *args, check=True):
+        proc = subprocess.run(
+            ["git", *args], cwd=str(root), env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if check and proc.returncode != 0:
+            raise AssertionError("{} in {} failed: exit {} stdout={} stderr={}".format(
+                args, root, proc.returncode, proc.stdout, proc.stderr))
+        return proc
+
+    def _identity(self, root):
+        self._git(root, "config", "user.email", "vhs122-p4@example.invalid")
+        self._git(root, "config", "user.name", "VHS-122 Probe")
+        self._git(root, "config", "commit.gpgsign", "false")
+
+    def _rev(self, root):
+        return self._git(root, "rev-parse", "HEAD").stdout.decode().strip()
+
+    def _clone_at_first(self, name):
+        dest = self.tmp / name
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(dest))
+        self._git(dest, "reset", "--hard", self.first)
+        self._identity(dest)
+        return dest
+
+    def _prepare(self, clone, case):
+        if case == "clean":
+            return
+        if case == "b.txt modified":
+            (clone / "b.txt").write_bytes(b"b-local\n")
+        elif case == "b.txt modified and staged":
+            (clone / "b.txt").write_bytes(b"b-local\n")
+            self._git(clone, "add", "--", "b.txt")
+        elif case == "untracked u.txt":
+            (clone / "u.txt").write_bytes(b"u-local\n")
+        elif case == "a.txt modified":
+            (clone / "a.txt").write_bytes(b"a-local\n")
+        elif case == "a.txt modified and staged":
+            (clone / "a.txt").write_bytes(b"a-local\n")
+            self._git(clone, "add", "--", "a.txt")
+        elif case == "untracked new.txt":
+            (clone / "new.txt").write_bytes(b"new-local\n")
+        elif case == "one local commit":
+            (clone / "b.txt").write_bytes(b"b-diverge\n")
+            self._git(clone, "add", "--", "b.txt")
+            self._git(clone, "commit", "-q", "-m", "local")
+        elif case == "a.txt modified, autostash":
+            self._git(clone, "config", "merge.autoStash", "true")
+            (clone / "a.txt").write_bytes(b"a-local\n")
+        else:
+            raise AssertionError("unknown case {}".format(case))
+
+    def _merge(self, clone):
+        fetch = self._git(clone, "fetch", "origin", check=False)
+        self.assertEqual(
+            fetch.returncode, 0,
+            "fetch stdout={} stderr={}".format(fetch.stdout, fetch.stderr))
+        return self._git(clone, "merge", "--ff-only", "--no-autostash", "origin/main", check=False)
+
+    def test_ff_only_with_dirty_files(self):
+        moves = {
+            "clean",
+            "b.txt modified",
+            "b.txt modified and staged",
+            "untracked u.txt",
+        }
+        cases = [
+            "clean",
+            "b.txt modified",
+            "b.txt modified and staged",
+            "untracked u.txt",
+            "a.txt modified",
+            "a.txt modified and staged",
+            "untracked new.txt",
+            "one local commit",
+            "a.txt modified, autostash",
+        ]
+        for index, case in enumerate(cases):
+            with self.subTest(case=case):
+                clone = self._clone_at_first("c{}".format(index))
+                self._prepare(clone, case)
+                before = self._rev(clone)
+                proc = self._merge(clone)
+                after = self._rev(clone)
+                detail = "exit {} stdout={} stderr={}".format(
+                    proc.returncode, proc.stdout, proc.stderr)
+                if case in moves:
+                    self.assertEqual(proc.returncode, 0, detail)
+                    self.assertNotEqual(after, before, detail)
+                    self.assertEqual(after, self.tip, detail)
+                else:
+                    self.assertNotEqual(proc.returncode, 0, detail)
+                    self.assertEqual(after, before, detail)
+                if case in ("b.txt modified", "b.txt modified and staged"):
+                    self.assertEqual((clone / "b.txt").read_bytes(), b"b-local\n", detail)
+                if case == "b.txt modified and staged":
+                    cached = self._git(clone, "diff", "--cached", "--name-only")
+                    self.assertIn("b.txt", cached.stdout.decode().splitlines(), detail)
+                if case == "untracked u.txt":
+                    self.assertEqual((clone / "u.txt").read_bytes(), b"u-local\n", detail)
+                if case in ("a.txt modified", "a.txt modified, autostash"):
+                    self.assertEqual((clone / "a.txt").read_bytes(), b"a-local\n", detail)
+                if case == "untracked new.txt":
+                    self.assertEqual((clone / "new.txt").read_bytes(), b"new-local\n", detail)
+                if case == "a.txt modified, autostash":
+                    stash = self._git(clone, "stash", "list")
+                    self.assertEqual(stash.stdout.decode().strip(), "", detail)
+
+
+@unittest.skipUnless(shutil.which("git"), "git not on PATH")
+class TestCleanupRealGit(unittest.TestCase):
+    """Cleanup fast-forward against real git (VHS-122 T-L10)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_script(SCRIPT, "spec_land_check_cleanup_real_git")
+
+    def setUp(self):
+        self.env = _probe_git_env()
+        self.tmp = Path(tempfile.mkdtemp(prefix="vhs122-cleanup-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.origin = self.tmp / "origin"
+        self.origin.mkdir()
+        self._git(self.origin, "init", "-q")
+        self._git(self.origin, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v1\n")
+        (self.origin / "b.txt").write_bytes(b"b-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "b.txt")
+        self._git(self.origin, "commit", "-q", "-m", "init")
+        self.first = self._rev(self.origin)
+        (self.origin / "a.txt").write_bytes(b"a-v2\n")
+        (self.origin / "new.txt").write_bytes(b"new-v1\n")
+        self._git(self.origin, "add", "--", "a.txt", "new.txt")
+        self._git(self.origin, "commit", "-q", "-m", "land")
+        self.tip = self._rev(self.origin)
+
+    def _git(self, root, *args, check=True):
+        proc = subprocess.run(
+            ["git", *args], cwd=str(root), env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if check and proc.returncode != 0:
+            raise AssertionError("{} in {} failed: exit {} stdout={} stderr={}".format(
+                args, root, proc.returncode, proc.stdout, proc.stderr))
+        return proc
+
+    def _identity(self, root):
+        self._git(root, "config", "user.email", "vhs122-cleanup@example.invalid")
+        self._git(root, "config", "user.name", "VHS-122 Cleanup")
+        self._git(root, "config", "commit.gpgsign", "false")
+
+    def _rev(self, root):
+        return self._git(root, "rev-parse", "HEAD").stdout.decode().strip()
+
+    def _clone(self, name):
+        dest = self.tmp / name
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(dest))
+        self._git(dest, "reset", "--hard", self.first)
+        self._identity(dest)
+        return dest
+
+    def _cleanup(self, clone, branch="feat/vhs-122-missing", head=None):
+        self._git(clone, "fetch", "origin")
+        state = {
+            "version": 1,
+            "main": clone.as_posix(),
+            "pr": {"number": 7, "branch": branch,
+                   "head": head or self.first, "landed": self.tip},
+            "ticket": "VHS-122",
+            "verification": {"status": "match"},
+            "wiki": {"path": None},
+            "post_land": {"command": "git --version"},
+            "default_branch": "main",
+            "plane": {"target": "Done"},
+            "checklist": [],
+        }
+        path = self.tmp / ("state-" + clone.name + ".json")
+        path.write_text(json.dumps(state), encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                mock.patch.dict(os.environ, self.env, clear=True):
+            code = self.mod.main(["cleanup", "--state", str(path)])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_unrelated_dirty_files_fast_forward(self):
+        clone = self._clone("a")
+        (clone / "b.txt").write_bytes(b"b-local\n")
+        (clone / "staged.txt").write_bytes(b"staged-local\n")
+        self._git(clone, "add", "--", "staged.txt")
+        (clone / "u.txt").write_bytes(b"u-local\n")
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 0, detail)
+        self.assertIn("fast-forward: done", out)
+        self.assertIn("hand-over: eligible", out)
+        self.assertEqual(self._rev(clone), self.tip, detail)
+        self.assertEqual((clone / "b.txt").read_bytes(), b"b-local\n")
+        self.assertEqual((clone / "staged.txt").read_bytes(), b"staged-local\n")
+        self.assertEqual((clone / "u.txt").read_bytes(), b"u-local\n")
+        cached = self._git(clone, "diff", "--cached", "--name-only").stdout.decode().splitlines()
+        self.assertIn("staged.txt", cached, detail)
+        self.assertIn("ran with uncommitted changes in the main checkout", out)
+
+    def test_overlapping_change_is_refused(self):
+        for name, autostash in (("plain", False), ("autostash", True)):
+            with self.subTest(case=name):
+                clone = self._clone("b-" + name)
+                if autostash:
+                    self._git(clone, "config", "merge.autoStash", "true")
+                (clone / "a.txt").write_bytes(b"a-local\n")
+                before = self._rev(clone)
+                code, out, err = self._cleanup(clone)
+                detail = "exit {} stdout={} stderr={}".format(code, out, err)
+                self.assertEqual(code, 1, detail)
+                self.assertTrue(
+                    any(line.startswith("fast-forward: failed (") for line in out.splitlines()),
+                    detail)
+                self.assertEqual(self._rev(clone), before, detail)
+                self.assertEqual((clone / "a.txt").read_bytes(), b"a-local\n")
+                stash = self._git(clone, "stash", "list").stdout.decode().strip()
+                self.assertEqual(stash, "", detail)
+                self.assertIn("hand-over: no (a cleanup action failed)", out)
+
+    def test_diverged_local_commit_is_refused(self):
+        clone = self._clone("c")
+        (clone / "b.txt").write_bytes(b"b-diverge\n")
+        self._git(clone, "add", "--", "b.txt")
+        self._git(clone, "commit", "-q", "-m", "local")
+        before = self._rev(clone)
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 1, detail)
+        self.assertTrue(
+            any(line.startswith("fast-forward: failed (") for line in out.splitlines()), detail)
+        self.assertEqual(self._rev(clone), before, detail)
+
+    def test_ignored_incoming_file_is_not_overwritten(self):
+        clone = self._clone("ignored")
+        exclude = clone / ".git" / "info" / "exclude"
+        exclude.write_bytes(exclude.read_bytes() + b"\nnew.txt\n")
+        (clone / "new.txt").write_bytes(b"local-ignored\n")
+        before = self._rev(clone)
+        code, out, err = self._cleanup(clone)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual((clone / "new.txt").read_bytes(), b"local-ignored\n", detail)
+        self.assertEqual(self._rev(clone), before, detail)
+        self.assertTrue(
+            any(line.startswith("fast-forward: failed") for line in out.splitlines()), detail)
+        self.assertTrue(out.splitlines()[-1].startswith("hand-over: no"), detail)
+
+    def test_unmerged_branch_at_the_head_is_deleted(self):
+        # Real git writes the refusal here, so the wording parse is not fed its own string.
+        clone = self._clone("squash")
+        branch = "feat/vhs-122-squashed"
+        self._git(clone, "checkout", "-q", "-b", branch)
+        (clone / "c.txt").write_bytes(b"c-v1\n")
+        self._git(clone, "add", "--", "c.txt")
+        self._git(clone, "commit", "-q", "-m", "squashed away")
+        head = self._rev(clone)
+        self._git(clone, "checkout", "-q", "main")
+        code, out, err = self._cleanup(clone, branch, head)
+        detail = "exit {} stdout={} stderr={}".format(code, out, err)
+        self.assertEqual(code, 0, detail)
+        self.assertIn("local branch: deleted (-D", out, detail)
+        gone = self._git(clone, "rev-parse", "--verify", "-q", "refs/heads/" + branch, check=False)
+        self.assertNotEqual(gone.returncode, 0, detail)
+
+    def test_rename_overlap_is_not_a_match(self):
+        # Main edits old.txt. A branch renames it to new.txt with the same bytes.
+        # The landed rename must not be reported as a match.
+        repo = self.tmp / "rename"
+        repo.mkdir()
+        self._git(repo, "init", "-q")
+        self._git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+        self._identity(repo)
+        (repo / "old.txt").write_bytes(b"one\ntwo\nthree\nfour\nfive\n")
+        self._git(repo, "add", "--", "old.txt")
+        self._git(repo, "commit", "-q", "-m", "base")
+        base = self._rev(repo)
+        self._git(repo, "branch", "pr")
+        (repo / "old.txt").write_bytes(b"one\ntwo\nthree\nfour\nfive changed\n")
+        self._git(repo, "add", "--", "old.txt")
+        self._git(repo, "commit", "-q", "-m", "edit old")
+        self._git(repo, "checkout", "-q", "pr")
+        self._git(repo, "mv", "old.txt", "new.txt")
+        self._git(repo, "commit", "-q", "-m", "rename")
+        head = self._rev(repo)
+        self._git(repo, "checkout", "-q", "main")
+        self._git(repo, "merge", "--no-ff", "-m", "merge", "pr")
+        landed = self._rev(repo)
+        previous = os.getcwd()
+        self.addCleanup(os.chdir, previous)
+        os.chdir(str(repo))
+        with mock.patch.dict(os.environ, self.env, clear=True):
+            recorded = self.mod._diff_patch_id(base, head)
+            line = "head={} base={} patch-id={} review=passed".format(head, base, recorded)
+            with mock.patch.object(self.mod, "_read_latest", return_value=(1, "", line)):
+                result = self.mod._verify(7, head, landed, 1)
+        self.assertNotEqual(result["status"], "match", result)
+
+
+class TestSkillPins(unittest.TestCase):
+
+    def test_spec_land_skill(self):
+        text = (REPO_ROOT / "skills" / "spec-land" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLessEqual(len(text.split()), 1370)
+        for needle in (
+            "go to Step 3 with no reply",
+            ", wait, and read the reply for intent",
+            "the reply must say to land despite the warning",
+            "hand-over: eligible",
+            "Handing over to /spec-close <TICKET-ID>.",
+            "pr merge",
+            "or force anything",
+        ):
+            self.assertIn(needle, text)
+        self.assertNotIn("default branch and clean", text)
 
 
 if __name__ == "__main__":

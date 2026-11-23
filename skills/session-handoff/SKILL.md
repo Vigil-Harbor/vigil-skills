@@ -14,11 +14,9 @@ requires:
 
 # /session-handoff
 
-Work outlives sessions; context does not. This skill writes the bridge: a handoff
+This skill writes the bridge between sessions: a handoff
 document that states where the work stands, what was decided, and what the next
 session should do first — then validates it before you rely on it.
-
-Two scripts do the mechanical parts. Everything else is your judgement.
 
 - `scripts/create_handoff.py` — scaffold a document, pre-filled with git metadata.
 - `scripts/validate_handoff.py` — presence, placeholder and secret gate.
@@ -99,12 +97,12 @@ section that is genuinely absent is only informational.
      resumes from an unrelated session while presenting the result as chain
      context.
    - If neither yields an existing file, note it and stop the chain. Do not guess.
-4. Verify the recorded branch, blockers and assumptions against the current tree,
-   then begin at **Immediate Next Steps #1**.
+4. Verify the recorded branch, blockers and assumptions against the current tree.
+   When **Open Question** holds a question (its first non-blank line lacks a
+   case-insensitive `None` prefix), put it to the operator first. Otherwise begin at
+   **Immediate Next Steps #1**.
 
 ## SESSION TRANSFER
-
-Given a session id, pick up where that session stopped.
 
 1. **Validate the id first.** It must match the canonical UUID shape —
    `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
@@ -145,7 +143,7 @@ fatal: repeat the targeted removal. Do not edit vendor-managed files.
 
 ## Test plan
 
-Run from the vigil-skills repo root. Stdlib `unittest`; no pytest or node gate.
+Run from the vigil-skills repo root.
 
 1. Heading matcher — the filed bug: a required section is found at `###`, an
    absent one reports `missing`, and the same name matches at every depth 1–6.

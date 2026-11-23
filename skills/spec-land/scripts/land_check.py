@@ -51,13 +51,13 @@ default branch. A mismatch or malformed marker is a warning, not a halt.
     1  "HALT: <reason>" (not merged, failed PR or comment read, failed fetch,
        wrong-repository URL, no unique PR, a failed git command)
     4  "NEEDS TICKET: ..." - rerun with --ticket ID
-It writes nothing. The caller saves the JSON after the operator agrees.
+It writes nothing. The caller saves the JSON on a match, or after the operator agrees.
 
 wiki --state FILE writes the merge log line through the installed
 prepend_log_entry.py and applies the filemap D/R/A edits.
 cleanup --state FILE removes a clean worktree, deletes the local branch (-D
 only after a SHA match with the tip at the PR head) and the remote branch
-(leased on the PR head), fast-forwards a clean default-branch main checkout,
+(leased on the PR head), fast-forwards a default-branch main checkout when git allows it,
 and then runs the post-land command when main holds the landed commit.
 Both print one outcome line per action and exit 1 when any action failed.
 
@@ -204,10 +204,13 @@ def _cmd(argv: list[str], input: bytes | None = None) -> tuple[int, bytes, bytes
     # Bytes in and out: Windows' locale decoder is cp1252, and git diff output
     # must reach git patch-id unchanged (read_board.py:181-183 precedent).
     kwargs = {"input": input} if input is not None else {"stdin": subprocess.DEVNULL}
+    env = {**os.environ, **_CHILD_ENV}
+    if argv[:1] == ["git"] and argv[3:5] in (["branch", "-d"], ["remote", "show"]):
+        env["LC_ALL"] = "C"  # the only two git calls whose wording is parsed
     try:
         proc = subprocess.run(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=_CMD_TIMEOUT, env={**os.environ, **_CHILD_ENV}, **kwargs)
+            timeout=_CMD_TIMEOUT, env=env, **kwargs)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, b"", str(exc).encode("utf-8", "replace")
     return proc.returncode, proc.stdout, proc.stderr
@@ -606,13 +609,13 @@ def _verify(number: int, pr_head: str, landed: str, commits: int) -> dict:
     walked = _must(["git", "rev-list", "--reverse", "{}..{}".format(base, merge_base)],
                    "git rev-list").split()
     pr_paths = {p.replace("\\", "/") for p in _must(
-        ["git", "diff", "--name-only", "{}...{}".format(base, head)],
+        ["git", "diff", "--name-only", "--no-renames", "{}...{}".format(base, head)],
         "git diff --name-only").splitlines() if p}
     touching = []
     subjects = []
     for sha in walked:
         paths = {p.replace("\\", "/") for p in _must(
-            ["git", "diff-tree", "--first-parent", "-m", "--no-commit-id", "--name-only", "-r", sha],
+            ["git", "diff-tree", "--first-parent", "-m", "--no-commit-id", "--no-renames", "--name-only", "-r", sha],
             "git diff-tree {}".format(sha)).splitlines() if p}
         subject = _must(["git", "log", "-1", "--format=%s", sha], "git log").strip()
         subjects.append("{} {}".format(sha[:12], subject))
@@ -835,10 +838,8 @@ def _preflight_state(arg: str | None, ticket_arg: str | None) -> dict:
     elif records[0]["branch"] != "refs/heads/" + default:
         fast_forward = "skipped (main checkout is on {}, not {})".format(
             (records[0]["branch"] or "a detached HEAD").replace("refs/heads/", ""), default)
-    elif _cmd(["git", "-C", main, "status", "--porcelain"])[1].strip():
-        fast_forward = "skipped (main checkout has uncommitted changes)"
     else:
-        fast_forward = "will run"
+        fast_forward = "will be tried"
     return {
         "version": _STATE_VERSION, "repo": repo, "main": main,
         "pr": {"number": number, "url": pr.get("url"), "title": pr.get("title") or "",
@@ -905,6 +906,8 @@ def _confirmation(state: dict) -> str:
     rows.append("Fast-forward: " + state["fast_forward"])
     if v["status"] == "warning":
         rows.append("Reply land anyway to land {} despite the warnings above.".format(state["ticket"]))
+    elif v["status"] == "match":
+        rows.append("Verified match: landing {} with no reply.".format(state["ticket"]))
     else:
         rows.append("Reply yes to land {}.".format(state["ticket"]))
     return "\n".join(rows)
@@ -1084,6 +1087,19 @@ def _wiki(state_path: str) -> int:
     return 0 if ok else 1
 
 
+def _on_default_with_landed(main: str, default: str, landed: str) -> bool:
+    """True when the main checkout is on the default branch and contains landed."""
+    if not default or _bad_id(landed):
+        return False
+    try:
+        records = _worktrees(main)
+    except _Halt:
+        return False
+    if records[0].get("branch") != "refs/heads/" + default:
+        return False
+    return _cmd(["git", "-C", main, "merge-base", "--is-ancestor", landed, "HEAD"])[0] == 0
+
+
 def _shell(command: str, cwd: str) -> int:
     sys.stdout.flush()
     try:
@@ -1158,17 +1174,25 @@ def _cleanup(state_path: str) -> int:
                 failed = True
             elif int(count) > 0:
                 print("local branch: kept ({} commits not in the PR head)".format(count))
-            elif git("branch", "-d", branch)[0] == 0:
-                print("local branch: deleted")
-            elif matched and tip == head:
-                code, _, err = git("branch", "-D", branch)
-                if code == 0:
-                    print("local branch: deleted (-D; squash or rebase, tip matched the recorded head)")
-                else:
-                    print("local branch: NOT deleted ({})".format(_text(err).strip()))
-                    failed = True
             else:
-                print("local branch: kept (git branch -d refused; -D needs a SHA match)")
+                code, _, err = git("branch", "-d", branch)
+                refused = _text(err)
+                if code == 0:
+                    print("local branch: deleted")
+                elif "error: the branch '{}' is not fully merged".format(branch).lower() not in [
+                        # git 2.39 and older print "The branch ... merged."
+                        line.strip().rstrip(".").lower() for line in refused.splitlines()]:
+                    print("local branch: NOT deleted ({})".format(" ".join(refused.split())))
+                    failed = True
+                elif matched and tip == head:
+                    code, _, err = git("branch", "-D", branch)
+                    if code == 0:
+                        print("local branch: deleted (-D; squash or rebase, tip matched the recorded head)")
+                    else:
+                        print("local branch: NOT deleted ({})".format(_text(err).strip()))
+                        failed = True
+                else:
+                    print("local branch: kept (git branch -d refused; -D needs a SHA match)")
 
     if deletable:
         code, out, err = git("ls-remote", "--heads", "origin", branch)
@@ -1187,26 +1211,28 @@ def _cleanup(state_path: str) -> int:
                 print("remote branch: deleted")
             else:
                 print("remote branch: skipped (lease rejected or push failed: {})".format(_text(err).strip()))
+                failed = True
 
     contains = False
     ff_ran = False
-    main_ref = records[0]["branch"] if records else None
-    if not default:
-        print("fast-forward: skipped (default branch unknown)")
-    elif main_ref != "refs/heads/" + default:
-        print("fast-forward: skipped (main checkout is not on {})".format(default))
+    # The branch can change during the remote lookup above. Read it now.
+    try:
+        main_ref = _worktrees(main)[0].get("branch")
+    except _Halt as exc:
+        print("fast-forward: skipped ({})".format(exc))
+        failed = True
     else:
-        code, out, err = git("status", "--porcelain")
-        if code != 0:
-            print("fast-forward: skipped (git status failed: {})".format(_text(err).strip()))
-            failed = True
-        elif out.strip():
-            print("fast-forward: skipped (main checkout has uncommitted changes)")
+        if not default:
+            print("fast-forward: skipped (default branch unknown)")
+        elif main_ref != "refs/heads/" + default:
+            print("fast-forward: skipped (main checkout is not on {})".format(default))
         else:
-            code, _, err = git("merge", "--ff-only", "origin/" + default)
+            code, _, err = git(
+                "merge", "--ff-only", "--no-squash", "--no-autostash", "--no-overwrite-ignore",
+                "refs/remotes/origin/" + default)
             ff_ran = code == 0
             if code != 0:
-                print("fast-forward: failed ({})".format(_text(err).strip()))
+                print("fast-forward: failed ({})".format(" ".join(_text(err).split())))
                 failed = True
             elif git("merge-base", "--is-ancestor", pr["landed"], "HEAD")[0] == 0:
                 print("fast-forward: done")
@@ -1226,9 +1252,40 @@ def _cleanup(state_path: str) -> int:
             reason = "fast-forward did not run"
         print("post-land command: skipped ({})".format(reason))
     else:
-        code = _shell(command, main)
-        print("post-land command: exit {}".format(code))
-        failed = failed or code != 0
+        status = git("status", "--porcelain")
+        if status[0] != 0:
+            failed = True
+            note = ""
+            print("post-land command: status failed ({})".format(
+                " ".join(_text(status[2]).split())))
+        else:
+            note = (" (ran with uncommitted changes in the main checkout)"
+                    if status[1].strip() else "")
+        if not _on_default_with_landed(main, default, pr["landed"]):
+            print("post-land command: skipped (main checkout is not on {} holding the landed commit)".format(
+                default))
+            contains = False
+        else:
+            code = _shell(command, main)
+            print("post-land command: exit {}{}".format(code, note))
+            failed = failed or code != 0
+            if not _on_default_with_landed(main, default, pr["landed"]):
+                contains = False
+    plane = state["plane"]
+    if not matched:
+        reason = "the SHA line was not match"
+    elif plane.get("problem") or plane.get("target") != "Done":
+        reason = "the ticket target is not Done"
+    elif failed:
+        reason = "a cleanup action failed"
+    elif not contains:
+        reason = "the fast-forward did not leave the main checkout holding the landed commit"
+    elif not _on_default_with_landed(main, default, pr["landed"]):
+        # Re-check on every eligible path, including when no post-land command ran.
+        reason = "the fast-forward did not leave the main checkout holding the landed commit"
+    else:
+        reason = None
+    print("hand-over: eligible" if reason is None else "hand-over: no ({})".format(reason))
     return 1 if failed else 0
 
 

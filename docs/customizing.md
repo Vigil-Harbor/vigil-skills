@@ -91,7 +91,7 @@ If you don't have a wiki, omit `wiki_root` from the orchestrator prompt and the 
 
 ### Post-land command
 
-Read from the first of `CLAUDE.md` and the landed `AGENTS.md` that holds a `## Post-land command` section. That file is the only one read. Fence lines do not count. The section is exactly one non-blank line. spec-land runs it in the main checkout only when that checkout is clean, on the default branch, and holds the landed commit after cleanup's fast-forward. A section with more lines is skipped with a warning.
+Read from the first of `CLAUDE.md` and the landed `AGENTS.md` that holds a `## Post-land command` section. That file is the only one read. Fence lines do not count. The section is exactly one non-blank line. spec-land runs it in the main checkout only when that checkout is on the default branch, and holds the landed commit after cleanup's fast-forward. A section with more lines is skipped with a warning.
 
 ```markdown
 ## Post-land command

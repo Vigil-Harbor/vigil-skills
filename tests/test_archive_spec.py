@@ -270,7 +270,7 @@ class TestSkillPins(unittest.TestCase):
 
     def test_word_ceiling(self):
         # Target about 2,200 words; this is the tripwire.
-        self.assertLessEqual(len(self.text.split()), 2600)
+        self.assertLessEqual(len(self.text.split()), 2272)
 
     def test_archive_lives_in_the_script(self):
         self.assertIn("archive_spec.py", self.text)
@@ -278,6 +278,23 @@ class TestSkillPins(unittest.TestCase):
 
     def test_merge_line_lookup_named(self):
         self.assertIn("merge | <PREFIX> — <TICKET-ID> PR #", self.text)
+
+    def test_prompts_that_stay(self):
+        self.assertIn("Continue anyway? [y/N]", self.text)
+        self.assertIn("1. Partial-close  2. Abort", self.text)
+        self.assertIn("Enter PR number or commit SHA:", self.text)
+        self.assertIn("Proceed? [y/N]", self.text)
+
+    def test_handover_pin_and_uncommitted_wiki(self):
+        self.assertIn("Handing over to /spec-close <TICKET-ID>.", self.text)
+        self.assertIn("Proceed? [y/N]", self.text)
+        self.assertIn("4. **Never commit.**", self.text)
+        self.assertIn("Status: uncommitted.", self.text)
+        self.assertIn("git add <each wiki file this run wrote>", self.text)
+        self.assertIn("git diff --cached --stat", self.text)
+        self.assertIn(
+            "Suggest the commit only when this run accounts for every staged path.", self.text)
+        self.assertNotIn("then commit", self.text)
 
 
 if __name__ == "__main__":
