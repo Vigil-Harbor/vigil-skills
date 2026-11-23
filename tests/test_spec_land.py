@@ -781,7 +781,7 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         data = {"state": "MERGED", "mergeCommit": {"oid": LANDED},
                 "mergedAt": "2026-11-04T00:00:00Z", "baseRefOid": BASE, "headRefOid": HEAD,
                 "headRefName": BRANCH, "title": "feat(vhs-97): script it",
-                "body": "## Test plan\n- [x] tests\n- [ ] Spec verdict: green\n- [ ] Post-merge verification\n",
+                "body": "## Test plan\n- [x] tests\n- [ ] Spec verdict: green\n- [ ] Post-merge verification\n- [ ] Operator: rotate the key\n",
                 "commits": [{}], "url": "https://github.com/o/r/pull/7"}
         data.update(over)
         return json.dumps(data)
@@ -859,7 +859,7 @@ class TestPreflightWikiCleanup(unittest.TestCase):
         self.assertEqual(state["verification"]["status"], "match")
         self.assertEqual(state["verification"]["diff_base"], LANDED + "^1")
         self.assertEqual(state["plane"]["target"], "Post-merge Checklists")
-        self.assertEqual(state["checklist"], ["- [ ] Post-merge verification"])
+        self.assertEqual(state["checklist"], ["- [ ] Operator: rotate the key"])
         self.assertEqual(state["worktrees"], [self.linked])
         self.assertEqual(state["fast_forward"], "will be tried")
 
@@ -1005,13 +1005,14 @@ class TestPreflightWikiCleanup(unittest.TestCase):
 
     def test_checklist_and_hash(self):
         unchecked = self.mod._checklist(
-            "## Test plan\r\n- [ ] Review gate: x\n- [ ] Post-merge verification\n## Next\n- [ ] no\n")
-        self.assertEqual(unchecked, ["- [ ] Post-merge verification"])
+            "## Test plan\r\n- [ ] Review gate: x\n- [ ] Post-merge verification\n"
+            "- [ ] Post-merge verification: smoke the deploy\n## Next\n- [ ] no\n")
+        self.assertEqual(unchecked, ["- [ ] Post-merge verification: smoke the deploy"])
         with mock.patch.dict(os.environ, self.env):
             plane = self.mod._plane("VHS-97", 7, unchecked)
         self.assertEqual(plane["state_id"], "pmc-uuid")
         self.assertTrue(plane["comment"].endswith(
-            "spec-land:checklist PR #7 9c4b924006cf6d5f7ec1808f1347d5863786a708d1542a5cc5676b5240be80f9"))
+            "spec-land:checklist PR #7 0428bff974154749e5d7c54205ef27abd64161f6aca55dfac97e7134b3196bf1"))
 
     # Wiki ----------------------------------------------------------------
 

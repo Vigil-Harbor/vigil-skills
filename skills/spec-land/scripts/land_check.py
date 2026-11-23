@@ -645,7 +645,8 @@ def _checklist(body) -> list[str]:
         if line.startswith("## "):
             break
         if re.match(r"^\s*[-*] \[ \]\s+\S", line) and "Spec verdict:" not in line \
-                and "Review gate:" not in line:
+                and "Review gate:" not in line \
+                and not re.match(r"^\s*[-*] \[ \]\s+Post-merge verification\s*$", line):
             lines.append(line)
     return lines
 
